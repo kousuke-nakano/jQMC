@@ -41,7 +41,7 @@ from jqmc_workflow import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────
-SERVER = "localhost"
+SERVER = "cluster"
 QUEUE_LABEL = "qM"
 
 # Tiny parameters for fast local testing

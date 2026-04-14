@@ -158,6 +158,9 @@ class Machine:
                 if proxy_flag:
                     kwargs["sock"] = paramiko.ProxyCommand(proxy_command)
                 self.ssh.connect(**kwargs)
+                # Enable SSH keepalive so the client detects dead connections
+                # early instead of discovering them at close() time.
+                self.ssh.get_transport().set_keepalive(30)
                 logger.info(f"  SSH connected (attempt {tt + 1})")
                 break
             except paramiko.ssh_exception.SSHException:
@@ -173,25 +176,21 @@ class Machine:
     def ssh_close(self):
         if self.machine_type != "remote" or not self.ssh_status:
             return
-        max_retries = 3
         timeout_sec = 5.0
 
         for obj_name, obj in [("sftp", self.sftp), ("ssh", self.ssh)]:
-            for attempt in range(1, max_retries + 1):
-                executor = ThreadPoolExecutor(max_workers=1)
-                future = executor.submit(obj.close)
-                try:
-                    future.result(timeout=timeout_sec)
-                    logger.debug(f"{obj_name}.close() ok (attempt {attempt})")
-                    break
-                except Exception as e:
-                    logger.warning(f"{obj_name}.close() attempt {attempt}: {e.__class__.__name__}: {e}")
-                    if attempt == max_retries:
-                        logger.error(f"{obj_name}.close() failed after {max_retries} attempts")
-                        raise ValueError(f"Cannot close {obj_name}")
-                    time.sleep(1)
-                finally:
-                    executor.shutdown(wait=True)
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(obj.close)
+            try:
+                future.result(timeout=timeout_sec)
+                logger.debug(f"{obj_name}.close() ok")
+            except Exception as e:
+                logger.warning(f"{obj_name}.close() failed ({e.__class__.__name__}: {e}) — abandoning")
+                future.cancel()
+            finally:
+                # wait=False: the close thread may be stuck on a dead connection;
+                # waiting would hang forever (the reason we timed out in the first place).
+                executor.shutdown(wait=False)
 
         del self.ssh
         del self.sftp
@@ -347,7 +346,9 @@ class Machine:
                     raise RuntimeError(f"SFTP lstat failed for '{path}'")
                 time.sleep(1)
             finally:
-                executor.shutdown(wait=True)
+                # wait=False: the lstat thread may be stuck on a dead connection;
+                # waiting would hang forever.
+                executor.shutdown(wait=False)
 
     def is_file(self, file_name: str) -> bool:
         if self.machine_type == "local":
@@ -390,8 +391,8 @@ class Machines_handler:
     The client is always localhost — only one Machine (server) is needed.
     """
 
-    def __init__(self, server_machine_name: str):
-        self.server_machine = Machine(server_machine_name)
+    def __init__(self, machine: Machine):
+        self.server_machine = machine
 
     def ssh_close(self):
         self.server_machine.ssh_close()

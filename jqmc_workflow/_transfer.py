@@ -58,9 +58,7 @@ class Data_transfer:
 
     def __init__(self, server_machine_name: str, safe_mode: bool = False):
         self.server_machine = Machine(server_machine_name)
-        self.machine_handler = Machines_handler(
-            server_machine_name=server_machine_name,
-        )
+        self.machine_handler = Machines_handler(self.server_machine)
         self.safe_mode = safe_mode
 
         # Local root from machine_data.yaml (for path mapping)
