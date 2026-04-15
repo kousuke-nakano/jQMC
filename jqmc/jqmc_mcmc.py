@@ -132,6 +132,7 @@ class MCMC:
         comput_e_L_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
+        use_swct: bool = True,
     ) -> None:
         """Build an MCMC driver and initialize walker state.
 
@@ -146,6 +147,7 @@ class MCMC:
             comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc). Defaults to False.
             comput_position_deriv (bool, optional): Keep nuclear position derivatives. Defaults to False.
             random_discretized_mesh (bool, optional): Randomize quadrature mesh for non-local ECP terms. Defaults to True.
+            use_swct (bool, optional): Apply Space Warp Coordinate Transformation to atomic forces. Defaults to True.
 
         Notes:
             - Seeds are folded with MPI rank and walker index to avoid correlation.
@@ -162,6 +164,7 @@ class MCMC:
         self.__comput_e_L_param_deriv = comput_e_L_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
+        self.__use_swct = use_swct
 
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
@@ -544,25 +547,26 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
 
-                _ = _jit_vmap_swct_omega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_up_carts,
-                )
+                if self.__use_swct:
+                    _ = _jit_vmap_swct_omega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_up_carts,
+                    )
 
-                _ = _jit_vmap_swct_omega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_dn_carts,
-                )
+                    _ = _jit_vmap_swct_omega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_dn_carts,
+                    )
 
-                _ = _jit_vmap_swct_domega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_up_carts,
-                )
+                    _ = _jit_vmap_swct_domega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_up_carts,
+                    )
 
-                _ = _jit_vmap_swct_domega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_dn_carts,
-                )
+                    _ = _jit_vmap_swct_domega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_dn_carts,
+                    )
                 _ = _jit_vmap_grad_ln_psi_params(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
@@ -763,22 +767,30 @@ class MCMC:
 
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
 
-                omega_up_step = _jit_vmap_swct_omega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_up_carts,
-                )
-                omega_dn_step = _jit_vmap_swct_omega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_dn_carts,
-                )
-                grad_omega_dr_up_step = _jit_vmap_swct_domega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_up_carts,
-                )
-                grad_omega_dr_dn_step = _jit_vmap_swct_domega(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_dn_carts,
-                )
+                if self.__use_swct:
+                    omega_up_step = _jit_vmap_swct_omega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_up_carts,
+                    )
+                    omega_dn_step = _jit_vmap_swct_omega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_dn_carts,
+                    )
+                    grad_omega_dr_up_step = _jit_vmap_swct_domega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_up_carts,
+                    )
+                    grad_omega_dr_dn_step = _jit_vmap_swct_domega(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_dn_carts,
+                    )
+                else:
+                    n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+                    n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+                    omega_up_step = jnp.zeros((nw, n_atoms, n_up))
+                    omega_dn_step = jnp.zeros((nw, n_atoms, n_dn))
+                    grad_omega_dr_up_step = jnp.zeros((nw, n_atoms, 3))
+                    grad_omega_dr_dn_step = jnp.zeros((nw, n_atoms, 3))
 
                 # Compute per-walker force products preserving cross-correlations
                 _grad_e_L_r_up_np = np.array(grad_e_L_r_up_step)  # (nw, n_up, 3)
@@ -3868,6 +3880,7 @@ class MCMC:
             "comput_e_L_param_deriv": self.__comput_e_L_param_deriv,
             "comput_position_deriv": self.__comput_position_deriv,
             "random_discretized_mesh": self.__random_discretized_mesh,
+            "use_swct": self.__use_swct,
             "mcmc_counter": self.__mcmc_counter,
             "accepted_moves": self.__accepted_moves,
             "rejected_moves": self.__rejected_moves,
@@ -3974,6 +3987,7 @@ class MCMC:
         obj._MCMC__comput_e_L_param_deriv = bool(cfg.get("comput_e_L_param_deriv", False))
         obj._MCMC__comput_position_deriv = bool(cfg.get("comput_position_deriv", False))
         obj._MCMC__random_discretized_mesh = bool(cfg.get("random_discretized_mesh", True))
+        obj._MCMC__use_swct = bool(cfg.get("use_swct", True))
 
         # Counters
         obj._MCMC__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -4687,6 +4701,7 @@ class _MCMC_debug:
         comput_e_L_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
+        use_swct: bool = True,
     ) -> None:
         """Initialize a MCMC class, creating list holding results."""
         self.__mcmc_seed = mcmc_seed
@@ -4698,6 +4713,7 @@ class _MCMC_debug:
         self.__comput_e_L_param_deriv = comput_e_L_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
+        self.__use_swct = use_swct
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
@@ -5107,37 +5123,45 @@ class _MCMC_debug:
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
-                omega_up = jnp.stack(
-                    [
-                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
+                if self.__use_swct:
+                    omega_up = jnp.stack(
+                        [
+                            evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
 
-                omega_dn = jnp.stack(
-                    [
-                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
+                    omega_dn = jnp.stack(
+                        [
+                            evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+
+                    grad_omega_dr_up = jnp.stack(
+                        [
+                            evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+
+                    grad_omega_dr_dn = jnp.stack(
+                        [
+                            evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                else:
+                    n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+                    n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+                    n_atoms = self.__hamiltonian_data.structure_data.natom
+                    omega_up = jnp.zeros((self.__num_walkers, n_atoms, n_up))
+                    omega_dn = jnp.zeros((self.__num_walkers, n_atoms, n_dn))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, n_atoms, 3))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, n_atoms, 3))
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
-
-                grad_omega_dr_up = jnp.stack(
-                    [
-                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-
-                grad_omega_dr_dn = jnp.stack(
-                    [
-                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 

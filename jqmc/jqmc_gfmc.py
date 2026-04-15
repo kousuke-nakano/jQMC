@@ -184,6 +184,15 @@ class GFMC_t:
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. All-electron calculations, do not specify this value.
+        comput_position_deriv (bool):
+            if True, compute the derivatives of E wrt. atomic positions.
+        epsilon_PW (float):
+            Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
+            regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
+            DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
+        use_swct (bool):
+            if True, apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is False for GFMC.
     """
 
     def __init__(
@@ -198,12 +207,9 @@ class GFMC_t:
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
         epsilon_PW: float = 0.0,
+        use_swct: bool = False,
     ) -> None:
-        """Init.
-
-        Initialize a MCMC class, creating list holding results, etc...
-
-        """
+        """Initialize a GFMC_t driver and set up walker state."""
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
 
@@ -219,6 +225,7 @@ class GFMC_t:
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
+        self.__use_swct = use_swct
 
         # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
         self.__epsilon_PW = epsilon_PW
@@ -370,6 +377,7 @@ class GFMC_t:
             "non_local_move": self.__non_local_move,
             "comput_position_deriv": self.__comput_position_deriv,
             "epsilon_PW": self.__epsilon_PW,
+            "use_swct": self.__use_swct,
             "mcmc_counter": self.__mcmc_counter,
             "num_survived_walkers": self.__num_survived_walkers,
             "num_killed_walkers": self.__num_killed_walkers,
@@ -453,6 +461,7 @@ class GFMC_t:
         obj._GFMC_t__non_local_move = cfg.get("non_local_move", "tmove")
         obj._GFMC_t__comput_position_deriv = bool(cfg.get("comput_position_deriv", False))
         obj._GFMC_t__epsilon_PW = cfg.get("epsilon_PW", 0.0)
+        obj._GFMC_t__use_swct = bool(cfg.get("use_swct", False))
 
         # Counters
         obj._GFMC_t__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -1318,8 +1327,9 @@ class GFMC_t:
             static_argnums=(4,),  # non_local_move
         )
         _jit_vmap_grad_ln_psi_t = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
-        _jit_vmap_swct_omega_t = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
-        _jit_vmap_swct_domega_t = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
+        if self.__use_swct:
+            _jit_vmap_swct_omega_t = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
+            _jit_vmap_swct_domega_t = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
 
         if self.__comput_position_deriv:
             start_init_force = time.perf_counter()
@@ -1501,14 +1511,23 @@ class GFMC_t:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
-                omega_up = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
-                omega_dn = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
-                grad_omega_dr_up = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
-                grad_omega_dr_dn = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
-                omega_up.block_until_ready()
-                omega_dn.block_until_ready()
-                grad_omega_dr_up.block_until_ready()
-                grad_omega_dr_dn.block_until_ready()
+                if self.__use_swct:
+                    omega_up = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                    omega_dn = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+                    grad_omega_dr_up = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                    grad_omega_dr_dn = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+                    omega_up.block_until_ready()
+                    omega_dn.block_until_ready()
+                    grad_omega_dr_up.block_until_ready()
+                    grad_omega_dr_dn.block_until_ready()
+                else:
+                    _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+                    _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+                    _n_atoms = self.__hamiltonian_data.structure_data.natom
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
 
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
@@ -2522,6 +2541,15 @@ class _GFMC_t_debug:
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. All-electron calculations, do not specify this value.
+        comput_position_deriv (bool):
+            if True, compute the derivatives of E wrt. atomic positions.
+        epsilon_PW (float):
+            Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
+            regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
+            DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
+        use_swct (bool):
+            if True, apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is False for GFMC.
     """
 
     def __init__(
@@ -2535,12 +2563,9 @@ class _GFMC_t_debug:
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
         epsilon_PW: float = 0.0,
+        use_swct: bool = False,
     ) -> None:
-        """Init.
-
-        Initialize a MCMC class, creating list holding results, etc...
-
-        """
+        """Initialize a _GFMC_t_debug driver and set up walker state."""
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
 
@@ -2555,6 +2580,7 @@ class _GFMC_t_debug:
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
+        self.__use_swct = use_swct
 
         # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
         self.__epsilon_PW = epsilon_PW
@@ -3335,30 +3361,39 @@ class _GFMC_t_debug:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
-                omega_up = jnp.stack(
-                    [
-                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-                omega_dn = jnp.stack(
-                    [
-                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-                grad_omega_dr_up = jnp.stack(
-                    [
-                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-                grad_omega_dr_dn = jnp.stack(
-                    [
-                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
+                if self.__use_swct:
+                    omega_up = jnp.stack(
+                        [
+                            evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                    omega_dn = jnp.stack(
+                        [
+                            evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                    grad_omega_dr_up = jnp.stack(
+                        [
+                            evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                    grad_omega_dr_dn = jnp.stack(
+                        [
+                            evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                else:
+                    _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+                    _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+                    _n_atoms = self.__hamiltonian_data.structure_data.natom
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -3815,6 +3850,9 @@ class GFMC_n:
             Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
             regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
             DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
+        use_swct (bool):
+            if True, apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is False for GFMC.
     """
 
     def __init__(
@@ -3830,12 +3868,9 @@ class GFMC_n:
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
         epsilon_PW: float = 0.0,
+        use_swct: bool = False,
     ) -> None:
-        """Init.
-
-        Initialize a GFMC class, creating list holding results, etc...
-
-        """
+        """Initialize a GFMC_n driver and set up walker state."""
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
 
@@ -3852,6 +3887,7 @@ class GFMC_n:
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
+        self.__use_swct = use_swct
 
         # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
         self.__epsilon_PW = epsilon_PW
@@ -4001,6 +4037,7 @@ class GFMC_n:
             "non_local_move": self.__non_local_move,
             "comput_position_deriv": self.__comput_position_deriv,
             "epsilon_PW": self.__epsilon_PW,
+            "use_swct": self.__use_swct,
             "mcmc_counter": self.__mcmc_counter,
             "num_survived_walkers": self.__num_survived_walkers,
             "num_killed_walkers": self.__num_killed_walkers,
@@ -4085,6 +4122,7 @@ class GFMC_n:
         obj._GFMC_n__non_local_move = cfg.get("non_local_move", "tmove")
         obj._GFMC_n__comput_position_deriv = bool(cfg.get("comput_position_deriv", False))
         obj._GFMC_n__epsilon_PW = cfg.get("epsilon_PW", 0.0)
+        obj._GFMC_n__use_swct = bool(cfg.get("use_swct", False))
 
         # Counters
         obj._GFMC_n__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -5075,8 +5113,9 @@ class GFMC_n:
             static_argnums=(4, 6),  # non_local_move, use_fast_update
         )
         _jit_vmap_grad_ln_psi_n = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
-        _jit_vmap_swct_omega_n = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
-        _jit_vmap_swct_domega_n = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
+        if self.__use_swct:
+            _jit_vmap_swct_omega_n = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
+            _jit_vmap_swct_domega_n = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
 
         # projection compilation.
         start_init = time.perf_counter()
@@ -5291,30 +5330,39 @@ class GFMC_n:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
-                omega_up = _jit_vmap_swct_omega_n(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_up_carts,
-                )
+                if self.__use_swct:
+                    omega_up = _jit_vmap_swct_omega_n(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_up_carts,
+                    )
 
-                omega_dn = _jit_vmap_swct_omega_n(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_dn_carts,
-                )
+                    omega_dn = _jit_vmap_swct_omega_n(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_dn_carts,
+                    )
 
-                grad_omega_dr_up = _jit_vmap_swct_domega_n(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_up_carts,
-                )
+                    grad_omega_dr_up = _jit_vmap_swct_domega_n(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_up_carts,
+                    )
 
-                grad_omega_dr_dn = _jit_vmap_swct_domega_n(
-                    self.__hamiltonian_data.structure_data,
-                    self.__latest_r_dn_carts,
-                )
+                    grad_omega_dr_dn = _jit_vmap_swct_domega_n(
+                        self.__hamiltonian_data.structure_data,
+                        self.__latest_r_dn_carts,
+                    )
 
-                omega_up.block_until_ready()
-                omega_dn.block_until_ready()
-                grad_omega_dr_up.block_until_ready()
-                grad_omega_dr_dn.block_until_ready()
+                    omega_up.block_until_ready()
+                    omega_dn.block_until_ready()
+                    grad_omega_dr_up.block_until_ready()
+                    grad_omega_dr_dn.block_until_ready()
+                else:
+                    _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+                    _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+                    _n_atoms = self.__hamiltonian_data.structure_data.natom
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
 
             # Barrier before MPI operation
             start_mpi_barrier = time.perf_counter()
@@ -6388,6 +6436,9 @@ class _GFMC_n_debug:
             Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
             regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
             DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
+        use_swct (bool):
+            if True, apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is False for GFMC.
     """
 
     def __init__(
@@ -6403,12 +6454,9 @@ class _GFMC_n_debug:
         comput_position_deriv: bool = False,
         random_discretized_mesh=False,
         epsilon_PW: float = 0.0,
+        use_swct: bool = False,
     ) -> None:
-        """Init.
-
-        Initialize a GFMC class, creating list holding results, etc...
-
-        """
+        """Initialize a _GFMC_n_debug driver and set up walker state."""
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
 
@@ -6425,6 +6473,7 @@ class _GFMC_n_debug:
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
+        self.__use_swct = use_swct
 
         # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
         self.__epsilon_PW = epsilon_PW
@@ -7294,30 +7343,39 @@ class _GFMC_n_debug:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
-                omega_up = jnp.stack(
-                    [
-                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-                omega_dn = jnp.stack(
-                    [
-                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-                grad_omega_dr_up = jnp.stack(
-                    [
-                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
-                grad_omega_dr_dn = jnp.stack(
-                    [
-                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
-                        for i in range(self.__num_walkers)
-                    ]
-                )
+                if self.__use_swct:
+                    omega_up = jnp.stack(
+                        [
+                            evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                    omega_dn = jnp.stack(
+                        [
+                            evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                    grad_omega_dr_up = jnp.stack(
+                        [
+                            evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                    grad_omega_dr_dn = jnp.stack(
+                        [
+                            evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                            for i in range(self.__num_walkers)
+                        ]
+                    )
+                else:
+                    _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+                    _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+                    _n_atoms = self.__hamiltonian_data.structure_data.natom
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)

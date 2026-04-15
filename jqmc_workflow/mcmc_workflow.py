@@ -114,6 +114,9 @@ class MCMC_Workflow(Workflow):
         MCMC updates per measurement.  Default from ``jqmc_miscs``.
     atomic_force : bool, optional
         Compute atomic forces.  Default from ``jqmc_miscs``.
+    use_swct : bool, optional
+        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+        Default is True for MCMC.
     parameter_derivatives : bool, optional
         Compute parameter derivatives.  Default from ``jqmc_miscs``.
     mcmc_seed : int, optional
@@ -219,6 +222,7 @@ class MCMC_Workflow(Workflow):
         epsilon_AS: Optional[float] = None,
         num_mcmc_per_measurement: Optional[int] = None,
         atomic_force: Optional[bool] = None,
+        use_swct: Optional[bool] = None,
         parameter_derivatives: Optional[bool] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
@@ -245,6 +249,7 @@ class MCMC_Workflow(Workflow):
         self.epsilon_AS = epsilon_AS
         self.num_mcmc_per_measurement = num_mcmc_per_measurement
         self.atomic_force = atomic_force
+        self.use_swct = use_swct
         self.parameter_derivatives = parameter_derivatives
         # [control] section
         self.mcmc_seed = mcmc_seed
@@ -290,6 +295,7 @@ class MCMC_Workflow(Workflow):
                 "num_mcmc_warmup_steps": self.num_mcmc_warmup_steps,
                 "num_mcmc_bin_blocks": self.num_mcmc_bin_blocks,
                 "atomic_force": self.atomic_force,
+                "use_swct": self.use_swct,
                 "parameter_derivatives": self.parameter_derivatives,
             },
         )

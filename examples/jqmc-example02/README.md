@@ -212,6 +212,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
