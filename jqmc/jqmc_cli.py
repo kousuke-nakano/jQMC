@@ -289,6 +289,7 @@ def _cli():
         Dt = parameters[section]["Dt"]
         epsilon_AS = parameters[section]["epsilon_AS"]
         atomic_force = parameters[section]["atomic_force"]
+        use_swct = parameters[section]["use_swct"]
         parameter_derivatives = parameters[section]["parameter_derivatives"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
@@ -313,6 +314,7 @@ def _cli():
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=atomic_force,
                 comput_log_WF_param_deriv=parameter_derivatives,
+                use_swct=use_swct,
             )
         logger.info("Printing out information in hamitonian_data instance.")
         mcmc.hamiltonian_data._logger_info()
@@ -516,6 +518,7 @@ def _cli():
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         E_scf = parameters[section]["E_scf"]
         atomic_force = parameters[section]["atomic_force"]
+        use_swct = parameters[section]["use_swct"]
         epsilon_PW = parameters[section]["epsilon_PW"]
 
         # Enforce GFMC minimum thresholds (E_scf unreliable before step 25)
@@ -554,6 +557,7 @@ def _cli():
                 non_local_move=non_local_move,
                 comput_position_deriv=atomic_force,
                 epsilon_PW=epsilon_PW,
+                use_swct=use_swct,
             )
         logger.info("Printing out information in hamitonian_data instance.")
         lrdmc.hamiltonian_data._logger_info()
@@ -629,6 +633,7 @@ def _cli():
         num_gfmc_bin_blocks = parameters[section]["num_gfmc_bin_blocks"]
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         atomic_force = parameters[section]["atomic_force"]
+        use_swct = parameters[section]["use_swct"]
         epsilon_PW = parameters[section]["epsilon_PW"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
@@ -654,6 +659,7 @@ def _cli():
                 non_local_move=non_local_move,
                 comput_position_deriv=atomic_force,
                 epsilon_PW=epsilon_PW,
+                use_swct=use_swct,
             )
         logger.info("Printing out information in hamitonian_data instance.")
         lrdmc.hamiltonian_data._logger_info()

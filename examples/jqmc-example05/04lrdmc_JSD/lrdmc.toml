@@ -18,3 +18,4 @@ num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e.
 num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
 E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
 atomic_force = true
+use_swct = false # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is false for LRDMC.

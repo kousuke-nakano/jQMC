@@ -190,6 +190,7 @@ def test_lrdmc_force_with_SWCT_n(trexio_file: str, jastrow_parameters: dict, loc
         non_local_move=locality,
         comput_position_deriv=True,
         epsilon_PW=1.0e-2,
+        use_swct=True,
     )
 
     gfmc.run(num_mcmc_steps=50)
@@ -300,6 +301,7 @@ def test_lrdmc_force_with_SWCT_t(trexio_file: str, jastrow_parameters: dict, loc
         non_local_move=locality,
         comput_position_deriv=True,
         epsilon_PW=1.0e-2,
+        use_swct=True,
     )
 
     gfmc.run(num_mcmc_steps=50)
@@ -329,6 +331,111 @@ def test_lrdmc_force_with_SWCT_t(trexio_file: str, jastrow_parameters: dict, loc
         atol=atol_debug_vs_production,
         rtol=rtol_debug_vs_production,
     )
+
+
+def test_lrdmc_force_without_SWCT_n():
+    """Test LRDMC force without SWCT (use_swct=False) for GFMC_n."""
+    trexio_file = "H2_ecp_ccpvtz_cart.h5"
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade")
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=None,
+    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    gfmc = GFMC_n(
+        hamiltonian_data=hamiltonian_data,
+        num_walkers=2,
+        num_mcmc_per_measurement=30,
+        num_gfmc_collect_steps=5,
+        mcmc_seed=34356,
+        E_scf=-1.00,
+        alat=0.30,
+        non_local_move="tmove",
+        comput_position_deriv=True,
+        epsilon_PW=1.0e-2,
+        use_swct=False,
+    )
+
+    gfmc.run(num_mcmc_steps=50)
+    gfmc.get_E(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+    force_mean, force_std = gfmc.get_aF(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+
+    # Forces should be finite (no NaN/Inf)
+    assert not np.any(np.isnan(np.array(force_mean))), "NaN detected in force_mean"
+    assert not np.any(np.isnan(np.array(force_std))), "NaN detected in force_std"
+    assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"
+
+
+def test_lrdmc_force_without_SWCT_t():
+    """Test LRDMC force without SWCT (use_swct=False) for GFMC_t."""
+    trexio_file = "H2_ecp_ccpvtz_cart.h5"
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=None,
+    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    gfmc = GFMC_t(
+        hamiltonian_data=hamiltonian_data,
+        num_walkers=2,
+        num_gfmc_collect_steps=5,
+        mcmc_seed=34356,
+        tau=0.10,
+        alat=0.30,
+        non_local_move="tmove",
+        comput_position_deriv=True,
+        epsilon_PW=1.0e-2,
+        use_swct=False,
+    )
+
+    gfmc.run(num_mcmc_steps=50)
+    gfmc.get_E(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+    force_mean, force_std = gfmc.get_aF(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+
+    # Forces should be finite (no NaN/Inf)
+    assert not np.any(np.isnan(np.array(force_mean))), "NaN detected in force_mean"
+    assert not np.any(np.isnan(np.array(force_std))), "NaN detected in force_std"
+    assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"
 
 
 if __name__ == "__main__":

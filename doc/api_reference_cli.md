@@ -49,6 +49,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `Dt`                       |        `2.0` | MCMC step size (Bohr).                                                                                                                                                                                                                        |
 | `epsilon_AS`               |        `0.0` | ε parameter for the Attaccalite–Sorella regularization.                                                                                                                                                                                       |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                                                                                                                             |
+| `use_swct`                 |       `true` | If `true`, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is `true` for MCMC.                                                                                                                                    |
 
 ---
 
@@ -91,6 +92,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_gfmc_collect_steps`   |          `0` | Number of pre-binning measurements used to collect/accumulate weights.                                                                 |
 | `E_scf`                    |        `0.0` | Initial total-energy guess used to set the initial GFMC energy shift.                                                                  |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                      |
+| `use_swct`                 |      `false` | If `true`, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is `false` for LRDMC.                           |
 | `epsilon_PW`               |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---
@@ -107,6 +109,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_gfmc_bin_blocks`    |          `1` | Binning blocks for GFMC (total binned blocks = `num_gfmc_bin_blocks`). |
 | `num_gfmc_collect_steps` |          `0` | Pre-binning measurement count for weight collection.                   |
 | `atomic_force`           |      `false` | If `true`, compute atomic forces.                                      |
+| `use_swct`               |      `false` | If `true`, apply SWCT to atomic forces. Default is `false` for LRDMC.  |
 | `epsilon_PW`             |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---

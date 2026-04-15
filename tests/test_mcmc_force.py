@@ -217,6 +217,59 @@ def test_mcmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict):
     )
 
 
+def test_mcmc_force_without_SWCT():
+    """Test MCMC force without SWCT (use_swct=False)."""
+    trexio_file = "H2_ecp_ccpvtz_cart.h5"
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=0.5, structure_data=structure_data, core_electrons=(0, 0), jastrow_1b_type="pade"
+    )
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=None,
+    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=34356,
+        num_walkers=2,
+        comput_position_deriv=True,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
+        epsilon_AS=1.0e-2,
+        use_swct=False,
+    )
+    mcmc.run(num_mcmc_steps=20)
+    mcmc.get_E(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+    force_mean, force_std = mcmc.get_aF(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+
+    # Forces should be finite (no NaN/Inf)
+    assert not np.any(np.isnan(np.array(force_mean))), "NaN detected in force_mean"
+    assert not np.any(np.isnan(np.array(force_std))), "NaN detected in force_std"
+    assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"
+
+
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 

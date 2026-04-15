@@ -158,7 +158,7 @@ can be referenced by downstream workflows via
 | `energy` | `float` | VMC energy (Ha). |
 | `energy_error` | `float` | Statistical error on `energy` (Ha). |
 | `restart_chk` | `str` | Basename of the restart checkpoint file. |
-| `forces` | `object` | Atomic forces (only when `atomic_force=True`). |
+| `forces` | `object` | Atomic forces (only when `atomic_force=True`). SWCT is applied when `use_swct=True`. |
 | `num_mcmc_steps` | `int` | Estimated total measurement steps (automatic mode). |
 | `estimated_steps` | `int` | Same as above, in fixed-step mode. |
 
@@ -170,7 +170,7 @@ can be referenced by downstream workflows via
 | `energy_error` | `float` | Statistical error on `energy` (Ha). |
 | `alat` | `float` | Lattice spacing used for this run. |
 | `restart_chk` | `str` | Basename of the restart checkpoint file. |
-| `forces` | `object` | Atomic forces (only when `atomic_force=True`). |
+| `forces` | `object` | Atomic forces (only when `atomic_force=True`). SWCT is applied when `use_swct=True`. |
 | `estimated_steps` | `int` | Estimated total measurement steps. |
 | `num_projection_per_measurement` | `int` | GFMC projections per measurement (GFMC_n mode only). |
 | `time_projection_tau` | `float` | Imaginary-time projection step (GFMC_t mode only). |

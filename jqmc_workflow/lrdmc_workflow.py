@@ -167,6 +167,9 @@ class LRDMC_Workflow(Workflow):
         Default from ``jqmc_miscs``.
     atomic_force : bool, optional
         Compute atomic forces.  Default from ``jqmc_miscs``.
+    use_swct : bool, optional
+        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+        Default is False for LRDMC.
     epsilon_PW : float, optional
         Pathak–Wagner regularization parameter (Bohr). When > 0,
         the force estimator is regularized near the nodal surface.
@@ -296,6 +299,7 @@ class LRDMC_Workflow(Workflow):
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
+        use_swct: Optional[bool] = None,
         epsilon_PW: Optional[float] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
@@ -341,6 +345,7 @@ class LRDMC_Workflow(Workflow):
         self.non_local_move = non_local_move
         self.E_scf = E_scf
         self.atomic_force = atomic_force
+        self.use_swct = use_swct
         self.epsilon_PW = epsilon_PW
         # [control] section
         self.mcmc_seed = mcmc_seed
@@ -414,6 +419,7 @@ class LRDMC_Workflow(Workflow):
                     "num_gfmc_collect_steps": self.num_gfmc_collect_steps,
                     "E_scf": self.E_scf,
                     "atomic_force": self.atomic_force,
+                    "use_swct": self.use_swct,
                     "epsilon_PW": self.epsilon_PW,
                 },
             )
@@ -430,6 +436,7 @@ class LRDMC_Workflow(Workflow):
                     "num_gfmc_bin_blocks": self.num_gfmc_bin_blocks,
                     "num_gfmc_collect_steps": self.num_gfmc_collect_steps,
                     "atomic_force": self.atomic_force,
+                    "use_swct": self.use_swct,
                     "epsilon_PW": self.epsilon_PW,
                 },
             )

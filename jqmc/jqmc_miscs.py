@@ -61,6 +61,7 @@ cli_parameters = {
         "Dt": 2.0,
         "epsilon_AS": 0.0,
         "atomic_force": False,
+        "use_swct": True,
         "parameter_derivatives": False,
     },
     "mcmc_comments": {
@@ -71,6 +72,7 @@ cli_parameters = {
         "Dt": "Step size for the MCMC update (bohr).",
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
         "atomic_force": "If true, compute atomic forces.",
+        "use_swct": "If true, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is True for MCMC.",
         "parameter_derivatives": "If true, compute parameter derivatives.",
     },
     "vmc": {
@@ -144,6 +146,7 @@ cli_parameters = {
         "num_gfmc_collect_steps": 0,
         "E_scf": 0.0,
         "atomic_force": False,
+        "use_swct": False,
         "epsilon_PW": 0.0,
     },
     "lrdmc-bra_comments": {
@@ -156,6 +159,7 @@ cli_parameters = {
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "E_scf": "The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.",
         "atomic_force": "If true, compute atomic forces.",
+        "use_swct": "If true, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is False for LRDMC.",
         "epsilon_PW": "Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is regularized near the nodal surface. Default is 0.0 (no regularization).",
     },
     "lrdmc-tau": {
@@ -167,6 +171,7 @@ cli_parameters = {
         "num_gfmc_bin_blocks": 5,
         "num_gfmc_collect_steps": 0,
         "atomic_force": False,
+        "use_swct": False,
         "epsilon_PW": 0.0,
     },
     "lrdmc-tau_comments": {
@@ -178,6 +183,7 @@ cli_parameters = {
         "num_gfmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "atomic_force": "If true, compute atomic forces.",
+        "use_swct": "If true, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is False for LRDMC.",
         "epsilon_PW": "Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is regularized near the nodal surface. Default is 0.0 (no regularization).",
     },
 }
