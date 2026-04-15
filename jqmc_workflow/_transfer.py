@@ -58,9 +58,7 @@ class Data_transfer:
 
     def __init__(self, server_machine_name: str, safe_mode: bool = False):
         self.server_machine = Machine(server_machine_name)
-        self.machine_handler = Machines_handler(
-            server_machine_name=server_machine_name,
-        )
+        self.machine_handler = Machines_handler(self.server_machine)
         self.safe_mode = safe_mode
 
         # Local root from machine_data.yaml (for path mapping)
@@ -70,7 +68,10 @@ class Data_transfer:
         """Determine the local workspace_root from localhost entry."""
         try:
             local_m = Machine("localhost")
-            return local_m.workspace_root or os.path.expanduser("~")
+            try:
+                return local_m.workspace_root or os.path.expanduser("~")
+            finally:
+                local_m.ssh_close()
         except (KeyError, FileNotFoundError):
             return os.path.expanduser("~")
 

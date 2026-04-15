@@ -417,7 +417,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the Linear Method (LM) and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 

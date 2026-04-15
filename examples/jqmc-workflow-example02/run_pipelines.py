@@ -229,7 +229,7 @@ def build_pipeline() -> tuple[
                 "method": "sr",
                 "delta": 0.350,
                 "epsilon": 0.001,
-                "adaptive_learning_rate": True,
+                "use_lm": True,
             },
             max_time=3000,
             poll_interval=300,

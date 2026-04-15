@@ -2372,12 +2372,9 @@ class MCMC:
             opt_lambda_basis_coeff (bool, optional): Optimize Geminal AO contraction coefficients (up and down). Defaults to False.
                 Cannot be combined with ``opt_with_projected_MOs``.
             optimizer_kwargs (dict | None, optional): Optimizer configuration.
-                ``method='sr'`` uses SR keys (``sr_delta``, ``sr_epsilon``, ``cg_flag``,
-                ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``);
-                ``use_lm=True`` enables LM with keys (``lm_subspace_dim``, ``lm_cond``,
-                ``lm_subspace_dim``, ``lm_cond``); ``adaptive_learning_rate=True`` (SR only) enables
-                accelerated SR (aSR) gamma scaling and requires
-                ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``;
+                ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``,
+                ``cg_max_iter``, ``cg_tol``);
+                ``use_lm=True`` enables LM with keys (``lm_subspace_dim``, ``lm_cond``);
                 other ``method`` names are optax constructors (e.g., ``"adam"``) and
                 receive remaining keys.
 

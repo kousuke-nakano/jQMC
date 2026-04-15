@@ -622,7 +622,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
 
         jax.clear_caches()
 
-    # ── adaptive_learning_rate (aSR) smoke test ──────────────────────────────
+    # ── use_lm (LM/aSR) smoke test ──────────────────────────────────────────
     # A separate MCMC instance with comput_e_L_param_deriv=True.
     # get_aH is patched at instance level so that no real sampled data are
     # needed; the dummy return values have H_1 < 0 so compute_asr_gamma

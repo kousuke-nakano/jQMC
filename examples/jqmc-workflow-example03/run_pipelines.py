@@ -9,7 +9,7 @@ For a water molecule (ccECP, cc-pVTZ, Cartesian), this script:
 
 Patterns
 --------
-  A) J3 + MCMC   — SR adaptive_learning_rate=True, delta=0.35
+  A) J3 + MCMC   — SR use_lm=True, delta=0.35
   B) J3 + LRDMC  — same VMC; LRDMC a=0.30
 """
 
@@ -187,7 +187,7 @@ def build_pipeline() -> tuple[
         ),
     )
 
-    # VMC: SR with adaptive_learning_rate=True, delta=0.35
+    # VMC: SR with use_lm=True, delta=0.35
     vmc = Container(
         label="vmc",
         dirname="02_vmc",
@@ -215,7 +215,7 @@ def build_pipeline() -> tuple[
                 "method": "sr",
                 "delta": 0.350,
                 "epsilon": 0.001,
-                "adaptive_learning_rate": True,
+                "use_lm": True,
             },
             max_time=MAX_TIME,
             poll_interval=POLL_INTERVAL,
