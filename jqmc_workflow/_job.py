@@ -106,10 +106,10 @@ class JobSubmission:
         run_id: str = "",
         safe_mode: bool = False,
     ):
-        self.server_machine = Machine(server_machine_name)
         self.data_transfer = Data_transfer(
             server_machine_name=server_machine_name,
         )
+        self.server_machine = self.data_transfer.server_machine
 
         # Bootstrap config directory if needed
         cfg = get_config_dir()
@@ -262,7 +262,6 @@ class JobSubmission:
             self.job_submit_date = datetime.today()
             logger.info(f"  Job submitted (number={self.job_number}).")
 
-            self._close_ssh()
             return True, self.job_number
 
         except Exception as e:
@@ -270,6 +269,8 @@ class JobSubmission:
             self.job_running = False
             logger.error(f"Job submission failed: {e}")
             raise
+        finally:
+            self._close_ssh()
 
     # ── Job checking ──────────────────────────────────────────────
 

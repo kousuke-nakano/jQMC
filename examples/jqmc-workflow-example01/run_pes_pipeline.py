@@ -277,7 +277,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 target_error=TARGET_VMC_ERROR,
                 target_snr=TARGET_SNR,
                 energy_slope_sigma_threshold=ENERGY_SLOPE_THRESHOLD,
-                optimizer_kwargs={"method": "sr", "delta": 0.300, "epsilon": 0.010, "adaptive_learning_rate": True},
+                optimizer_kwargs={"method": "sr", "delta": 0.300, "epsilon": 0.010, "use_lm": True},
                 max_time=3000,
                 poll_interval=120,
                 max_continuation=1,
