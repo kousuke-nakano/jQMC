@@ -325,11 +325,19 @@
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-16-2026-v0-2-1a1">Apr-16-2026: v0.2.1a1</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#new-features">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-memory">Performance &amp; memory</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bug-fixes">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-jqmc-workflow">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#breaking-changes">Breaking changes</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mar-10-2026-v0-2-0a1">Mar-10-2026: v0.2.0a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance">Performance</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optimization">Optimization</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#new-features">New features</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bug-fixes">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bug fixes</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#infrastructure">Infrastructure</a></li>
 </ul>
 </li>
@@ -342,12 +350,12 @@
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>
@@ -364,6 +372,95 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="change-log">
 <span id="changelog"></span><h1>Change Log<a class="headerlink" href="#change-log" title="Link to this heading">#</a></h1>
+<section id="apr-16-2026-v0-2-1a1">
+<h2>Apr-16-2026: v0.2.1a1<a class="headerlink" href="#apr-16-2026-v0-2-1a1" title="Link to this heading">#</a></h2>
+<p>This release focuses on a major update of the VMC optimizer (Linear Method), extended AO basis optimization, memory/performance improvements of the <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> kernel package, and substantial hardening of the <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> automation package.</p>
+<section id="new-features">
+<h3>New features<a class="headerlink" href="#new-features" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Linear Method (LM) optimizer</strong>: Implemented the Linear Method optimizer that solves the generalized eigenvalue problem <span class="math notranslate nohighlight">\(\bar{H} v = E \bar{S} v\)</span> for optimal parameter updates, providing a powerful alternative to the naive Stochastic Reconfiguration (SR). The optimization is robust and fast.</p>
+<ul>
+<li><p>LM is now integrated into the <code class="docutils literal notranslate"><span class="pre">method=&quot;sr&quot;</span></code> code path, controlled by the <code class="docutils literal notranslate"><span class="pre">use_lm</span></code> flag and <code class="docutils literal notranslate"><span class="pre">lm_subspace_dim</span></code> parameter (inspired by TurboRVB’s <code class="docutils literal notranslate"><span class="pre">ncg=1</span></code> design).</p></li>
+<li><p><strong>Unified optimizer hierarchy</strong> under <code class="docutils literal notranslate"><span class="pre">method=&quot;sr&quot;</span></code>:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">use_lm=false</span></code>: plain SR</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">use_lm=true,</span> <span class="pre">lm_subspace_dim=0</span></code>: adaptive SR (aSR) with gamma scaling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">use_lm=true,</span> <span class="pre">lm_subspace_dim&gt;0</span></code>: LM with SR collective variable + top-<span class="math notranslate nohighlight">\(p\)</span> S/N ratio parameters</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">use_lm=true,</span> <span class="pre">lm_subspace_dim=-1</span></code>: LM with SR collective variable + all parameters</p></li>
+</ul>
+</li>
+<li><p>SR collective variable (<span class="math notranslate nohighlight">\(g = S^{-1}f\)</span>) is used as the first LM basis vector for stability.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dgelscut</span></code>-based preconditioning with iterative eigenvalue conditioning on the correlation matrix (condition number <span class="math notranslate nohighlight">\(\leq 1/\epsilon\)</span>), inspired by TurboRVB’s implementation.</p></li>
+<li><p>S-orthonormalization (<span class="math notranslate nohighlight">\(P = U \Lambda^{-1/2}\)</span>) converts the generalized eigenvalue problem to standard form.</p></li>
+<li><p>Symmetrization of <span class="math notranslate nohighlight">\(H = K + B\)</span> before eigenvalue solve to suppress finite-sample noise.</p></li>
+<li><p>Eigenvector selection by <span class="math notranslate nohighlight">\(\max |v_0|^2\)</span> criterion.</p></li>
+<li><p>Separate <code class="docutils literal notranslate"><span class="pre">epsilon</span></code> (SR regularization) and <code class="docutils literal notranslate"><span class="pre">lm_cond</span></code> (LM dgelscut threshold) parameters.</p></li>
+<li><p>Fallback mechanisms: plain SR fallback (<span class="math notranslate nohighlight">\(\gamma=0.1\)</span>) when aSR finds no positive root; plain SR fallback (<span class="math notranslate nohighlight">\(0.1 \cdot g_\mathrm{sr}\)</span>) when LM does not predict energy improvement (<span class="math notranslate nohighlight">\(E_\mathrm{LM} &gt; E_0 + 3\sigma\)</span>).</p></li>
+</ul>
+</li>
+<li><p><strong>Extended AO basis optimization</strong>: Implemented <code class="docutils literal notranslate"><span class="pre">opt_J3_basis_coeff</span></code>, <code class="docutils literal notranslate"><span class="pre">opt_J3_basis_exp</span></code>, <code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_coeff</span></code>, and <code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_exp</span></code> options for optimizing three-body Jastrow and geminal AO basis exponents and coefficients in VMC.</p>
+<ul>
+<li><p><strong>Shell-shared constraint</strong>: Same-atom, same-shell primitives share exponents/coefficients via <code class="docutils literal notranslate"><span class="pre">symmetrize_metric</span></code> (size-preserving shell averaging), consistent with <code class="docutils literal notranslate"><span class="pre">j3_matrix</span></code>/<code class="docutils literal notranslate"><span class="pre">lambda_matrix</span></code> symmetrization.</p></li>
+<li><p><strong>Dual symmetrization strategy</strong>: <span class="math notranslate nohighlight">\(O_k\)</span> derivatives are symmetrized at source in <code class="docutils literal notranslate"><span class="pre">get_dln_WF</span></code> for accurate <span class="math notranslate nohighlight">\(f\)</span> and <span class="math notranslate nohighlight">\(S\)</span>, and post-hoc symmetrization is applied after <code class="docutils literal notranslate"><span class="pre">apply_block_update</span></code> to prevent floating-point drift over hundreds of optimization steps.</p></li>
+<li><p>Improved AO basis exponent selection using a log-spaced median window with widened margin (<code class="docutils literal notranslate"><span class="pre">/2.5</span></code>).</p></li>
+</ul>
+</li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">use_swct</span></code> parameter</strong>: Added <code class="docutils literal notranslate"><span class="pre">use_swct</span></code> flag to MCMC, GFMC_t, and GFMC_n classes to control Space Warp Coordinate Transformation (SWCT) on/off for atomic force calculations. Default is <code class="docutils literal notranslate"><span class="pre">True</span></code> for MCMC and <code class="docutils literal notranslate"><span class="pre">False</span></code> for GFMC (LRDMC). When disabled, zero arrays are used for <code class="docutils literal notranslate"><span class="pre">omega</span></code>/<code class="docutils literal notranslate"><span class="pre">grad_omega</span></code>, and force formulas reduce to bare Hellmann-Feynman and Pulay forces.</p></li>
+<li><p><strong>S/N ratio filter</strong>: Applied S/N ratio filtering before SR matrix construction to reduce the effective matrix dimension, improving both speed and numerical stability. <code class="docutils literal notranslate"><span class="pre">O_matrix_local</span></code> is sliced to selected parameters before building <span class="math notranslate nohighlight">\(S\)</span>, so all SR computations operate in the reduced space.</p></li>
+<li><p><strong>Shape assertions</strong>: Added rigorous shape assertions (using <code class="docutils literal notranslate"><span class="pre">mcmc_counter</span></code>, <code class="docutils literal notranslate"><span class="pre">num_walkers</span></code>, <code class="docutils literal notranslate"><span class="pre">n_atoms</span></code>) to <code class="docutils literal notranslate"><span class="pre">get_E</span></code>, <code class="docutils literal notranslate"><span class="pre">get_aF</span></code>, <code class="docutils literal notranslate"><span class="pre">get_gF</span></code>, <code class="docutils literal notranslate"><span class="pre">get_aH</span></code> in MCMC, GFMC_t, GFMC_n, and their debug counterparts.</p></li>
+</ul>
+</section>
+<section id="performance-memory">
+<h3>Performance &amp; memory<a class="headerlink" href="#performance-memory" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Buffer-based MPI reduce in SR</strong>: Eliminated <code class="docutils literal notranslate"><span class="pre">list()</span></code> round-trips and switched to buffer-based MPI reduce in the SR optimizer for lower overhead.</p></li>
+<li><p><strong>Pre-compute collective observable</strong>: Compute <span class="math notranslate nohighlight">\(O_\mathrm{SR} = \delta O \cdot g\)</span> while the full <span class="math notranslate nohighlight">\(O\)</span>-matrix is still in memory during the SR solve, avoiding a redundant <code class="docutils literal notranslate"><span class="pre">get_dln_WF</span></code> call in the LM path.</p></li>
+<li><p><strong>Avoid redundant JIT compilation</strong>: Refactored <code class="docutils literal notranslate"><span class="pre">run_optimize</span></code> in <code class="docutils literal notranslate"><span class="pre">jqmc_mcmc.py</span></code> to skip redundant computation via early <code class="docutils literal notranslate"><span class="pre">continue</span></code>, reducing unnecessary recompilation.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">jax.clear_caches()</span></code> after optimization loop</strong>: Added cache clearing after the optimization loop as an OOM workaround.</p></li>
+<li><p><strong>Store <code class="docutils literal notranslate"><span class="pre">np.array</span></code> instead of <code class="docutils literal notranslate"><span class="pre">list(np.array)</span></code></strong>: Refactored internal data storage to use <code class="docutils literal notranslate"><span class="pre">np.array</span></code> directly, reducing memory fragmentation.</p></li>
+<li><p><strong>Wrapped properties with <code class="docutils literal notranslate"><span class="pre">np.asarray()</span></code></strong>: Prevent accidental storage of JAX arrays in checkpoint data to avoid OOM.</p></li>
+<li><p><strong>Avoid redundant energy/force post-processing</strong>: Skip unnecessary re-computation of energy and force post-processing.</p></li>
+<li><p><strong>Better memory management</strong>: Improved memory handling in <code class="docutils literal notranslate"><span class="pre">jqmc_gfmc.py</span></code> and <code class="docutils literal notranslate"><span class="pre">jqmc_mcmc.py</span></code>.</p></li>
+</ul>
+</section>
+<section id="bug-fixes">
+<h3>Bug fixes<a class="headerlink" href="#bug-fixes" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>GFMC_n / GFMC_t spin-polarized MPI bug</strong>: Fixed a critical bug for systems where <code class="docutils literal notranslate"><span class="pre">n_up</span> <span class="pre">!=</span> <span class="pre">n_dn</span></code> and <code class="docutils literal notranslate"><span class="pre">n_dn</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> with MPI &gt;= 2 processes.</p></li>
+<li><p><strong>GFMC_t projection averaging</strong>: Fixed incorrect averaging of the number of projections across MPI ranks in GFMC_t.</p></li>
+<li><p><strong>SR with <code class="docutils literal notranslate"><span class="pre">num_params</span> <span class="pre">&gt;=</span> <span class="pre">num_samples</span></code></strong>: Fixed MPI bug when the number of optimizable parameters exceeds the number of samples.</p></li>
+<li><p><strong>MPI <code class="docutils literal notranslate"><span class="pre">Allreduce</span></code> for scalars</strong>: Replaced <code class="docutils literal notranslate"><span class="pre">Allreduce</span></code> with <code class="docutils literal notranslate"><span class="pre">allreduce</span></code> for scalar <code class="docutils literal notranslate"><span class="pre">int</span></code> and <code class="docutils literal notranslate"><span class="pre">float</span></code> values in <code class="docutils literal notranslate"><span class="pre">jqmc_mcmc.py</span></code> and <code class="docutils literal notranslate"><span class="pre">jqmc_gfmc.py</span></code>, as <code class="docutils literal notranslate"><span class="pre">Allreduce</span></code> for scalars exhibits implementation-dependent behavior.</p></li>
+<li><p><strong>Optimizer step estimation</strong>: Fixed <code class="docutils literal notranslate"><span class="pre">estimate_required_steps</span></code> — removed incorrect <code class="docutils literal notranslate"><span class="pre">ceil</span></code> rounding and <code class="docutils literal notranslate"><span class="pre">max</span></code> clamp that ignored <code class="docutils literal notranslate"><span class="pre">walker_ratio</span></code>; added <code class="docutils literal notranslate"><span class="pre">min_steps</span></code> parameter.</p></li>
+<li><p><strong>SR stability near convergence</strong>: Improved stability of SR with adaptive learning rate in the vicinity of convergence.</p></li>
+<li><p><strong>Pytree inconsistency</strong>: Fixed a JAX pytree structural mismatch.</p></li>
+<li><p><strong>S/N ratio diagnostics</strong>: Fixed averaging (last S/N ratio → averaged S/N ratios) and trivial output bugs.</p></li>
+</ul>
+</section>
+<section id="workflow-jqmc-workflow">
+<h3>Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)<a class="headerlink" href="#workflow-jqmc-workflow" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Major refactoring</strong>: Comprehensive overhaul of all workflow modules (<code class="docutils literal notranslate"><span class="pre">vmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">mcmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">workflow.py</span></code>) with improved robustness, cleaner code structure, and new <code class="docutils literal notranslate"><span class="pre">_phase.py</span></code> module for phase management.</p></li>
+<li><p><strong>SSH / file-descriptor leak fixes</strong>: Fixed SSH connection hangs and leaks; consolidated <code class="docutils literal notranslate"><span class="pre">Machine</span></code> objects to prevent resource exhaustion.</p></li>
+<li><p><strong>Continuation behavior</strong>: Changed and improved the behavior of workflow continuations with <code class="docutils literal notranslate"><span class="pre">SHA256</span></code>-based input fingerprinting for reliable restart detection.</p></li>
+<li><p><strong>Step count accumulation</strong>: Fixed a bug in accumulated step counts for VMC and LRDMC workflows.</p></li>
+<li><p><strong>VMC convergence check</strong>: Implemented a new VMC energy-slope-based convergence check.</p></li>
+<li><p><strong>New VMC workflow parameters</strong>: Introduced additional configurable parameters for <code class="docutils literal notranslate"><span class="pre">vmc_workflow.py</span></code>.</p></li>
+<li><p><strong>Output parser fixes</strong>: Fixed parsers for workflow output processing.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> handling</strong>: Fixed and polished <code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> file-transfer logic.</p></li>
+<li><p><strong>Job ID checks</strong>: Updated and improved job ID check logic for remote execution.</p></li>
+<li><p><strong>Error estimation in workflows</strong>: Fixed error estimation methods used by workflows.</p></li>
+</ul>
+</section>
+<section id="breaking-changes">
+<h3>Breaking changes<a class="headerlink" href="#breaking-changes" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Removed <code class="docutils literal notranslate"><span class="pre">num_param_opt</span></code> and <code class="docutils literal notranslate"><span class="pre">opt_filter_min_SN_ratio</span></code></strong>: These parameters have been removed from <code class="docutils literal notranslate"><span class="pre">run_optimize()</span></code>, CLI, workflow, and TOML config. SR and optax now always optimize all parameters; parameter selection is handled internally by the LM subspace mechanism.</p></li>
+<li><p><strong>Replaced <code class="docutils literal notranslate"><span class="pre">adaptive_learning_rate</span></code> with <code class="docutils literal notranslate"><span class="pre">use_lm</span></code></strong>: The <code class="docutils literal notranslate"><span class="pre">adaptive_learning_rate</span></code> flag is replaced by the <code class="docutils literal notranslate"><span class="pre">use_lm</span></code> flag, which controls the unified LM/aSR optimizer hierarchy.</p></li>
+<li><p><strong>Removed <code class="docutils literal notranslate"><span class="pre">method=&quot;lm&quot;</span></code> as separate code path</strong>: The Linear Method is now accessed via <code class="docutils literal notranslate"><span class="pre">method=&quot;sr&quot;</span></code> with <code class="docutils literal notranslate"><span class="pre">use_lm=true</span></code>.</p></li>
+<li><p><strong>New optimizer parameter names</strong>: <code class="docutils literal notranslate"><span class="pre">lm_cond</span></code> (default 0.001) replaces the previous LM-specific delta/epsilon naming.</p></li>
+</ul>
+</section>
+</section>
 <section id="mar-10-2026-v0-2-0a1">
 <h2>Mar-10-2026: v0.2.0a1<a class="headerlink" href="#mar-10-2026-v0-2-0a1" title="Link to this heading">#</a></h2>
 <p>This is a major update with drastic performance improvements, new features, and a new workflow automation package (<code class="docutils literal notranslate"><span class="pre">jqmc-workflow</span></code>).</p>
@@ -387,8 +484,8 @@
 <li><p><strong>Geminal AO -&gt; MO projection</strong>: Implemented AO overlap matrix computation and geminal AO -&gt; MO projection for constrained optimization.</p></li>
 </ul>
 </section>
-<section id="new-features">
-<h3>New features<a class="headerlink" href="#new-features" title="Link to this heading">#</a></h3>
+<section id="id1">
+<h3>New features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>LRDMC force calculations</strong>: Implemented LRDMC atomic forces with the Pathak–Wagner regularization.</p></li>
 <li><p><strong>Jastrow functions</strong>: Added <code class="docutils literal notranslate"><span class="pre">jastrow_1b_type</span></code> (<code class="docutils literal notranslate"><span class="pre">'exp'</span></code> / <code class="docutils literal notranslate"><span class="pre">'pade'</span></code>) and <code class="docutils literal notranslate"><span class="pre">jastrow_2b_type</span></code> (<code class="docutils literal notranslate"><span class="pre">'pade'</span></code> / <code class="docutils literal notranslate"><span class="pre">'exp'</span></code>) fields to <code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data</span></code> and <code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code>, enabling runtime selection of the one-body and two-body Jastrow functional forms.</p>
@@ -399,8 +496,8 @@
 </li>
 </ul>
 </section>
-<section id="bug-fixes">
-<h3>Bug fixes<a class="headerlink" href="#bug-fixes" title="Link to this heading">#</a></h3>
+<section id="id2">
+<h3>Bug fixes<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Fixed force calculations producing NaN values; added NaN checks in all tests.</p></li>
 <li><p>Fixed MCMC memory overflow caused by storing <code class="docutils literal notranslate"><span class="pre">r_up_history</span></code> / <code class="docutils literal notranslate"><span class="pre">r_dn_history</span></code>.</p></li>
@@ -464,8 +561,8 @@
 <ul class="simple">
 <li><p>Release of the second alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
-<section id="id1">
-<h3>Key Features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<section id="id3">
+<h3>Key Features<a class="headerlink" href="#id3" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Neural Network Jastrow</strong>:</p>
 <ul>
@@ -495,8 +592,8 @@
 <li><p>Release of the first alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
 <p>We are pleased to announce the first alpha release of <strong>jQMC</strong>, a Python-based Quantum Monte Carlo package built on <strong>JAX</strong>.</p>
-<section id="id2">
-<h3>Key Features<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
+<section id="id4">
+<h3>Key Features<a class="headerlink" href="#id4" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>JAX-based Core</strong>: Fully utilizes JAX’s Just-In-Time (JIT) compilation and automatic vectorization (<code class="docutils literal notranslate"><span class="pre">vmap</span></code>) for high-performance simulations on GPUs and TPUs.</p></li>
 <li><p><strong>Algorithms</strong>:</p>
@@ -579,11 +676,19 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-16-2026-v0-2-1a1">Apr-16-2026: v0.2.1a1</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#new-features">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-memory">Performance &amp; memory</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bug-fixes">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-jqmc-workflow">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#breaking-changes">Breaking changes</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mar-10-2026-v0-2-0a1">Mar-10-2026: v0.2.0a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance">Performance</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optimization">Optimization</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#new-features">New features</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bug-fixes">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bug fixes</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#infrastructure">Infrastructure</a></li>
 </ul>
 </li>
@@ -596,12 +701,12 @@
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>

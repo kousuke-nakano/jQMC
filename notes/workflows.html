@@ -329,13 +329,44 @@
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#architecture">Architecture</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-components">Key components</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#inter-workflow-data-passing-filefrom-valuefrom">Inter-workflow data passing (<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> / <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code>)</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#filefrom-label-filename"><code class="docutils literal notranslate"><span class="pre">FileFrom(label,</span> <span class="pre">filename)</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#valuefrom-label-key"><code class="docutils literal notranslate"><span class="pre">ValueFrom(label,</span> <span class="pre">key)</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#available-output-values-keys">Available <code class="docutils literal notranslate"><span class="pre">output_values</span></code> keys</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-workflow"><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-workflow"><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-ext-workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#target-error-bar-estimation">Target error-bar estimation</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-vmc">MCMC / VMC</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc">LRDMC</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-estimation-formula">Step estimation formula</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ao-basis-optimization">AO basis optimization</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-convergence-checks">VMC convergence checks</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#signal-to-noise-s-n-check">Signal-to-noise (S/N) check</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#energy-slope-check">Energy-slope check</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#combined-verdict">Combined verdict</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#early-exit-on-convergence">Early exit on convergence</a></li>
 </ul>
 </li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-estimation-formula">Step estimation formula</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#target-error-not-met">Target error not met</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#continuation-with-tighter-target-error">Continuation with tighter target error</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pre-launch-validation">Pre-launch validation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#restart-behavior">Restart behavior</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#phase-management">Phase management</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#status-enums">Status enums</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#artifact-registry">Artifact registry</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#input-staleness-detection">Input staleness detection</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#error-recording">Error recording</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#job-accounting">Job accounting</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#session-state-queries">Session state queries</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-catalog">Machine catalog</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a><ul class="nav section-nav flex-column">
@@ -356,6 +387,7 @@
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#predefined-variables">Predefined variables</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#custom-variables">Custom variables</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-mpi-sh-for-pbs">Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for PBS)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-mpi-sh-for-slurm">Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for Slurm)</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-serial-sh">Example (<code class="docutils literal notranslate"><span class="pre">submit_serial.sh</span></code>)</a></li>
 </ul>
 </li>
@@ -420,13 +452,13 @@ end-to-end with automatic restarts across interruptions.</p>
      │  creates asyncio.Task per ready node
      │
      ├──► Container(&quot;vmc&quot;)
-     │         └─► VMC_Workflow.async_launch()
+     │         └─► VMC_Workflow.configure() → .run()
      │
      ├──► Container(&quot;mcmc-prod&quot;)   ← runs in parallel
-     │         └─► MCMC_Workflow.async_launch()
+     │         └─► MCMC_Workflow.configure() → .run()
      │
      └──► Container(&quot;lrdmc-ext&quot;)   ← runs in parallel
-               └─► LRDMC_Ext_Workflow.async_launch()
+               └─► LRDMC_Ext_Workflow.configure() → .run()
                        ├─► LRDMC_Workflow (alat=0.50)  ┐
                        ├─► LRDMC_Workflow (alat=0.40)  ├ parallel
                        └─► LRDMC_Workflow (alat=0.25)  ┘
@@ -436,13 +468,13 @@ end-to-end with automatic restarts across interruptions.</p>
 <h3>Key components<a class="headerlink" href="#key-components" title="Link to this heading">#</a></h3>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
-<tr class="row-odd"><th class="head"><p>Class</p></th>
+<tr class="row-odd"><th class="head"><p>Class / Module</p></th>
 <th class="head"><p>Role</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Launcher</span></code></p></td>
-<td><p>Executes a DAG of <code class="docutils literal notranslate"><span class="pre">Container</span></code> nodes in topological order, launching independent nodes in parallel.</p></td>
+<td><p>Executes a DAG of <code class="docutils literal notranslate"><span class="pre">Container</span></code> nodes in topological order, launching independent nodes in parallel. Provides <code class="docutils literal notranslate"><span class="pre">get_session_state()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_current_job()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_job_history()</span></code> for session introspection.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Container</span></code></p></td>
 <td><p>Wraps any <code class="docutils literal notranslate"><span class="pre">Workflow</span></code> subclass in a dedicated project directory with state tracking (<code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code>).</p></td>
@@ -465,9 +497,251 @@ end-to-end with automatic restarts across interruptions.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code></p></td>
 <td><p>Runs multiple <code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code> instances at different lattice spacings and performs <span class="math notranslate nohighlight">\(a^2 \to 0\)</span> extrapolation.</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ScientificPhase</span></code></p></td>
+<td><p>Enum defining the scientific phases of a workflow session (INIT → SCF → WF_BUILD → VMC → MCMC → LRDMC → COMPLETED). See <a class="reference internal" href="#phase-management"><span class="xref myst">Phase management</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">WorkflowStatus</span></code> / <code class="docutils literal notranslate"><span class="pre">JobStatus</span></code></p></td>
+<td><p>Enums for workflow-level and per-job status values. See <a class="reference internal" href="#status-enums"><span class="xref myst">Status enums</span></a>.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
+</section>
+<section id="inter-workflow-data-passing-filefrom-valuefrom">
+<h3>Inter-workflow data passing (<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> / <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code>)<a class="headerlink" href="#inter-workflow-data-passing-filefrom-valuefrom" title="Link to this heading">#</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> and <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> declare inter-workflow dependencies inside a
+<code class="docutils literal notranslate"><span class="pre">Container</span></code> definition.  At launch time, the <code class="docutils literal notranslate"><span class="pre">Launcher</span></code> resolves them
+to actual paths or values.</p>
+<section id="filefrom-label-filename">
+<h4><code class="docutils literal notranslate"><span class="pre">FileFrom(label,</span> <span class="pre">filename)</span></code><a class="headerlink" href="#filefrom-label-filename" title="Link to this heading">#</a></h4>
+<p>Pass a <strong>file</strong> produced by an upstream workflow.  <code class="docutils literal notranslate"><span class="pre">filename</span></code> can be:</p>
+<ul>
+<li><p>A <strong>static string</strong> — when the exact name is known at definition time:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data_opt_step_9.h5&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+<li><p>A <strong><code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> object</strong> — when the name is determined at runtime
+(e.g. VMC early convergence produces a step number that cannot be
+predicted):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="n">ValueFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;optimized_hamiltonian&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Here the <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> is resolved first, yielding the actual basename
+(e.g. <code class="docutils literal notranslate"><span class="pre">&quot;hamiltonian_data_opt_step_91.h5&quot;</span></code>), which is then used to
+locate the file in the upstream directory.</p>
+</li>
+</ul>
+<blockquote>
+<div><p><strong>Important: file renaming.</strong>  When a dynamic <code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> resolves to
+a name that differs from what the downstream workflow expects (e.g.
+<code class="docutils literal notranslate"><span class="pre">hamiltonian_data_opt_step_91.h5</span></code> vs. <code class="docutils literal notranslate"><span class="pre">hamiltonian_data.h5</span></code>), use
+<code class="docutils literal notranslate"><span class="pre">rename_input_files</span></code> to map it to the expected name.  Entries of
+<code class="docutils literal notranslate"><span class="pre">None</span></code> keep the original name.  A pre-launch validation check will
+raise <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code> <strong>before any job is submitted</strong> if required
+files are missing.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">Container</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;mcmc&quot;</span><span class="p">,</span>
+    <span class="n">dirname</span><span class="o">=</span><span class="s2">&quot;02_mcmc&quot;</span><span class="p">,</span>
+    <span class="n">input_files</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="n">ValueFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;optimized_hamiltonian&quot;</span><span class="p">)),</span>
+    <span class="p">],</span>
+    <span class="n">rename_input_files</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;hamiltonian_data.h5&quot;</span><span class="p">],</span>
+    <span class="n">workflow</span><span class="o">=</span><span class="n">MCMC_Workflow</span><span class="p">(</span><span class="o">...</span><span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>With multiple input files, use <code class="docutils literal notranslate"><span class="pre">None</span></code> to skip renaming for specific entries:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">input_files</span><span class="o">=</span><span class="p">[</span><span class="n">h5</span><span class="p">,</span> <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="n">ValueFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;optimized_hamiltonian&quot;</span><span class="p">))],</span>
+<span class="n">rename_input_files</span><span class="o">=</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data.h5&quot;</span><span class="p">],</span>
+</pre></div>
+</div>
+</div></blockquote>
+</section>
+<section id="valuefrom-label-key">
+<h4><code class="docutils literal notranslate"><span class="pre">ValueFrom(label,</span> <span class="pre">key)</span></code><a class="headerlink" href="#valuefrom-label-key" title="Link to this heading">#</a></h4>
+<p>Pass a <strong>scalar value</strong> from an upstream workflow’s <code class="docutils literal notranslate"><span class="pre">output_values</span></code>
+dict.  The available keys depend on the workflow class — see the
+table below.</p>
+</section>
+<section id="available-output-values-keys">
+<h4>Available <code class="docutils literal notranslate"><span class="pre">output_values</span></code> keys<a class="headerlink" href="#available-output-values-keys" title="Link to this heading">#</a></h4>
+<p>Each workflow populates <code class="docutils literal notranslate"><span class="pre">output_values</span></code> on completion.  These keys
+can be referenced by downstream workflows via
+<code class="docutils literal notranslate"><span class="pre">ValueFrom(&quot;label&quot;,</span> <span class="pre">&quot;key&quot;)</span></code>.</p>
+<section id="vmc-workflow">
+<h5><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code><a class="headerlink" href="#vmc-workflow" title="Link to this heading">#</a></h5>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optimized_hamiltonian</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Basename of the last optimised Hamiltonian file (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;hamiltonian_data_opt_step_91.h5&quot;</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">checkpoint</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Basename of the restart checkpoint file.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Estimated MCMC steps per optimisation step (automatic mode).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">estimated_mcmc_steps</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Same as above, in fixed-step mode.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">energy</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Energy from the last optimisation step (Ha).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">energy_error</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Statistical error on <code class="docutils literal notranslate"><span class="pre">energy</span></code> (Ha).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">signal_to_noise</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Average S/N over the trailing window (force convergence only).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">signal_to_noise_last</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>S/N of the last optimisation step.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">energy_slope</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Slope of energy vs. step (energy-slope check only).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">energy_slope_std</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Standard deviation of the energy slope.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="mcmc-workflow">
+<h5><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code><a class="headerlink" href="#mcmc-workflow" title="Link to this heading">#</a></h5>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">energy</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>VMC energy (Ha).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">energy_error</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Statistical error on <code class="docutils literal notranslate"><span class="pre">energy</span></code> (Ha).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">restart_chk</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Basename of the restart checkpoint file.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">forces</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">object</span></code></p></td>
+<td><p>Atomic forces (only when <code class="docutils literal notranslate"><span class="pre">atomic_force=True</span></code>). SWCT is applied when <code class="docutils literal notranslate"><span class="pre">use_swct=True</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Estimated total measurement steps (automatic mode).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">estimated_steps</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Same as above, in fixed-step mode.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="lrdmc-workflow">
+<h5><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code><a class="headerlink" href="#lrdmc-workflow" title="Link to this heading">#</a></h5>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">energy</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>DMC energy (Ha).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">energy_error</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Statistical error on <code class="docutils literal notranslate"><span class="pre">energy</span></code> (Ha).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alat</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Lattice spacing used for this run.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">restart_chk</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Basename of the restart checkpoint file.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">forces</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">object</span></code></p></td>
+<td><p>Atomic forces (only when <code class="docutils literal notranslate"><span class="pre">atomic_force=True</span></code>). SWCT is applied when <code class="docutils literal notranslate"><span class="pre">use_swct=True</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">estimated_steps</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Estimated total measurement steps.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>GFMC projections per measurement (GFMC_n mode only).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">time_projection_tau</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Imaginary-time projection step (GFMC_t mode only).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="lrdmc-ext-workflow">
+<h5><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code><a class="headerlink" href="#lrdmc-ext-workflow" title="Link to this heading">#</a></h5>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extrapolated_energy</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Continuum-limit (<span class="math notranslate nohighlight">\(a^2 \to 0\)</span>) extrapolated energy (Ha).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">extrapolated_energy_error</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Statistical error on <code class="docutils literal notranslate"><span class="pre">extrapolated_energy</span></code> (Ha).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">per_alat_results</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dict</span></code></p></td>
+<td><p>Per-alat energy/error results.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">errors</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">list[str]</span></code></p></td>
+<td><p>Error messages for alat runs that failed.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">error</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>Top-level error message (only on failure).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
 </section>
 <section id="target-error-bar-estimation">
 <h3>Target error-bar estimation<a class="headerlink" href="#target-error-bar-estimation" title="Link to this heading">#</a></h3>
@@ -484,27 +758,161 @@ via <code class="docutils literal notranslate"><span class="pre">pilot_queue_lab
 <section id="lrdmc">
 <h4>LRDMC<a class="headerlink" href="#lrdmc" title="Link to this heading">#</a></h4>
 <p>LRDMC has an additional calibration stage to automatically determine
-<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> (GFMC projections per measurement) from
+<code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span></code> (GFMC projections per measurement) from
 a <code class="docutils literal notranslate"><span class="pre">target_survived_walkers_ratio</span></code> (default 0.97):</p>
 <ol class="arabic simple">
 <li><p><strong>Calibration</strong> (<code class="docutils literal notranslate"><span class="pre">_pilot_a/_pilot1</span></code> – <code class="docutils literal notranslate"><span class="pre">_pilot_a/_pilot3</span></code>, parallel) —
 Three short LRDMC runs with
-<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span> <span class="pre">=</span> <span class="pre">Ne</span> <span class="pre">×</span> <span class="pre">k</span> <span class="pre">×</span> <span class="pre">(0.3/alat)²</span></code> (k=2,4,6;
+<code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span> <span class="pre">=</span> <span class="pre">Ne</span> <span class="pre">×</span> <span class="pre">k</span> <span class="pre">×</span> <span class="pre">(0.3/alat)²</span></code> (k=2,4,6;
 <span class="math notranslate nohighlight">\(N_e\)</span> is the total electron count).  A quadratic is fit to the
 observed survived-walkers ratio and the optimal
-<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> is determined.</p></li>
+<code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span></code> is determined.</p></li>
 <li><p><strong>Error-bar pilot</strong> (<code class="docutils literal notranslate"><span class="pre">_pilot_b</span></code>) — A run with the calibrated
-<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code>; its error bar estimates the production
+<code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span></code>; its error bar estimates the production
 step count.</p></li>
 <li><p><strong>Production</strong> (<code class="docutils literal notranslate"><span class="pre">_1</span></code>, <code class="docutils literal notranslate"><span class="pre">_2</span></code>, …) — Start from scratch, accumulate
 statistics until <code class="docutils literal notranslate"><span class="pre">target_error</span></code> is achieved.</p></li>
 </ol>
-<p>If <code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> is given explicitly, the calibration
+<p>If <code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span></code> is given explicitly, the calibration
 stage is skipped and only the error-bar pilot is executed.</p>
 <p>For <code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code> (multi-alat extrapolation), every alat value
 independently runs its own calibration, error-bar pilot, and production
 in parallel.  There is no inter-alat interaction until the final
 extrapolation step.</p>
+</section>
+<section id="ao-basis-optimization">
+<h4>AO basis optimization<a class="headerlink" href="#ao-basis-optimization" title="Link to this heading">#</a></h4>
+<p><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code> supports optimizing the atomic-orbital (AO) Gaussian
+basis parameters alongside Jastrow / orbital coefficients.  Four
+boolean flags control which basis parameters are included in the
+optimization:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_basis_exp</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Optimize J3 (three-body Jastrow) AO Gaussian exponents</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_basis_coeff</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Optimize J3 AO contraction coefficients</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_exp</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Optimize Geminal AO Gaussian exponents</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_coeff</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>Optimize Geminal AO contraction coefficients</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_exp</span></code> and <code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_coeff</span></code> cannot be combined
+with <code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code> (changing Geminal AO exponents/coefficients
+invalidates the overlap matrix used by the MO projection).
+<code class="docutils literal notranslate"><span class="pre">opt_J3_basis_exp</span></code> and <code class="docutils literal notranslate"><span class="pre">opt_J3_basis_coeff</span></code> <strong>can</strong> be used together
+with <code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code>.</p>
+<p>Primitives belonging to the same shell (same atom, same <span class="math notranslate nohighlight">\(l\)</span>, same
+initial radial parameters) are constrained to share identical values
+throughout optimization.  See <a class="reference internal" href="vmc.html#sec-opt-wf"><span class="std std-ref">Variational Monte Carlo (VMC)</span></a> for details on the
+shell-sharing constraint mechanism.</p>
+<p>When set, the corresponding parameters are passed through to the
+jqmc input TOML via <code class="docutils literal notranslate"><span class="pre">resolve_with_defaults()</span></code>.  When left as <code class="docutils literal notranslate"><span class="pre">None</span></code>
+(the default), the jqmc binary applies its own defaults (<code class="docutils literal notranslate"><span class="pre">false</span></code>).</p>
+</section>
+<section id="vmc-convergence-checks">
+<h4>VMC convergence checks<a class="headerlink" href="#vmc-convergence-checks" title="Link to this heading">#</a></h4>
+<p>After all production runs complete, the VMC workflow checks whether
+the optimization has converged.  Two independent criteria are
+available; when both are active, both must pass for convergence.</p>
+<section id="signal-to-noise-s-n-check">
+<h5>Signal-to-noise (S/N) check<a class="headerlink" href="#signal-to-noise-s-n-check" title="Link to this heading">#</a></h5>
+<p>Enabled when <code class="docutils literal notranslate"><span class="pre">target_snr</span></code> is set (not <code class="docutils literal notranslate"><span class="pre">None</span></code>).  The workflow
+averages the signal-to-noise ratio (S/N = max(|f| / |std f|)) over
+the last <code class="docutils literal notranslate"><span class="pre">snr_avg_window</span></code> optimization steps (default 5).  If there
+are fewer steps than the window size, all available values are used.</p>
+<p>The convergence criterion is:</p>
+<div class="math notranslate nohighlight">
+\[
+\overline{\text{S/N}}_{\text{last } W} \le \text{target\_snr}
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(W\)</span> is <code class="docutils literal notranslate"><span class="pre">snr_avg_window</span></code>.</p>
+</section>
+<section id="energy-slope-check">
+<h5>Energy-slope check<a class="headerlink" href="#energy-slope-check" title="Link to this heading">#</a></h5>
+<p>Enabled when <code class="docutils literal notranslate"><span class="pre">energy_slope_sigma_threshold</span></code> is set (not <code class="docutils literal notranslate"><span class="pre">None</span></code>).
+A weighted linear regression is fitted to the last
+<code class="docutils literal notranslate"><span class="pre">energy_slope_window_size</span></code> optimisation steps (default 5):</p>
+<div class="math notranslate nohighlight">
+\[
+E_k = a + b \cdot k + \varepsilon_k, \quad w_k = 1/\sigma_k^2
+\]</div>
+<p>The optimisation is considered converged (plateau) when the slope
+<span class="math notranslate nohighlight">\(b\)</span> is not significantly negative:</p>
+<div class="math notranslate nohighlight">
+\[
+b \ge -\sigma_b \times \text{energy\_slope\_sigma\_threshold}
+\]</div>
+<p>If instead <span class="math notranslate nohighlight">\(b &lt; -\sigma_b \times \text{threshold}\)</span>, the energy is
+still decreasing and optimisation has not yet plateaued.</p>
+</section>
+<section id="combined-verdict">
+<h5>Combined verdict<a class="headerlink" href="#combined-verdict" title="Link to this heading">#</a></h5>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head text-center"><p><code class="docutils literal notranslate"><span class="pre">target_snr</span></code></p></th>
+<th class="head text-center"><p><code class="docutils literal notranslate"><span class="pre">energy_slope_sigma_threshold</span></code></p></th>
+<th class="head text-left"><p>Behaviour</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-center"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td class="text-center"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td class="text-left"><p>No convergence check; always succeeds</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>set</p></td>
+<td class="text-center"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td class="text-left"><p>S/N check only</p></td>
+</tr>
+<tr class="row-even"><td class="text-center"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td class="text-center"><p>set</p></td>
+<td class="text-left"><p>Energy-slope check only</p></td>
+</tr>
+<tr class="row-odd"><td class="text-center"><p>set</p></td>
+<td class="text-center"><p>set</p></td>
+<td class="text-left"><p>Both must pass</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>All numerical values (averaged S/N, slope, slope std) are recorded
+in <code class="docutils literal notranslate"><span class="pre">output_values</span></code> for downstream inspection.</p>
+<p>In fixed-step mode (<code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code> is set), the convergence checks
+are not performed.</p>
+</section>
+<section id="early-exit-on-convergence">
+<h5>Early exit on convergence<a class="headerlink" href="#early-exit-on-convergence" title="Link to this heading">#</a></h5>
+<p>When convergence criteria are set, the VMC production loop exits
+early as soon as all active checks pass, instead of always running
+the full <code class="docutils literal notranslate"><span class="pre">max_continuation</span></code> steps.  This avoids wasting compute
+time once the optimization has plateaued.</p>
+<p>On re-runs with changed criteria (e.g. lowering <code class="docutils literal notranslate"><span class="pre">target_snr</span></code>),
+convergence is re-evaluated from the fetched results before
+submitting new jobs.  If the existing results already satisfy the
+new criteria, the workflow completes immediately without launching
+additional runs.</p>
+<p>When no convergence criterion is set (<code class="docutils literal notranslate"><span class="pre">target_snr</span> <span class="pre">=</span> <span class="pre">None</span></code> and
+<code class="docutils literal notranslate"><span class="pre">energy_slope_sigma_threshold</span> <span class="pre">=</span> <span class="pre">None</span></code>), all <code class="docutils literal notranslate"><span class="pre">max_continuation</span></code>
+steps run unconditionally.  If convergence is <strong>not</strong> achieved
+after exhausting all production steps, the workflow returns
+<code class="docutils literal notranslate"><span class="pre">FAILED</span></code>.</p>
+</section>
 </section>
 <section id="step-estimation-formula">
 <h4>Step estimation formula<a class="headerlink" href="#step-estimation-formula" title="Link to this heading">#</a></h4>
@@ -560,6 +968,46 @@ If it exceeds the target, additional steps are estimated and a
 continuation run is launched automatically, up to <code class="docutils literal notranslate"><span class="pre">max_continuation</span></code>
 times.</p>
 </section>
+<section id="target-error-not-met">
+<h4>Target error not met<a class="headerlink" href="#target-error-not-met" title="Link to this heading">#</a></h4>
+<p>If <code class="docutils literal notranslate"><span class="pre">max_continuation</span></code> runs complete but the statistical error still
+exceeds <code class="docutils literal notranslate"><span class="pre">target_error</span></code>, the workflow logs a <strong>warning</strong> and returns
+<code class="docutils literal notranslate"><span class="pre">COMPLETED</span></code> (not <code class="docutils literal notranslate"><span class="pre">FAILED</span></code>).  The calculation itself succeeded; only
+the error-bar criterion was not fully met.  This applies to both
+<code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code> and <code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code>.</p>
+</section>
+<section id="continuation-with-tighter-target-error">
+<h4>Continuation with tighter target error<a class="headerlink" href="#continuation-with-tighter-target-error" title="Link to this heading">#</a></h4>
+<p>When re-running a pipeline with a stricter <code class="docutils literal notranslate"><span class="pre">target_error</span></code> (e.g.
+lowering from <code class="docutils literal notranslate"><span class="pre">1e-3</span></code> to <code class="docutils literal notranslate"><span class="pre">5e-4</span></code>), the workflow detects that the
+cached error from previous runs exceeds the new target and
+automatically re-estimates additional steps from the accumulated
+data.  Continuation runs are launched from where the previous
+execution left off, up to <code class="docutils literal notranslate"><span class="pre">max_continuation</span></code>.</p>
+</section>
+</section>
+<section id="pre-launch-validation">
+<h3>Pre-launch validation<a class="headerlink" href="#pre-launch-validation" title="Link to this heading">#</a></h3>
+<p>Before any job is submitted, the engine verifies that all required
+files are present in the project directory.  Every resolved entry in
+<code class="docutils literal notranslate"><span class="pre">input_files</span></code> (after renaming) must exist.  Workflow-internal files
+(e.g. <code class="docutils literal notranslate"><span class="pre">hamiltonian_file</span></code>) are <strong>not</strong> checked because some workflows
+(e.g. <code class="docutils literal notranslate"><span class="pre">WF_Workflow</span></code>) <em>produce</em> them rather than consume them.</p>
+<p>If any file is missing, a <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code> is raised immediately
+with a message listing the missing files:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>FileNotFoundError: [mcmc-N2-0.80] Required file(s) missing in &#39;05_mcmc/&#39;
+before workflow launch: [&#39;hamiltonian_data.h5&#39;].
+Check that input_files and rename_input_files are configured correctly.
+</pre></div>
+</div>
+<p>This catches misconfigured <code class="docutils literal notranslate"><span class="pre">rename_input_files</span></code> (e.g. a dynamic
+<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> + <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> that produces <code class="docutils literal notranslate"><span class="pre">hamiltonian_data_opt_step_91.h5</span></code>
+but the workflow expects <code class="docutils literal notranslate"><span class="pre">hamiltonian_data.h5</span></code>) before wasting
+compute resources.</p>
+<p>Additionally, when the project directory already exists from a
+previous interrupted run, any input files that are missing (but
+available from the source) are automatically copied in.  Existing
+files are not overwritten.</p>
 </section>
 <section id="restart-behavior">
 <h3>Restart behavior<a class="headerlink" href="#restart-behavior" title="Link to this heading">#</a></h3>
@@ -577,6 +1025,291 @@ is resumed (polled or fetched).</p></li>
 <p>This means a pipeline can be interrupted at any point (Ctrl-C, node
 failure, wall-time limit) and simply re-run; it will pick up exactly
 where it left off.</p>
+<p>When a job leaves the scheduler queue, the engine automatically collects
+<strong>job accounting</strong> data (if <code class="docutils literal notranslate"><span class="pre">jobacct</span></code> is configured in <code class="docutils literal notranslate"><span class="pre">machine_data.yaml</span></code>)
+before fetching output files.  The accounting command and output file
+path are stored in the corresponding <code class="docutils literal notranslate"><span class="pre">[[jobs]]</span></code> record.  See
+<a class="reference internal" href="#job-accounting"><span class="xref myst">Job accounting</span></a>.</p>
+</section>
+<section id="phase-management">
+<h3>Phase management<a class="headerlink" href="#phase-management" title="Link to this heading">#</a></h3>
+<p>A workflow session progresses through a sequence of <strong>scientific phases</strong>
+defined by the <code class="docutils literal notranslate"><span class="pre">ScientificPhase</span></code> enum (module <code class="docutils literal notranslate"><span class="pre">_phase</span></code>):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>INIT → SCF → WF_BUILD → VMC_PILOT → VMC → MCMC_PILOT → MCMC
+                                                         ↓
+                        COMPLETED ← LRDMC_FIT ← LRDMC ← LRDMC_PILOT
+</pre></div>
+</div>
+<p>Not every pipeline uses every phase (e.g. a VMC-only pipeline skips
+LRDMC phases).  The allowed transitions are defined in
+<code class="docutils literal notranslate"><span class="pre">PHASE_TRANSITIONS</span></code> — for example, from <code class="docutils literal notranslate"><span class="pre">VMC</span></code> you may advance to
+<code class="docutils literal notranslate"><span class="pre">MCMC_PILOT</span></code>, <code class="docutils literal notranslate"><span class="pre">MCMC</span></code>, <code class="docutils literal notranslate"><span class="pre">LRDMC_PILOT</span></code>, <code class="docutils literal notranslate"><span class="pre">LRDMC</span></code>, or <code class="docutils literal notranslate"><span class="pre">COMPLETED</span></code>.</p>
+<p>Each phase has a list of <strong>allowed actions</strong> (<code class="docutils literal notranslate"><span class="pre">PHASE_ALLOWED_ACTIONS</span></code>)
+that further depends on the current <code class="docutils literal notranslate"><span class="pre">WorkflowStatus</span></code>:</p>
+<ul class="simple">
+<li><p>When <code class="docutils literal notranslate"><span class="pre">status</span> <span class="pre">==</span> <span class="pre">RUNNING</span></code>, configuration actions (<code class="docutils literal notranslate"><span class="pre">configure_*</span></code>) are
+filtered out.</p></li>
+<li><p>When <code class="docutils literal notranslate"><span class="pre">status</span> <span class="pre">==</span> <span class="pre">FAILED</span></code>, only recovery actions (<code class="docutils literal notranslate"><span class="pre">recover_*</span></code>) and
+<code class="docutils literal notranslate"><span class="pre">rollback_phase</span></code> are available.</p></li>
+</ul>
+<p>A set of <strong>always-allowed actions</strong> (<code class="docutils literal notranslate"><span class="pre">advance_phase</span></code>, <code class="docutils literal notranslate"><span class="pre">rollback_phase</span></code>,
+<code class="docutils literal notranslate"><span class="pre">close_session</span></code>, <code class="docutils literal notranslate"><span class="pre">register_artifact</span></code>, <code class="docutils literal notranslate"><span class="pre">mark_unhealthy</span></code>) is appended
+regardless of phase/status.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">require_action()</span></code> function enforces these rules at the boundary
+between an MCP tool call and a workflow method — if the action is not
+permitted, a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> is raised immediately.</p>
+</section>
+<section id="status-enums">
+<h3>Status enums<a class="headerlink" href="#status-enums" title="Link to this heading">#</a></h3>
+<p>Workflow status and job status are represented by <code class="docutils literal notranslate"><span class="pre">str</span></code>-based enums
+(<code class="docutils literal notranslate"><span class="pre">WorkflowStatus</span></code>, <code class="docutils literal notranslate"><span class="pre">JobStatus</span></code>) so they remain human-readable in
+<code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code> and can be compared directly with strings.</p>
+<p><strong>WorkflowStatus</strong> values:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pending</span></code></p></td>
+<td><p>Not yet started</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">copying</span></code></p></td>
+<td><p>Input files being transferred</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">submitted</span></code></p></td>
+<td><p>Job submitted to scheduler</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">running</span></code></p></td>
+<td><p>Execution in progress</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">completed</span></code></p></td>
+<td><p>Finished successfully</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">failed</span></code></p></td>
+<td><p>Terminated with an error</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cancelled</span></code></p></td>
+<td><p>Manually cancelled</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>JobStatus</strong> values (per-job, stored in <code class="docutils literal notranslate"><span class="pre">[[jobs]]</span></code> of
+<code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code>):</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">submitted</span></code></p></td>
+<td><p>Job submitted</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">completed</span></code></p></td>
+<td><p>Job finished (output not yet fetched)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fetched</span></code></p></td>
+<td><p>Output files retrieved</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">failed</span></code></p></td>
+<td><p>Job failed</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Each <code class="docutils literal notranslate"><span class="pre">[[jobs]]</span></code> record contains:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">input_file</span></code></p></td>
+<td><p>Basename of the generated TOML input file (<code class="docutils literal notranslate"><span class="pre">input_{jobname}_{step}_{run_id}.toml</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">output_file</span></code></p></td>
+<td><p>Basename of the stdout capture file (<code class="docutils literal notranslate"><span class="pre">output_{jobname}_{step}_{run_id}.out</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_id</span></code></p></td>
+<td><p>Scheduler job ID (or <code class="docutils literal notranslate"><span class="pre">&quot;local&quot;</span></code> for local runs)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">server_machine</span></code></p></td>
+<td><p>Machine name</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<td><p>One of the <code class="docutils literal notranslate"><span class="pre">JobStatus</span></code> values above</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">submitted_at</span></code></p></td>
+<td><p>ISO 8601 timestamp</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">step</span></code></p></td>
+<td><p>Step index (0 = pilot, 1, 2, … = production)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">run_id</span></code></p></td>
+<td><p>Short hex identifier for the job</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">completed_at</span></code></p></td>
+<td><p>ISO 8601 timestamp (set on completion)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fetched_at</span></code></p></td>
+<td><p>ISO 8601 timestamp (set on fetch)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_stdout</span></code></p></td>
+<td><p>Scheduler stdout path (queuing systems only)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job_stderr</span></code></p></td>
+<td><p>Scheduler stderr path (queuing systems only)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_acct_command</span></code></p></td>
+<td><p>Accounting command executed (queuing systems only)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job_acct_file</span></code></p></td>
+<td><p>Path to raw accounting output file (queuing systems only)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="artifact-registry">
+<h3>Artifact registry<a class="headerlink" href="#artifact-registry" title="Link to this heading">#</a></h3>
+<p>The engine records file lineage in the <code class="docutils literal notranslate"><span class="pre">[[artifacts]]</span></code> array of
+<code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code>.  Each entry tracks:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">filename</span></code></p></td>
+<td><p>Basename of the artifact file</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">produced_by_job</span></code></p></td>
+<td><p>Input file that produced this artifact</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">produced_at</span></code></p></td>
+<td><p>ISO 8601 timestamp</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">artifact_type</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;file&quot;</span></code> (default)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">upstream</span></code></p></td>
+<td><p>Optional list of <code class="docutils literal notranslate"><span class="pre">{label,</span> <span class="pre">file}</span></code> dicts tracing the dependency chain</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">register_artifact()</span></code> to add an entry, <code class="docutils literal notranslate"><span class="pre">get_artifact_lineage()</span></code> to
+look up a single file, and <code class="docutils literal notranslate"><span class="pre">get_artifact_registry()</span></code> to list all
+artifacts.</p>
+</section>
+<section id="input-staleness-detection">
+<h3>Input staleness detection<a class="headerlink" href="#input-staleness-detection" title="Link to this heading">#</a></h3>
+<p>When a <code class="docutils literal notranslate"><span class="pre">Container</span></code> completes successfully, it records the <strong>SHA-256
+content hash</strong> of each input file in the <code class="docutils literal notranslate"><span class="pre">[input_fingerprints]</span></code>
+section of <code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code>.  On subsequent runs, if the container
+is already <code class="docutils literal notranslate"><span class="pre">completed</span></code> or <code class="docutils literal notranslate"><span class="pre">running</span></code>, the engine compares the current
+input files against the recorded fingerprints.</p>
+<p>If any input has changed (e.g. an upstream VMC produced a new optimised
+wavefunction), the engine logs a warning:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>WARNING: Inputs have changed but previous results are still present.
+Delete &#39;mcmc_prod/&#39; to re-run with the updated inputs.
+</pre></div>
+</div>
+<p>The container is <strong>not</strong> automatically re-run — the user must
+manually delete the stale directory.  This conservative approach
+avoids the risk of mixing old and new job data on the remote server.</p>
+<p>Staleness is tracked per-file by SHA-256 content hashing.  If an
+upstream workflow re-runs but produces a byte-identical output file,
+no warning is triggered.</p>
+</section>
+<section id="error-recording">
+<h3>Error recording<a class="headerlink" href="#error-recording" title="Link to this heading">#</a></h3>
+<p>When a workflow fails, the <code class="docutils literal notranslate"><span class="pre">[error]</span></code> section of <code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code>
+is populated via <code class="docutils literal notranslate"><span class="pre">set_error()</span></code>:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[error]</span>
+<span class="n">message</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Job killed after 86400s&quot;</span>
+<span class="n">exception_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;RuntimeError&quot;</span>
+<span class="n">traceback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;...&quot;</span>
+</pre></div>
+</div>
+<p>The engine records raw data only — failure classification and recovery
+strategy are responsibilities of external tooling (e.g. an MCP agent).</p>
+</section>
+<section id="job-accounting">
+<h3>Job accounting<a class="headerlink" href="#job-accounting" title="Link to this heading">#</a></h3>
+<p>For queuing systems (PBS, Slurm, Fujitsu TCS, etc.), the engine can
+collect scheduler accounting data after a job leaves the queue.  This
+is configured via the optional <code class="docutils literal notranslate"><span class="pre">jobacct</span></code> field in <code class="docutils literal notranslate"><span class="pre">machine_data.yaml</span></code>
+(see <a class="reference internal" href="#parameters"><span class="xref myst">machine_data.yaml parameters</span></a>).</p>
+<p>The engine executes <code class="docutils literal notranslate"><span class="pre">{jobacct}</span> <span class="pre">{job_id}</span></code> and writes the raw output to
+a separate file <code class="docutils literal notranslate"><span class="pre">job_accounting_{job_id}.txt</span></code>.  The accounting command
+and file path are stored per-job in the <code class="docutils literal notranslate"><span class="pre">[[jobs]]</span></code> record:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[[jobs]]</span>
+<span class="n">input_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;input_vmc-H2-0.74_1_aebf13bd.toml&quot;</span>
+<span class="n">output_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;output_vmc-H2-0.74_1_aebf13bd.out&quot;</span>
+<span class="n">job_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;12345&quot;</span>
+<span class="n">server_machine</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;my-cluster&quot;</span>
+<span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;fetched&quot;</span>
+<span class="n">step</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">run_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;aebf13bd&quot;</span>
+<span class="n">job_stdout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;job_vmc-H2-0.74.o&quot;</span>
+<span class="n">job_stderr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;job_vmc-H2-0.74.e&quot;</span>
+<span class="n">job_acct_command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sacct -j 12345 --format=State,ExitCode,MaxRSS,Elapsed -P&quot;</span>
+<span class="n">job_acct_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;job_accounting_12345.txt&quot;</span>
+</pre></div>
+</div>
+<p>No parsing or interpretation is performed — that responsibility belongs
+to external tooling.  If <code class="docutils literal notranslate"><span class="pre">jobacct</span></code> is not configured, the
+<code class="docutils literal notranslate"><span class="pre">job_acct_command</span></code> and <code class="docutils literal notranslate"><span class="pre">job_acct_file</span></code> fields are simply absent.</p>
+</section>
+<section id="session-state-queries">
+<h3>Session state queries<a class="headerlink" href="#session-state-queries" title="Link to this heading">#</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">Launcher</span></code> provides three methods for programmatic introspection
+(useful for MCP adapters and monitoring tools):</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>Returns</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">get_session_state()</span></code></p></td>
+<td><p>Dict with per-workflow summaries, dependency graph, and progress counters (completed / failed / running / pending / total).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">get_current_job()</span></code></p></td>
+<td><p>The first workflow with status <code class="docutils literal notranslate"><span class="pre">running</span></code> or <code class="docutils literal notranslate"><span class="pre">submitted</span></code>, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">get_job_history()</span></code></p></td>
+<td><p>Flat, chronologically-sorted list of all jobs across all workflows.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="machine-catalog">
+<h3>Machine catalog<a class="headerlink" href="#machine-catalog" title="Link to this heading">#</a></h3>
+<p>Two helper functions are available for machine discovery:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Function</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">list_machines()</span></code></p></td>
+<td><p>Returns a list of dicts summarising all machines defined in <code class="docutils literal notranslate"><span class="pre">machine_data.yaml</span></code> (name, machine_type, queuing, ssh_host, workspace_root).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">probe_environment(machine_name)</span></code></p></td>
+<td><p>Tests connectivity to the named machine (SSH for remote, always reachable for local). Returns <code class="docutils literal notranslate"><span class="pre">{&quot;reachable&quot;:</span> <span class="pre">True/False,</span> <span class="pre">...}</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
 </section>
 </section>
 <section id="configuration">
@@ -627,6 +1360,29 @@ target.</p>
 <span class="w">  </span><span class="nt">jobcheck</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/pbs/bin/qstat</span>
 <span class="w">  </span><span class="nt">jobdel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/pbs/bin/qdel</span>
 <span class="w">  </span><span class="nt">jobnum_index</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<span class="w">  </span><span class="nt">jobacct</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/pbs/bin/qstat -xf</span>
+
+<span class="nt">my-slurm</span><span class="p">:</span><span class="w">                            </span><span class="c1"># Slurm example</span>
+<span class="w">  </span><span class="nt">ssh_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slurm-cluster</span>
+<span class="w">  </span><span class="nt">machine_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">remote</span>
+<span class="w">  </span><span class="nt">queuing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">workspace_root</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/home/user/jqmc_work</span>
+<span class="w">  </span><span class="nt">jobsubmit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sbatch</span>
+<span class="w">  </span><span class="nt">jobcheck</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">squeue --noheader</span>
+<span class="w">  </span><span class="nt">jobdel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">scancel</span>
+<span class="w">  </span><span class="nt">jobnum_index</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">  </span><span class="nt">jobacct</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader</span>
+
+<span class="nt">my-fujitsu</span><span class="p">:</span><span class="w">                          </span><span class="c1"># Fujitsu TCS example</span>
+<span class="w">  </span><span class="nt">ssh_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fujitsu</span>
+<span class="w">  </span><span class="nt">machine_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">remote</span>
+<span class="w">  </span><span class="nt">queuing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">workspace_root</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/home/user/jqmc_work</span>
+<span class="w">  </span><span class="nt">jobsubmit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/usr/local/bin/pjsub</span>
+<span class="w">  </span><span class="nt">jobcheck</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/usr/local/bin/pjstat</span>
+<span class="w">  </span><span class="nt">jobdel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/usr/local/bin/pjdel</span>
+<span class="w">  </span><span class="nt">jobnum_index</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<span class="w">  </span><span class="nt">jobacct</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pjstat -H -s --choose jid,st,ec,elp,pc --data</span>
 </pre></div>
 </div>
 </section>
@@ -681,7 +1437,12 @@ target.</p>
 <td><p>When <code class="docutils literal notranslate"><span class="pre">queuing:</span> <span class="pre">true</span></code></p></td>
 <td><p>0-based column index of the job ID in the output of <code class="docutils literal notranslate"><span class="pre">jobsubmit</span></code>. For PBS (<code class="docutils literal notranslate"><span class="pre">42.server</span></code>), use <code class="docutils literal notranslate"><span class="pre">0</span></code>. For Slurm (<code class="docutils literal notranslate"><span class="pre">Submitted</span> <span class="pre">batch</span> <span class="pre">job</span> <span class="pre">42</span></code>), use <code class="docutils literal notranslate"><span class="pre">3</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ip</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">jobacct</span></code></p></td>
+<td><p>String (command)</p></td>
+<td><p>No</p></td>
+<td><p>Scheduler accounting command <strong>with flags</strong>. The engine executes <code class="docutils literal notranslate"><span class="pre">{jobacct}</span> <span class="pre">{job_id}</span></code> after a job leaves the queue and saves the raw output to <code class="docutils literal notranslate"><span class="pre">job_accounting_{job_id}.txt</span></code>. No parsing is performed. Examples: <code class="docutils literal notranslate"><span class="pre">sacct</span> <span class="pre">-j</span> <span class="pre">--format=State,ExitCode,MaxRSS,Elapsed,Timelimit</span> <span class="pre">-P</span> <span class="pre">--noheader</span></code> (Slurm), <code class="docutils literal notranslate"><span class="pre">qstat</span> <span class="pre">-xf</span></code> (PBS), <code class="docutils literal notranslate"><span class="pre">pjstat</span> <span class="pre">-H</span> <span class="pre">-s</span> <span class="pre">--choose</span> <span class="pre">jid,st,ec,elp,pc</span> <span class="pre">--data</span></code> (Fujitsu TCS). If omitted, no accounting data is collected.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ip</span></code></p></td>
 <td><p>String</p></td>
 <td><p>No</p></td>
 <td><p>IP address or hostname of the remote machine. Usually the SSH alias in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> is used instead.</p></td>
@@ -787,21 +1548,47 @@ You can name the file anything you like (e.g. <code class="docutils literal notr
 <thead>
 <tr class="row-odd"><th class="head"><p>Variable</p></th>
 <th class="head"><p>Description</p></th>
+<th class="head"><p>Default</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_INPUT_</span></code></p></td>
-<td><p>Path to the input file</p></td>
+<td><p>Path to the jqmc input TOML file</p></td>
+<td><p>(set by workflow)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">_OUTPUT_</span></code></p></td>
-<td><p>Path to the output file</p></td>
+<td><p>Path to the jqmc stdout+stderr capture file</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;out.o&quot;</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_JOBNAME_</span></code></p></td>
 <td><p>Job name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;jqmc-wf&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">_JOB_STDOUT_</span></code></p></td>
+<td><p>Path for the <strong>scheduler</strong> stdout file (e.g. PBS <code class="docutils literal notranslate"><span class="pre">-o</span></code>, Slurm <code class="docutils literal notranslate"><span class="pre">--output</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;job_{jobname}.o&quot;</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_JOB_STDERR_</span></code></p></td>
+<td><p>Path for the <strong>scheduler</strong> stderr file (e.g. PBS <code class="docutils literal notranslate"><span class="pre">-e</span></code>, Slurm <code class="docutils literal notranslate"><span class="pre">--error</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;job_{jobname}.e&quot;</span></code></p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">_JOB_STDOUT_</span></code> and <code class="docutils literal notranslate"><span class="pre">_JOB_STDERR_</span></code> allow the engine to track where the
+scheduler writes its output, which is useful for failure diagnosis.
+If these placeholders are not present in the template the scheduler’s
+default naming convention is used (backward-compatible).
+The file paths are recorded per-job in the <code class="docutils literal notranslate"><span class="pre">[[jobs]]</span></code> records of
+<code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code> (as <code class="docutils literal notranslate"><span class="pre">job_stdout</span></code> and <code class="docutils literal notranslate"><span class="pre">job_stderr</span></code>).</p>
+<blockquote>
+<div><p><strong>Note:</strong> <code class="docutils literal notranslate"><span class="pre">job_stdout</span></code> and <code class="docutils literal notranslate"><span class="pre">job_stderr</span></code> are treated as <strong>optional</strong>
+during fetch.  If the files do not exist on the remote server (e.g.
+the job script template does not include <code class="docutils literal notranslate"><span class="pre">#SBATCH</span> <span class="pre">--output</span></code> /
+<code class="docutils literal notranslate"><span class="pre">#SBATCH</span> <span class="pre">--error</span></code> directives), the engine logs a warning and
+continues instead of raising an error.  All other output files
+remain mandatory.</p>
+</div></blockquote>
 </section>
 <section id="custom-variables">
 <h4>Custom variables<a class="headerlink" href="#custom-variables" title="Link to this heading">#</a></h4>
@@ -816,12 +1603,34 @@ surrounding underscores. For example, <code class="docutils literal notranslate"
 <span class="c1">#PBS -q _QUEUE_</span>
 <span class="c1">#PBS -l nodes=_NODES_:ppn=_MPI_PER_NODE_</span>
 <span class="c1">#PBS -l walltime=_MAX_TIME_</span>
+<span class="c1">#PBS -o _JOB_STDOUT_</span>
+<span class="c1">#PBS -e _JOB_STDERR_</span>
 
 <span class="nb">export</span><span class="w"> </span><span class="nv">OMP_NUM_THREADS</span><span class="o">=</span>_OMP_NUM_THREADS_
 <span class="nv">INPUT</span><span class="o">=</span>_INPUT_
 <span class="nv">OUTPUT</span><span class="o">=</span>_OUTPUT_
 
+<span class="nb">cd</span><span class="w"> </span><span class="si">${</span><span class="nv">PBS_O_WORKDIR</span><span class="si">}</span>
 mpirun<span class="w"> </span>-np<span class="w"> </span>_NUM_CORES_<span class="w"> </span>jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</span><span class="si">}</span><span class="w"> </span>&gt;<span class="w"> </span><span class="si">${</span><span class="nv">OUTPUT</span><span class="si">}</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</pre></div>
+</div>
+</section>
+<section id="example-submit-mpi-sh-for-slurm">
+<h4>Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for Slurm)<a class="headerlink" href="#example-submit-mpi-sh-for-slurm" title="Link to this heading">#</a></h4>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1">#SBATCH --job-name=_JOBNAME_</span>
+<span class="c1">#SBATCH --partition=_QUEUE_</span>
+<span class="c1">#SBATCH --nodes=_NODES_</span>
+<span class="c1">#SBATCH --ntasks=_NUM_CORES_</span>
+<span class="c1">#SBATCH --time=_MAX_TIME_</span>
+<span class="c1">#SBATCH --output=_JOB_STDOUT_</span>
+<span class="c1">#SBATCH --error=_JOB_STDERR_</span>
+
+<span class="nb">export</span><span class="w"> </span><span class="nv">OMP_NUM_THREADS</span><span class="o">=</span>_OMP_NUM_THREADS_
+<span class="nv">INPUT</span><span class="o">=</span>_INPUT_
+<span class="nv">OUTPUT</span><span class="o">=</span>_OUTPUT_
+
+srun<span class="w"> </span>jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</span><span class="si">}</span><span class="w"> </span>&gt;<span class="w"> </span><span class="si">${</span><span class="nv">OUTPUT</span><span class="si">}</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
 </pre></div>
 </div>
 </section>
@@ -832,11 +1641,14 @@ mpirun<span class="w"> </span>-np<span class="w"> </span>_NUM_CORES_<span class=
 <span class="c1">#PBS -q _QUEUE_</span>
 <span class="c1">#PBS -l nodes=_NODES_</span>
 <span class="c1">#PBS -l walltime=_MAX_TIME_</span>
+<span class="c1">#PBS -o _JOB_STDOUT_</span>
+<span class="c1">#PBS -e _JOB_STDERR_</span>
 
 <span class="nb">export</span><span class="w"> </span><span class="nv">OMP_NUM_THREADS</span><span class="o">=</span>_OMP_NUM_THREADS_
 <span class="nv">INPUT</span><span class="o">=</span>_INPUT_
 <span class="nv">OUTPUT</span><span class="o">=</span>_OUTPUT_
 
+<span class="nb">cd</span><span class="w"> </span><span class="si">${</span><span class="nv">PBS_O_WORKDIR</span><span class="si">}</span>
 jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</span><span class="si">}</span><span class="w"> </span>&gt;<span class="w"> </span><span class="si">${</span><span class="nv">OUTPUT</span><span class="si">}</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
 </pre></div>
 </div>
@@ -878,8 +1690,9 @@ jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</sp
     <span class="n">dirname</span><span class="o">=</span><span class="s2">&quot;mcmc_prod&quot;</span><span class="p">,</span>
     <span class="n">input_files</span><span class="o">=</span><span class="p">[</span>
         <span class="n">h5</span><span class="p">,</span>
-        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data_opt_step_*.h5&quot;</span><span class="p">),</span>
+        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="n">ValueFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;optimized_hamiltonian&quot;</span><span class="p">)),</span>
     <span class="p">],</span>
+    <span class="n">rename_input_files</span><span class="o">=</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data.h5&quot;</span><span class="p">],</span>
     <span class="n">workflow</span><span class="o">=</span><span class="n">MCMC_Workflow</span><span class="p">(</span>
         <span class="n">server_machine_name</span><span class="o">=</span><span class="n">server</span><span class="p">,</span>
         <span class="n">hamiltonian_file</span><span class="o">=</span><span class="n">h5</span><span class="p">,</span>
@@ -895,7 +1708,7 @@ jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</sp
     <span class="n">dirname</span><span class="o">=</span><span class="s2">&quot;lrdmc_ext&quot;</span><span class="p">,</span>
     <span class="n">input_files</span><span class="o">=</span><span class="p">[</span>
         <span class="n">h5</span><span class="p">,</span>
-        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data_opt_step_*.h5&quot;</span><span class="p">),</span>
+        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="n">ValueFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;optimized_hamiltonian&quot;</span><span class="p">)),</span>
     <span class="p">],</span>
     <span class="n">workflow</span><span class="o">=</span><span class="n">LRDMC_Ext_Workflow</span><span class="p">(</span>
         <span class="n">server_machine_name</span><span class="o">=</span><span class="n">server</span><span class="p">,</span>
@@ -915,10 +1728,13 @@ jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</sp
 </pre></div>
 </div>
 <p>In this example, <code class="docutils literal notranslate"><span class="pre">mcmc-prod</span></code> and <code class="docutils literal notranslate"><span class="pre">lrdmc-ext</span></code> depend on <code class="docutils literal notranslate"><span class="pre">vmc</span></code> (via
-<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code>).  Additionally, <code class="docutils literal notranslate"><span class="pre">lrdmc-ext</span></code> depends on <code class="docutils literal notranslate"><span class="pre">mcmc-prod</span></code> (via
-<code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> for <code class="docutils literal notranslate"><span class="pre">E_scf</span></code>), so the DAG becomes
+<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code>).  The optimised Hamiltonian filename is resolved
+dynamically through <code class="docutils literal notranslate"><span class="pre">ValueFrom(&quot;vmc&quot;,</span> <span class="pre">&quot;optimized_hamiltonian&quot;)</span></code>,
+so the pipeline works correctly even when VMC converges early
+(e.g. step 91 instead of 150).  Additionally, <code class="docutils literal notranslate"><span class="pre">lrdmc-ext</span></code> depends on
+<code class="docutils literal notranslate"><span class="pre">mcmc-prod</span></code> (via <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> for <code class="docutils literal notranslate"><span class="pre">E_scf</span></code>), so the DAG becomes
 VMC → MCMC → LRDMC-ext.  The <code class="docutils literal notranslate"><span class="pre">target_survived_walkers_ratio</span></code>
-triggers automatic calibration of <code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code>
+triggers automatic calibration of <code class="docutils literal notranslate"><span class="pre">num_projection_per_measurement</span></code>
 independently at each lattice spacing.  All alat values run their
 calibration, error-bar pilot, and production phases in parallel.</p>
 </section>
@@ -1065,13 +1881,44 @@ the current directory and displays a summary tree.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#architecture">Architecture</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-components">Key components</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#inter-workflow-data-passing-filefrom-valuefrom">Inter-workflow data passing (<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> / <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code>)</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#filefrom-label-filename"><code class="docutils literal notranslate"><span class="pre">FileFrom(label,</span> <span class="pre">filename)</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#valuefrom-label-key"><code class="docutils literal notranslate"><span class="pre">ValueFrom(label,</span> <span class="pre">key)</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#available-output-values-keys">Available <code class="docutils literal notranslate"><span class="pre">output_values</span></code> keys</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-workflow"><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-workflow"><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-ext-workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#target-error-bar-estimation">Target error-bar estimation</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-vmc">MCMC / VMC</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc">LRDMC</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-estimation-formula">Step estimation formula</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ao-basis-optimization">AO basis optimization</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-convergence-checks">VMC convergence checks</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#signal-to-noise-s-n-check">Signal-to-noise (S/N) check</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#energy-slope-check">Energy-slope check</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#combined-verdict">Combined verdict</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#early-exit-on-convergence">Early exit on convergence</a></li>
 </ul>
 </li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-estimation-formula">Step estimation formula</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#target-error-not-met">Target error not met</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#continuation-with-tighter-target-error">Continuation with tighter target error</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pre-launch-validation">Pre-launch validation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#restart-behavior">Restart behavior</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#phase-management">Phase management</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#status-enums">Status enums</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#artifact-registry">Artifact registry</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#input-staleness-detection">Input staleness detection</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#error-recording">Error recording</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#job-accounting">Job accounting</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#session-state-queries">Session state queries</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-catalog">Machine catalog</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a><ul class="nav section-nav flex-column">
@@ -1092,6 +1939,7 @@ the current directory and displays a summary tree.</p>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#predefined-variables">Predefined variables</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#custom-variables">Custom variables</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-mpi-sh-for-pbs">Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for PBS)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-mpi-sh-for-slurm">Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for Slurm)</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-serial-sh">Example (<code class="docutils literal notranslate"><span class="pre">submit_serial.sh</span></code>)</a></li>
 </ul>
 </li>

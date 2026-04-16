@@ -358,7 +358,7 @@ max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
-verbosity = "low" # Verbosity level. "low" or "high"
+verbosity = "high" # Verbosity level. "low" or "high"
 
 [vmc]
 num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
@@ -369,14 +369,17 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 300 # Number of optimization steps.
 wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = true
+opt_J3_basis_coeff = true
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please lunch the job.
@@ -421,7 +424,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the Linear Method (LM) and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -698,7 +701,10 @@ opt_J3_param = false
 opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 optimizer_kwargs = { method = "adam" }
 ```
 
@@ -789,6 +795,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -906,14 +913,17 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 300 # Number of optimization steps.
 wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = true
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 The key differences from `example01` are:
@@ -940,7 +950,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the Linear Method (LM) and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -1226,14 +1236,17 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please lunch the job.
@@ -1447,14 +1460,17 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.05 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 > [!IMPORTANT]
@@ -1756,7 +1772,10 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please launch the job.
@@ -1836,6 +1855,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 1.2 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -1897,6 +1917,7 @@ num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e.
 num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
 E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
 atomic_force = true
+use_swct = false # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is false for LRDMC.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -1970,7 +1991,10 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please launch the job.
@@ -2046,6 +2070,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 1.2 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -2104,6 +2129,7 @@ num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e.
 num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
 E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
 atomic_force = true
+use_swct = false # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is false for LRDMC.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).

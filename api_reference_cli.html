@@ -451,6 +451,10 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, compute atomic forces.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">use_swct</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is <code class="docutils literal notranslate"><span class="pre">true</span></code> for MCMC.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -500,10 +504,10 @@ Throughout this document, “per MPI process and per walker” means the quantit
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optimizer_kwargs</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">&quot;method&quot;:</span> <span class="pre">&quot;sr&quot;,</span> <span class="pre">&quot;delta&quot;:</span> <span class="pre">0.01,</span> <span class="pre">&quot;epsilon&quot;:</span> <span class="pre">0.001,</span> <span class="pre">&quot;cg_flag&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;cg_max_iter&quot;:</span> <span class="pre">10000,</span> <span class="pre">&quot;cg_tol&quot;:</span> <span class="pre">1e-4</span> <span class="pre">}</span></code></p></td>
-<td><p>Optimizer configuration. Set <code class="docutils literal notranslate"><span class="pre">method</span></code> to <code class="docutils literal notranslate"><span class="pre">&quot;sr&quot;</span></code> for stochastic reconfiguration or to an optax optimizer name (e.g., <code class="docutils literal notranslate"><span class="pre">&quot;adam&quot;</span></code>). <code class="docutils literal notranslate"><span class="pre">delta</span></code>/<code class="docutils literal notranslate"><span class="pre">epsilon</span></code> control SR step size and regularization; <code class="docutils literal notranslate"><span class="pre">cg_*</span></code> entries tune the SR conjugate-gradient solver. Any additional keys are forwarded to optax when <code class="docutils literal notranslate"><span class="pre">method</span></code> ≠ <code class="docutils literal notranslate"><span class="pre">&quot;sr&quot;</span></code>.</p></td>
+<td><p>Optimizer configuration. Set <code class="docutils literal notranslate"><span class="pre">method</span></code> to <code class="docutils literal notranslate"><span class="pre">&quot;sr&quot;</span></code> for stochastic reconfiguration or to an optax optimizer name (e.g., <code class="docutils literal notranslate"><span class="pre">&quot;adam&quot;</span></code>). For <code class="docutils literal notranslate"><span class="pre">method</span> <span class="pre">=</span> <span class="pre">&quot;sr&quot;</span></code>: <code class="docutils literal notranslate"><span class="pre">delta</span></code>/<code class="docutils literal notranslate"><span class="pre">epsilon</span></code> control step size and regularization; <code class="docutils literal notranslate"><span class="pre">cg_*</span></code> entries tune the conjugate-gradient solver. To use the linear method, set <code class="docutils literal notranslate"><span class="pre">method</span> <span class="pre">=</span> <span class="pre">&quot;sr&quot;</span></code> with <code class="docutils literal notranslate"><span class="pre">use_lm</span> <span class="pre">=</span> <span class="pre">true</span></code>; <code class="docutils literal notranslate"><span class="pre">delta</span></code> controls the learning rate, <code class="docutils literal notranslate"><span class="pre">epsilon</span></code> controls SR regularization, <code class="docutils literal notranslate"><span class="pre">lm_subspace_dim</span></code> (default <code class="docutils literal notranslate"><span class="pre">0</span></code>) sets the LM subspace dimension (<code class="docutils literal notranslate"><span class="pre">0</span></code>=aSR, <code class="docutils literal notranslate"><span class="pre">&gt;0</span></code>=LM with top-N params, <code class="docutils literal notranslate"><span class="pre">-1</span></code>=all params), and <code class="docutils literal notranslate"><span class="pre">lm_cond</span></code> (default <code class="docutils literal notranslate"><span class="pre">0.001</span></code>) sets the dgelscut correlation matrix min eigenvalue threshold (condition number ≤ 1/lm_cond). Any additional keys are forwarded to optax when <code class="docutils literal notranslate"><span class="pre">method</span></code> is an optax optimizer name.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J1_param</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Optimize J1 parameters.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J2_param</span></code></p></td>
@@ -514,13 +518,33 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Optimize J3 parameters.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_param</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_JNN_param</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize neural-network Jastrow parameters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_param</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Optimize geminal (λ) parameters.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_param_opt</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
-<td><p>Number of parameters to optimize, chosen in descending order of |f| / std(f). If <code class="docutils literal notranslate"><span class="pre">0</span></code>, optimize <strong>all</strong> parameters.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_basis_exp</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize J3 AO Gaussian exponents. Can be combined with <code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_basis_coeff</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize J3 AO contraction coefficients. Can be combined with <code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_exp</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize Geminal AO Gaussian exponents (up and down spins, concatenated). Cannot be combined with <code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_basis_coeff</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize Geminal AO contraction coefficients (up and down spins, concatenated). Cannot be combined with <code class="docutils literal notranslate"><span class="pre">opt_with_projected_MOs</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -573,7 +597,11 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, compute atomic forces.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon_PW</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">use_swct</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is <code class="docutils literal notranslate"><span class="pre">false</span></code> for LRDMC.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon_PW</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
 <td><p>Pathak–Wagner regularization parameter (Bohr). When &gt; 0, the force estimator is regularized near the nodal surface (no regularization by default).</p></td>
 </tr>
@@ -624,7 +652,11 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, compute atomic forces.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon_PW</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">use_swct</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, apply SWCT to atomic forces. Default is <code class="docutils literal notranslate"><span class="pre">false</span></code> for LRDMC.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon_PW</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
 <td><p>Pathak–Wagner regularization parameter (Bohr). When &gt; 0, the force estimator is regularized near the nodal surface (no regularization by default).</p></td>
 </tr>
