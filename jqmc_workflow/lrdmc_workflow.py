@@ -8,7 +8,7 @@ fetches the checkpoint, and post-processes with
 Two operating modes are available:
 
 * **GFMC_n mode** (``job_type=lrdmc-bra``) — activated when
-  *target_survived_walkers_ratio* or *num_mcmc_per_measurement* is set.
+  *target_survived_walkers_ratio* or *num_projection_per_measurement* is set.
   Uses discrete projections per measurement.
 * **GFMC_t mode** (``job_type=lrdmc-tau``) — activated when
   *time_projection_tau* is used (default).  Uses a continuous imaginary
@@ -61,12 +61,11 @@ from ._error_estimator import (
     estimate_additional_steps,
     estimate_required_steps,
     parse_net_time,
-    suffixed_name,
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
 from ._lrdmc_calibration import (
-    fit_num_mcmc_per_measurement,
+    fit_num_projection_per_measurement,
     get_num_electrons,
     parse_survived_walkers_ratio,
 )
@@ -76,7 +75,7 @@ from ._setting import (
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
-from ._state import get_estimation, get_job, set_estimation
+from ._state import WorkflowStatus, get_estimation, get_job_by_step, set_estimation
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -97,10 +96,10 @@ class LRDMC_Workflow(Workflow):
       Uses continuous imaginary-time projection.  Only the error-bar
       pilot is run (no calibration phase).
     * **GFMC_n** — set *target_survived_walkers_ratio* or
-      *num_mcmc_per_measurement*.  Uses discrete GFMC projections.
+      *num_projection_per_measurement*.  Uses discrete GFMC projections.
       When *target_survived_walkers_ratio* is set (and
-      *num_mcmc_per_measurement* is *None*), an automatic calibration
-      pilot determines the optimal *num_mcmc_per_measurement*.
+      *num_projection_per_measurement* is *None*), an automatic calibration
+      pilot determines the optimal *num_projection_per_measurement*.
 
     The workflow supports two operating modes:
 
@@ -110,7 +109,7 @@ class LRDMC_Workflow(Workflow):
        measurement steps.  The resulting error estimates the steps
        required for ``target_error`` via $\sigma \propto 1/\sqrt{N}$.
        In GFMC_n mode with calibration, three additional short runs
-       precede this to determine *num_mcmc_per_measurement*.
+       precede this to determine *num_projection_per_measurement*.
     2. **Production runs** (``_1``, ``_2``, …) — Continuation runs
        with the estimated step count.  The loop terminates when the
        error is ≤ ``target_error`` or ``max_continuation`` is reached.
@@ -132,10 +131,6 @@ class LRDMC_Workflow(Workflow):
         Lattice discretization parameter (bohr).
     hamiltonian_file : str
         Input ``hamiltonian_data.h5``.
-    input_file : str
-        Generated TOML input filename.
-    output_file : str
-        Stdout capture filename.
     queue_label : str
         Queue/partition label.
     jobname : str
@@ -153,16 +148,16 @@ class LRDMC_Workflow(Workflow):
     time_projection_tau : float, optional
         Imaginary time step between projections (bohr) for GFMC_t
         mode.  Default ``0.10``.  Ignored when
-        *target_survived_walkers_ratio* or *num_mcmc_per_measurement*
+        *target_survived_walkers_ratio* or *num_projection_per_measurement*
         is set.
     target_survived_walkers_ratio : float, optional
         Target survived-walkers ratio for automatic
-        ``num_mcmc_per_measurement`` calibration.  Setting this
+        ``num_projection_per_measurement`` calibration.  Setting this
         activates GFMC_n mode.  The pilot phase runs three short
         calculations at ``Ne*k*(0.3/alat)²`` projections (k=2,4,6),
         fits a linear model to the observed survived-walkers ratio,
         and picks the value that achieves this target.
-    num_mcmc_per_measurement : int, optional
+    num_projection_per_measurement : int, optional
         GFMC projections per measurement (GFMC_n mode).  When given
         explicitly, the automatic calibration is skipped.
     non_local_move : str, optional
@@ -172,6 +167,9 @@ class LRDMC_Workflow(Workflow):
         Default from ``jqmc_miscs``.
     atomic_force : bool, optional
         Compute atomic forces.  Default from ``jqmc_miscs``.
+    use_swct : bool, optional
+        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+        Default is False for LRDMC.
     epsilon_PW : float, optional
         Pathak–Wagner regularization parameter (Bohr). When > 0,
         the force estimator is regularized near the nodal surface.
@@ -246,6 +244,28 @@ class LRDMC_Workflow(Workflow):
             ),
         )
 
+    Output Values
+    -------------
+    After ``launch()`` completes, ``output_values`` may contain:
+
+    energy : float
+        DMC energy (Ha).
+    energy_error : float
+        Statistical error on ``energy`` (Ha).
+    alat : float
+        Lattice spacing used for this run.
+    restart_chk : str
+        Basename of the restart checkpoint file.
+    forces : object
+        Atomic forces (only when ``atomic_force=True``).
+    estimated_steps : int
+        Estimated total measurement steps.
+    num_projection_per_measurement : int
+        Number of GFMC projections per measurement
+        (GFMC_n mode only).
+    time_projection_tau : float
+        Imaginary-time projection step (GFMC_t mode only).
+
     Notes
     -----
     * For a²→0 continuum-limit extrapolation, use
@@ -265,8 +285,6 @@ class LRDMC_Workflow(Workflow):
         server_machine_name: str = "localhost",
         alat: float = 0.30,
         hamiltonian_file: str = "hamiltonian_data.h5",
-        input_file: str = "input.toml",
-        output_file: str = "out.o",
         queue_label: str = "default",
         jobname: str = "jqmc-lrdmc",
         number_of_walkers: int = 4,
@@ -277,10 +295,11 @@ class LRDMC_Workflow(Workflow):
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
         time_projection_tau: Optional[float] = 0.10,
         target_survived_walkers_ratio: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
+        num_projection_per_measurement: Optional[int] = None,
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
+        use_swct: Optional[bool] = None,
         epsilon_PW: Optional[float] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
@@ -297,8 +316,6 @@ class LRDMC_Workflow(Workflow):
         self.server_machine_name = server_machine_name
         self.alat = alat
         self.hamiltonian_file = hamiltonian_file
-        self.input_file = input_file
-        self.output_file = output_file
         self.queue_label = queue_label
         self.jobname = jobname
         self.number_of_walkers = number_of_walkers
@@ -318,16 +335,17 @@ class LRDMC_Workflow(Workflow):
         self.num_gfmc_warmup_steps = num_gfmc_warmup_steps
         self.num_gfmc_collect_steps = num_gfmc_collect_steps
         # Mode selection: GFMC_n vs GFMC_t
-        #   GFMC_n: target_survived_walkers_ratio or num_mcmc_per_measurement is set
+        #   GFMC_n: target_survived_walkers_ratio or num_projection_per_measurement is set
         #   GFMC_t: otherwise (uses time_projection_tau)
-        self._use_gfmc_n = target_survived_walkers_ratio is not None or num_mcmc_per_measurement is not None
+        self._use_gfmc_n = target_survived_walkers_ratio is not None or num_projection_per_measurement is not None
         # [lrdmc-bra / lrdmc-tau] section
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
-        self.num_mcmc_per_measurement = num_mcmc_per_measurement
+        self.num_projection_per_measurement = num_projection_per_measurement
         self.non_local_move = non_local_move
         self.E_scf = E_scf
         self.atomic_force = atomic_force
+        self.use_swct = use_swct
         self.epsilon_PW = epsilon_PW
         # [control] section
         self.mcmc_seed = mcmc_seed
@@ -353,7 +371,7 @@ class LRDMC_Workflow(Workflow):
         input_file,
         restart=False,
         restart_chk=None,
-        num_mcmc_per_measurement=None,
+        num_projection_per_measurement=None,
     ):
         """Generate LRDMC TOML input file.
 
@@ -367,9 +385,9 @@ class LRDMC_Workflow(Workflow):
             Whether this is a restart run.
         restart_chk : str or None
             Restart checkpoint filename.
-        num_mcmc_per_measurement : int or None
+        num_projection_per_measurement : int or None
             Override for GFMC projections per measurement (GFMC_n only).
-            Falls back to ``self.num_mcmc_per_measurement``.
+            Falls back to ``self.num_projection_per_measurement``.
         """
         jt = self.job_type
         control_ov = resolve_with_defaults(
@@ -388,7 +406,7 @@ class LRDMC_Workflow(Workflow):
 
         if self._use_gfmc_n:
             # GFMC_n mode: job_type="lrdmc-bra"
-            nmpm = num_mcmc_per_measurement or self.num_mcmc_per_measurement
+            nmpm = num_projection_per_measurement or self.num_projection_per_measurement
             section_ov = resolve_with_defaults(
                 "lrdmc-bra",
                 {
@@ -401,6 +419,7 @@ class LRDMC_Workflow(Workflow):
                     "num_gfmc_collect_steps": self.num_gfmc_collect_steps,
                     "E_scf": self.E_scf,
                     "atomic_force": self.atomic_force,
+                    "use_swct": self.use_swct,
                     "epsilon_PW": self.epsilon_PW,
                 },
             )
@@ -417,6 +436,7 @@ class LRDMC_Workflow(Workflow):
                     "num_gfmc_bin_blocks": self.num_gfmc_bin_blocks,
                     "num_gfmc_collect_steps": self.num_gfmc_collect_steps,
                     "atomic_force": self.atomic_force,
+                    "use_swct": self.use_swct,
                     "epsilon_PW": self.epsilon_PW,
                 },
             )
@@ -434,9 +454,23 @@ class LRDMC_Workflow(Workflow):
     # ── Submit / poll / fetch ─────────────────────────────────────
     # _submit_and_wait() and _make_job() are inherited from Workflow.
 
-    # ── Launch ────────────────────────────────────────────────────
+    # ── configure / run ──────────────────────────────────────────
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        return {
+            "jobname": self.jobname,
+            "alat": self.alat,
+            "target_error": self.target_error,
+            "hamiltonian_file": self.hamiltonian_file,
+            "server_machine": self.server_machine_name,
+            "number_of_walkers": self.number_of_walkers,
+            "max_time": self.max_time,
+            "pilot_steps": self.pilot_steps,
+            "max_continuation": self.max_continuation,
+        }
+
+    async def run(self) -> tuple:
         """Run the LRDMC workflow.
 
         **Fixed-step mode** (``num_gfmc_projections`` is set):
@@ -448,7 +482,7 @@ class LRDMC_Workflow(Workflow):
         **Automatic mode** (``num_gfmc_projections`` is *None*, default):
 
         1. Calibration pilot (``_pilot_a``, GFMC_n only) — Three short
-           LRDMC runs to determine ``num_mcmc_per_measurement``.
+           LRDMC runs to determine ``num_projection_per_measurement``.
         2. Error-bar pilot (``_pilot_b``) — estimates production steps.
         3. Production runs (``_1``, ``_2``, …) — accumulate statistics
            until ``target_error`` is achieved or ``max_continuation``
@@ -472,14 +506,14 @@ class LRDMC_Workflow(Workflow):
         """
         estimated_steps = self.num_gfmc_projections
 
-        # ── Phase A: calibrate num_mcmc_per_measurement (GFMC_n only) ──
+        # ── Phase A: calibrate num_projection_per_measurement (GFMC_n only) ──
         need_calibration = (
-            self._use_gfmc_n and self.num_mcmc_per_measurement is None and self.target_survived_walkers_ratio is not None
+            self._use_gfmc_n and self.num_projection_per_measurement is None and self.target_survived_walkers_ratio is not None
         )
         if need_calibration:
             await self._run_calibration(_wd)
 
-        mode_info = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+        mode_info = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
         logger.info("")
         logger.info("-- LRDMC Fixed-step mode " + "-" * 26)
         logger.info(
@@ -489,19 +523,26 @@ class LRDMC_Workflow(Workflow):
             f"  {mode_info}"
         )
 
+        step_files = {}  # {step: (input, output, run_id)}
         last_run = 0
         for i in range(1, self.max_continuation + 1):
-            input_i = suffixed_name(self.input_file, i)
-            output_i = suffixed_name(self.output_file, i)
+            recorded = get_job_by_step(_wd, i)
+            status_i = recorded.get("status")
 
-            recorded = get_job(_wd, input_i)
-            if recorded.get("status") in ("submitted", "completed", "fetched"):
-                if recorded["status"] == "fetched":
-                    logger.info(f"  {input_i}: already fetched. Skipping.")
-                    last_run = i
-                    continue
-                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            if status_i == "fetched":
+                step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
+                logger.info(f"  step {i}: already fetched. Skipping.")
+                last_run = i
+                continue
+            elif status_i in ("submitted", "completed"):
+                input_i = recorded["input_file"]
+                output_i = recorded["output_file"]
+                run_id_i = recorded.get("run_id", "")
+                logger.info(f"  step {i}: already {status_i}. Resuming...")
             else:
+                run_id_i = self._new_run_id()
+                input_i = self._input_filename(i, run_id_i)
+                output_i = self._output_filename(i, run_id_i)
                 if i == 1:
                     self._generate_input(estimated_steps, os.path.join(_wd, input_i))
                 else:
@@ -518,6 +559,7 @@ class LRDMC_Workflow(Workflow):
                 logger.info(f"-- LRDMC Production run {i}/{self.max_continuation} (a={self.alat}) " + "-" * 10)
                 logger.info(f"  {input_i}: {estimated_steps} steps")
 
+            step_files[i] = (input_i, output_i, run_id_i)
             restart_chk = self._find_restart_chk(_wd) if i > 1 else None
             if i > 1 and restart_chk is None:
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
@@ -528,13 +570,15 @@ class LRDMC_Workflow(Workflow):
                 output_i,
                 work_dir=_wd,
                 extra_from_objects=extra_from,
+                step=i,
+                run_id=run_id_i,
             )
             last_run = i
 
             # Post-process energy (informational only, no convergence check)
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
@@ -542,7 +586,7 @@ class LRDMC_Workflow(Workflow):
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
                     if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
                         if forces is not None:
                             self.output_values["forces"] = forces
                     set_estimation(
@@ -555,16 +599,17 @@ class LRDMC_Workflow(Workflow):
                     )
 
         # ── Final energy computation ─────────────────────────────
+        last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
                 self.output_values["alat"] = self.alat
                 self.output_values["restart_chk"] = restart_chk
                 if self.atomic_force:
-                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=last_output)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 set_estimation(
@@ -578,23 +623,19 @@ class LRDMC_Workflow(Workflow):
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-        output_logs = [
-            suffixed_name(self.output_file, j)
-            for j in range(last_run + 1)
-            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
-        ]
+        output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
         if self._use_gfmc_n:
-            self.output_values["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+            self.output_values["num_projection_per_measurement"] = self.num_projection_per_measurement
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _run_calibration(self, _wd):
-        """Phase A: calibrate num_mcmc_per_measurement (GFMC_n only)."""
+        """Phase A: calibrate num_projection_per_measurement (GFMC_n only)."""
         h5_src = os.path.join(_wd, self.hamiltonian_file)
         pilot_a_dir = os.path.join(_wd, "_pilot_a")
         os.makedirs(pilot_a_dir, exist_ok=True)
@@ -604,7 +645,7 @@ class LRDMC_Workflow(Workflow):
         trial_nmpm = [int(n_electrons * k * alat_scale) for k in (2, 4, 6)]
 
         logger.info("")
-        logger.info(f"-- LRDMC Phase A: Calibrate num_mcmc_per_measurement (a={self.alat}) " + "-" * 8)
+        logger.info(f"-- LRDMC Phase A: Calibrate num_projection_per_measurement (a={self.alat}) " + "-" * 8)
         logger.info(
             f"  Ne={n_electrons}, trial nmpm = {trial_nmpm}, target survived ratio = {self.target_survived_walkers_ratio:.2%}"
         )
@@ -618,29 +659,34 @@ class LRDMC_Workflow(Workflow):
             if os.path.isfile(h5_src) and not os.path.exists(h5_link):
                 os.symlink(h5_src, h5_link)
 
-            inp = suffixed_name(self.input_file, 0)
-            out = suffixed_name(self.output_file, 0)
-
-            async def _run_calib(sub_dir, inp_f, out_f, nmpm_v, _idx=idx):
-                rec = get_job(sub_dir, inp_f)
-                if rec.get("status") not in (
-                    "submitted",
-                    "completed",
-                    "fetched",
-                ):
+            async def _run_calib(sub_dir, nmpm_v, _idx=idx):
+                rec = get_job_by_step(sub_dir, 0)
+                status_c = rec.get("status")
+                if status_c in ("fetched", "submitted", "completed"):
+                    inp_f = rec["input_file"]
+                    out_f = rec["output_file"]
+                    run_id_c = rec.get("run_id", "")
+                    if status_c == "fetched":
+                        logger.info(f"  {inp_f} (nmpm={nmpm_v}): already fetched. Skipping.")
+                    else:
+                        logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {status_c}. Resuming...")
+                else:
+                    run_id_c = self._new_run_id()
+                    inp_f = self._input_filename(0, run_id_c)
+                    out_f = self._output_filename(0, run_id_c)
                     self._generate_input(
                         self.pilot_steps,
                         os.path.join(sub_dir, inp_f),
-                        num_mcmc_per_measurement=nmpm_v,
+                        num_projection_per_measurement=nmpm_v,
                     )
-                else:
-                    logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {rec['status']}. Resuming...")
                 logger.info(f"  _pilot{_idx}: nmpm={nmpm_v}, {self.pilot_steps} steps")
                 await self._submit_and_wait(
                     inp_f,
                     out_f,
                     work_dir=sub_dir,
                     queue_label=self.pilot_queue_label,
+                    step=0,
+                    run_id=run_id_c,
                 )
                 # Parse survived walkers ratio from output
                 out_path = os.path.join(sub_dir, out_f)
@@ -648,7 +694,7 @@ class LRDMC_Workflow(Workflow):
                 logger.info(f"  _pilot{_idx} (nmpm={nmpm_v}): survived ratio = {ratio:.4f}" if ratio else "N/A")
                 return nmpm_v, ratio
 
-            calib_tasks.append(asyncio.create_task(_run_calib(calib_sub, inp, out, nmpm_val)))
+            calib_tasks.append(asyncio.create_task(_run_calib(calib_sub, nmpm_val)))
 
         calib_results = await asyncio.gather(*calib_tasks)
 
@@ -665,12 +711,12 @@ class LRDMC_Workflow(Workflow):
                 f"Only {len(x_vals)} calibration runs returned a survived walkers ratio. Need at least 2 for linear fit."
             )
 
-        optimal_nmpm = fit_num_mcmc_per_measurement(
+        optimal_nmpm = fit_num_projection_per_measurement(
             x_vals,
             y_vals,
             self.target_survived_walkers_ratio,
         )
-        self.num_mcmc_per_measurement = optimal_nmpm
+        self.num_projection_per_measurement = optimal_nmpm
 
         logger.info("")
         logger.info(f"-- LRDMC Calibration Summary (a={self.alat}) " + "-" * 18)
@@ -687,18 +733,20 @@ class LRDMC_Workflow(Workflow):
         if estimation.get("estimated_steps") is not None:
             estimated_steps = int(estimation["estimated_steps"])
             # Restore calibrated nmpm from saved state (GFMC_n only)
-            if self._use_gfmc_n and estimation.get("num_mcmc_per_measurement") is not None:
-                self.num_mcmc_per_measurement = int(estimation["num_mcmc_per_measurement"])
-            mode_str = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+            if self._use_gfmc_n and estimation.get("num_projection_per_measurement") is not None:
+                self.num_projection_per_measurement = int(estimation["num_projection_per_measurement"])
+            mode_str = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
             logger.info(
                 f"Estimation already done (continuation): estimated_steps={estimated_steps}, {mode_str}. Skipping pilot."
             )
         else:
-            # ── Phase A: calibrate num_mcmc_per_measurement (GFMC_n only) ──
+            # ── Phase A: calibrate num_projection_per_measurement (GFMC_n only) ──
             h5_src = os.path.join(_wd, self.hamiltonian_file)
 
             need_calibration = (
-                self._use_gfmc_n and self.num_mcmc_per_measurement is None and self.target_survived_walkers_ratio is not None
+                self._use_gfmc_n
+                and self.num_projection_per_measurement is None
+                and self.target_survived_walkers_ratio is not None
             )
 
             if need_calibration:
@@ -711,32 +759,41 @@ class LRDMC_Workflow(Workflow):
             if os.path.isfile(h5_src) and not os.path.exists(h5_link_b):
                 os.symlink(h5_src, h5_link_b)
 
-            input_pb = suffixed_name(self.input_file, 0)
-            output_pb = suffixed_name(self.output_file, 0)
+            input_pb = None
+            output_pb = None
+            run_id_pb = ""
 
-            recorded_pb = get_job(pilot_b_dir, input_pb)
-            if recorded_pb.get("status") not in (
-                "submitted",
-                "completed",
-                "fetched",
-            ):
-                self._generate_input(self.pilot_steps, os.path.join(pilot_b_dir, input_pb))
+            recorded_pb = get_job_by_step(pilot_b_dir, 0)
+            status_pb = recorded_pb.get("status")
+            if status_pb in ("fetched", "submitted", "completed"):
+                input_pb = recorded_pb["input_file"]
+                output_pb = recorded_pb["output_file"]
+                run_id_pb = recorded_pb.get("run_id", "")
+                if status_pb == "fetched":
+                    logger.info(f"  {input_pb}: already fetched. Skipping pilot_b.")
+                else:
+                    logger.info(f"  {input_pb}: already {status_pb}. Resuming...")
             else:
-                logger.info(f"  {input_pb}: already {recorded_pb['status']}. Resuming...")
-            mode_info = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+                run_id_pb = self._new_run_id()
+                input_pb = self._input_filename(0, run_id_pb)
+                output_pb = self._output_filename(0, run_id_pb)
+                self._generate_input(self.pilot_steps, os.path.join(pilot_b_dir, input_pb))
+            mode_info = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
             logger.info("")
             logger.info(f"-- LRDMC Phase B: Error-bar Pilot (a={self.alat}) " + "-" * 12)
             logger.info(f"  {input_pb}: {self.pilot_steps} steps, {mode_info} (queue: {self.pilot_queue_label})")
 
             pilot_t0 = time.monotonic()
-            await self._submit_and_wait(input_pb, output_pb, work_dir=pilot_b_dir, queue_label=self.pilot_queue_label)
+            await self._submit_and_wait(
+                input_pb, output_pb, work_dir=pilot_b_dir, queue_label=self.pilot_queue_label, step=0, run_id=run_id_pb
+            )
             pilot_wall_sec = time.monotonic() - pilot_t0
 
             restart_chk = self._find_restart_chk(pilot_b_dir)
             if not restart_chk:
                 raise RuntimeError("No checkpoint found after pilot run. Cannot estimate required steps.")
 
-            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_b_dir)
+            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_b_dir, output_file=output_pb)
             if pilot_error is None:
                 raise RuntimeError("Could not parse energy error from pilot run.")
 
@@ -752,6 +809,7 @@ class LRDMC_Workflow(Workflow):
                 pilot_error,
                 self.target_error,
                 walker_ratio=walker_ratio,
+                min_steps=self.num_gfmc_bin_blocks,
             )
             # Add warmup back: production also discards warmup steps
             estimated_steps += self.num_gfmc_warmup_steps
@@ -773,7 +831,7 @@ class LRDMC_Workflow(Workflow):
                 f"  pilot error       = {pilot_error:.6g} Ha\n"
                 f"  target error      = {self.target_error:.6g} Ha\n"
                 f"  mode              = {'GFMC_n' if self._use_gfmc_n else 'GFMC_t'}\n"
-                f"  {'nmpm' if self._use_gfmc_n else 'tau':17s} = {self.num_mcmc_per_measurement if self._use_gfmc_n else self.time_projection_tau}\n"
+                f"  {'nmpm' if self._use_gfmc_n else 'tau':17s} = {self.num_projection_per_measurement if self._use_gfmc_n else self.time_projection_tau}\n"
                 f"  pilot MPI procs   = {pilot_mpi}\n"
                 f"  prod. MPI procs   = {prod_mpi}\n"
                 f"  walker ratio      = {walker_ratio:.4g}\n"
@@ -795,9 +853,11 @@ class LRDMC_Workflow(Workflow):
                 estimated_steps=estimated_steps,
                 pilot_queue_label=self.pilot_queue_label,
                 walker_ratio=walker_ratio,
+                pilot_wall_sec=pilot_wall_sec,
+                net_pilot_sec=net_pilot_sec or 0,
             )
             if self._use_gfmc_n:
-                est_kwargs["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+                est_kwargs["num_projection_per_measurement"] = self.num_projection_per_measurement
             else:
                 est_kwargs["time_projection_tau"] = self.time_projection_tau
             set_estimation(_wd, **est_kwargs)
@@ -848,67 +908,164 @@ class LRDMC_Workflow(Workflow):
                     alat=self.alat,
                     restart_chk=restart_chk or "",
                     estimated_steps=estimated_steps,
-                    num_mcmc_per_measurement=self.num_mcmc_per_measurement,
+                    num_projection_per_measurement=self.num_projection_per_measurement,
                 )
                 if self.atomic_force and restart_chk:
                     forces = self._compute_force(restart_chk, work_dir=_wd)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 self.output_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-                self.status = "success"
+                self.status = WorkflowStatus.COMPLETED
                 return self.status, self.output_files, self.output_values
 
         # ── Production runs (phase 1..N) ──────────────────────────
-        accumulated_steps = 0
-        last_run = 0
-        for i in range(1, self.max_continuation + 1):
-            input_i = suffixed_name(self.input_file, i)
-            output_i = suffixed_name(self.output_file, i)
+        # Three phases:
+        #   A. Scan existing runs → find resume point
+        #   B. Re-estimate from accumulated data (if resuming)
+        #   C. Production loop for remaining runs
+        #
+        # Checkpoint preserves all accumulated statistics across
+        # production restarts.  accumulated_measurement tracks
+        # total measurement steps (excluding warmup) and is
+        # persisted in estimation state for correct resume.
 
-            # Skip input generation if this step already has a job record
-            recorded = get_job(_wd, input_i)
-            if recorded.get("status") in ("submitted", "completed", "fetched"):
-                if recorded["status"] == "fetched":
-                    logger.info(f"  {input_i}: already fetched. Skipping.")
-                    accumulated_steps += estimated_steps
-                    last_run = i
-                    continue
-                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+        warmup = self.num_gfmc_warmup_steps
+        step_files = {}  # {step: (input, output, run_id)}
+        last_run = 0
+        first_new_run = self.max_continuation + 1  # assume all done
+
+        # ── Phase A: scan existing runs ──
+        for i in range(1, self.max_continuation + 1):
+            recorded = get_job_by_step(_wd, i)
+            status_i = recorded.get("status")
+            if status_i == "fetched":
+                step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
+                logger.info(f"  step {i}: already fetched. Skipping.")
+                last_run = i
             else:
-                if i == 1:
+                first_new_run = i
+                break
+
+        # ── Phase B: re-estimate from accumulated data ──
+        accumulated_measurement = 0  # measurement steps only (excl. warmup)
+        if first_new_run > 1:
+            cached_accum = estimation.get("accumulated_measurement_steps")
+            if cached_accum is not None:
+                accumulated_measurement = int(cached_accum)
+            else:
+                accumulated_measurement = (first_new_run - 1) * max(estimated_steps - warmup, 0)
+
+            _re_chk = self._find_restart_chk(_wd)
+            if _re_chk:
+                _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
+                if _re_energy is not None and _re_error is not None:
+                    if _re_error <= self.target_error * 1.20:
+                        logger.info(
+                            f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.20:.6g} Ha"
+                        )
+                        self.output_values.update(
+                            energy=_re_energy,
+                            energy_error=_re_error,
+                            alat=self.alat,
+                            restart_chk=_re_chk,
+                        )
+                        if self.atomic_force:
+                            forces = self._compute_force(_re_chk, work_dir=_wd)
+                            if forces is not None:
+                                self.output_values["forces"] = forces
+                        first_new_run = self.max_continuation + 1  # skip loop
+                    else:
+                        _additional = estimate_additional_steps(
+                            accumulated_measurement,
+                            _re_error,
+                            self.target_error,
+                        )
+                        estimated_steps = _additional + warmup
+                        logger.info(
+                            f"  Resuming after {first_new_run - 1} prior run(s): "
+                            f"error={_re_error:.6g} Ha > target "
+                            f"{self.target_error:.6g} Ha -> "
+                            f"{estimated_steps} steps "
+                            f"(measurement: {_additional}, warmup: {warmup}, "
+                            f"accumulated measurement: {accumulated_measurement})"
+                        )
+
+        # ── Phase C: production loop ──
+        _prev_run_steps = None
+        for i in range(first_new_run, self.max_continuation + 1):
+            recorded = get_job_by_step(_wd, i)
+            status_i = recorded.get("status")
+
+            if status_i in ("submitted", "completed"):
+                input_i = recorded["input_file"]
+                output_i = recorded["output_file"]
+                run_id_i = recorded.get("run_id", "")
+                logger.info(f"  step {i}: already {status_i}. Resuming...")
+            else:
+                run_id_i = self._new_run_id()
+                input_i = self._input_filename(i, run_id_i)
+                output_i = self._output_filename(i, run_id_i)
+                # First-ever production run starts fresh; all others restart
+                if i == 1 and first_new_run == 1:
                     self._generate_input(estimated_steps, os.path.join(_wd, input_i))
                 else:
                     restart_chk = self._find_restart_chk(_wd)
                     if restart_chk is None:
-                        raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+                        raise RuntimeError(f"No restart checkpoint found for run {i}. Expected .h5 file in {_wd}")
                     self._generate_input(
                         estimated_steps,
                         os.path.join(_wd, input_i),
-                        restart=bool(restart_chk),
+                        restart=True,
                         restart_chk=restart_chk,
                     )
                 logger.info("")
                 logger.info(f"-- LRDMC Phase 1: Production run {i}/{self.max_continuation} (a={self.alat}) " + "-" * 10)
                 logger.info(f"  {input_i}: {estimated_steps} steps")
 
-            restart_chk = self._find_restart_chk(_wd) if i > 1 else None
-            if i > 1 and restart_chk is None:
-                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+            step_files[i] = (input_i, output_i, run_id_i)
+            need_restart = i > 1 or first_new_run > 1
+            restart_chk = self._find_restart_chk(_wd) if need_restart else None
+            if need_restart and restart_chk is None:
+                raise RuntimeError(f"No restart checkpoint found for run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
+
+            # Estimate run time from the latest available output
+            _ref_net = None
+            for _j in range(i - 1, 0, -1):
+                if _j not in step_files:
+                    continue
+                _ref_net = parse_net_time(os.path.join(_wd, step_files[_j][1]))
+                if _ref_net and _ref_net > 0:
+                    _ref_steps = _prev_run_steps if _prev_run_steps else estimated_steps
+                    _est_sec = _ref_net * (estimated_steps / _ref_steps) if _ref_steps > 0 else _ref_net
+                    logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_est_sec)}")
+                    break
+            else:
+                _pilot_outs = sorted(glob.glob(os.path.join(_wd, "_pilot_b", "*.out")))
+                _ref_net = parse_net_time(_pilot_outs[-1]) if _pilot_outs else None
+                if _ref_net and _ref_net > 0:
+                    _p_steps = estimation.get("pilot_steps") or self.pilot_steps
+                    if _p_steps > 0:
+                        logger.info(
+                            f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * estimated_steps / _p_steps)}"
+                        )
 
             await self._submit_and_wait(
                 input_i,
                 output_i,
                 work_dir=_wd,
                 extra_from_objects=extra_from,
+                step=i,
+                run_id=run_id_i,
             )
-            accumulated_steps += estimated_steps
+            accumulated_measurement += estimated_steps - warmup
+            _prev_run_steps = estimated_steps
             last_run = i
 
-            # Check convergence
+            # ── Convergence check (single estimation point) ──
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
@@ -916,15 +1073,15 @@ class LRDMC_Workflow(Workflow):
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
                     if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
                         if forces is not None:
                             self.output_values["forces"] = forces
 
-                    # Cache for restart
                     set_estimation(
                         _wd,
                         last_energy=energy,
                         last_energy_error=error,
+                        accumulated_measurement_steps=accumulated_measurement,
                         last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
                         last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
                         last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
@@ -939,14 +1096,16 @@ class LRDMC_Workflow(Workflow):
                         break
                     elif i < self.max_continuation:
                         old_steps = estimated_steps
-                        estimated_steps = estimate_additional_steps(
-                            accumulated_steps,
+                        _additional = estimate_additional_steps(
+                            accumulated_measurement,
                             error,
                             self.target_error,
                         )
+                        estimated_steps = _additional + warmup
                         logger.info(
-                            f"  Re-estimated: {old_steps} -> {estimated_steps} "
-                            f"additional steps (accumulated so far: {accumulated_steps})"
+                            f"  Re-estimated: {old_steps} -> {estimated_steps} steps "
+                            f"(measurement: {_additional}, warmup: {warmup}, "
+                            f"accumulated measurement: {accumulated_measurement})"
                         )
                     else:
                         logger.warning(
@@ -955,23 +1114,25 @@ class LRDMC_Workflow(Workflow):
                             f"max_continuation ({self.max_continuation}) reached"
                         )
 
-        # ── Final energy computation ─────────────────────────────
+        # ── Final energy computation (safety net) ─────────────────
+        last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
                 self.output_values["alat"] = self.alat
                 self.output_values["restart_chk"] = restart_chk
                 if self.atomic_force:
-                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=last_output)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 set_estimation(
                     _wd,
                     last_energy=energy,
                     last_energy_error=error,
+                    accumulated_measurement_steps=accumulated_measurement,
                     last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
                     last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
                     last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
@@ -979,19 +1140,16 @@ class LRDMC_Workflow(Workflow):
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-        output_logs = [
-            suffixed_name(self.output_file, j)
-            for j in range(last_run + 1)
-            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
-        ]
+        output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
         if self._use_gfmc_n:
-            self.output_values["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+            self.output_values["num_projection_per_measurement"] = self.num_projection_per_measurement
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = "success"
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────
@@ -1004,8 +1162,17 @@ class LRDMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str):
-        """Run ``jqmc-tool lrdmc compute-energy`` and parse output.
+    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+        """Parse energy from *output_file* or run ``jqmc-tool lrdmc compute-energy``.
+
+        When *output_file* is given the energy is read directly from
+        the ``jqmc`` stdout (``Total Energy: E = … +- … Ha.``).
+        This avoids the overhead of re-running ``jqmc-tool`` when
+        the post-processing parameters (-b, -w, -c) are the same as
+        in the input TOML — which is always the case for a fresh run.
+
+        Falls back to ``jqmc-tool`` when *output_file* is *None* or
+        when stdout parsing fails.
 
         Parameters
         ----------
@@ -1013,12 +1180,29 @@ class LRDMC_Workflow(Workflow):
             Checkpoint filename (basename).
         work_dir : str
             Directory in which to run the command.
+        output_file : str, optional
+            Stdout filename (basename) of the ``jqmc`` run.
 
         Returns
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
         """
+        # Fast path: parse from jqmc stdout
+        if output_file is not None:
+            out_path = os.path.join(work_dir, output_file)
+            if os.path.isfile(out_path):
+                try:
+                    with open(out_path) as fh:
+                        text = fh.read()
+                    energy, error = self._parse_energy_output(text)
+                    if energy is not None:
+                        logger.info(f"  Energy from {output_file} (jqmc-tool skipped): E = {energy} +- {error} Ha")
+                        return energy, error
+                except OSError:
+                    pass
+
+        # Fallback: jqmc-tool
         cmd = (
             f"jqmc-tool lrdmc compute-energy {restart_chk} "
             f"-b {self.num_gfmc_bin_blocks} "
@@ -1049,8 +1233,12 @@ class LRDMC_Workflow(Workflow):
             return float(match.group(1)), float(match.group(2))
         return None, None
 
-    def _compute_force(self, restart_chk: str, work_dir: str):
-        """Run ``jqmc-tool lrdmc compute-force`` and parse output.
+    def _compute_force(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+        """Parse forces from *output_file* or run ``jqmc-tool lrdmc compute-force``.
+
+        When *output_file* is given, forces are read directly from
+        the ``jqmc`` stdout (``Atomic Forces:`` table).  Falls back
+        to ``jqmc-tool`` when *output_file* is *None* or parsing fails.
 
         Parameters
         ----------
@@ -1058,6 +1246,8 @@ class LRDMC_Workflow(Workflow):
             Checkpoint filename (basename).
         work_dir : str
             Directory in which to run the command.
+        output_file : str, optional
+            Stdout filename (basename) of the ``jqmc`` run.
 
         Returns
         -------
@@ -1066,6 +1256,29 @@ class LRDMC_Workflow(Workflow):
             ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
             Returns *None* on failure.
         """
+        # Fast path: parse from jqmc stdout
+        if output_file is not None:
+            out_path = os.path.join(work_dir, output_file)
+            if os.path.isfile(out_path):
+                try:
+                    with open(out_path) as fh:
+                        text = fh.read()
+                    forces = parse_force_table(text)
+                    if forces:
+                        logger.info(f"  Forces from {output_file} (jqmc-tool skipped):")
+                        for f in forces:
+                            logger.info(
+                                f"  {f['label']:8s}"
+                                f" Fx={f['Fx']:+.6f}+-{f['Fx_err']:.6f}"
+                                f" Fy={f['Fy']:+.6f}+-{f['Fy_err']:.6f}"
+                                f" Fz={f['Fz']:+.6f}+-{f['Fz_err']:.6f}"
+                                f" Ha/bohr"
+                            )
+                        return forces
+                except OSError:
+                    pass
+
+        # Fallback: jqmc-tool
         cmd = (
             f"jqmc-tool lrdmc compute-force {restart_chk} "
             f"-b {self.num_gfmc_bin_blocks} "

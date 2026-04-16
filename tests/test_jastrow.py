@@ -83,6 +83,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.structure import Structure_data  # noqa: E402
+from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
 
 
 @pytest.mark.parametrize("j1b_type", ["exp", "pade"])
@@ -1502,6 +1503,115 @@ def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern
         )
 
     jax.clear_caches()
+
+
+# ---------------------------------------------------------------------------
+# L1: Unit tests for Jastrow_data.symmetrize_j3
+# ---------------------------------------------------------------------------
+
+
+def _make_jastrow_with_j3(j_matrix):
+    """Build a minimal Jastrow_data whose j3 j_matrix is *j_matrix*."""
+    j3_data = Jastrow_three_body_data(
+        orb_data=AOs_sphe_data(),
+        j_matrix=np.asarray(j_matrix, dtype=np.float64),
+    )
+    return Jastrow_data(jastrow_three_body_data=j3_data)
+
+
+def test_symmetrize_j3_symmetric_subblock():
+    """L1-7: [:, :-1] symmetric → 0.5*(A+A.T) on sub-block, last col unchanged."""
+    rng = np.random.RandomState(10)
+    n = 4
+    sq_sym = rng.randn(n, n)
+    sq_sym = 0.5 * (sq_sym + sq_sym.T)
+    last_col = rng.randn(n)
+    j_matrix = np.column_stack([sq_sym, last_col])
+    jd = _make_jastrow_with_j3(j_matrix)
+
+    mat = rng.randn(n, n + 1)  # non-symmetric input
+    result = jd.symmetrize_j3(mat)
+    np.testing.assert_allclose(result[:, :-1], result[:, :-1].T)
+    np.testing.assert_array_equal(result[:, -1], mat[:, -1])
+
+
+def test_symmetrize_j3_nonsymmetric_subblock():
+    """L1-8: [:, :-1] non-symmetric → no-op."""
+    rng = np.random.RandomState(11)
+    n = 4
+    sq_nonsym = rng.randn(n, n)
+    sq_nonsym[0, 1] = 100.0
+    last_col = rng.randn(n)
+    j_matrix = np.column_stack([sq_nonsym, last_col])
+    jd = _make_jastrow_with_j3(j_matrix)
+
+    mat = rng.randn(n, n + 1)
+    result = jd.symmetrize_j3(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+def test_symmetrize_j3_none():
+    """L1-9: jastrow_three_body_data=None → no-op."""
+    jd = Jastrow_data()  # all components are None
+    mat = np.random.RandomState(12).randn(3, 4)
+    result = jd.symmetrize_j3(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+def test_symmetrize_j3_too_few_columns():
+    """L1-10: j_matrix with shape[1] < 2 → no-op."""
+    j_matrix = np.array([[1.0], [2.0], [3.0]])  # (3, 1)
+    jd = _make_jastrow_with_j3(j_matrix)
+    mat = np.random.RandomState(13).randn(3, 1)
+    result = jd.symmetrize_j3(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+# ---------------------------------------------------------------------------
+# L2: apply_block_update symmetry preservation for Jastrow_data (j3)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_block_update_symmetric_j3_preserved():
+    """L2-4: symmetric j3 stays symmetric after non-symmetric delta."""
+    rng = np.random.RandomState(20)
+    n = 4
+    sq_sym = rng.randn(n, n)
+    sq_sym = 0.5 * (sq_sym + sq_sym.T)
+    last_col = rng.randn(n)
+    j_matrix = np.column_stack([sq_sym, last_col])
+    jd = _make_jastrow_with_j3(j_matrix)
+
+    delta = rng.randn(n, n + 1)
+    lr = 0.1
+    updated_values = j_matrix + lr * delta
+    block = VariationalParameterBlock(
+        name="j3_matrix", values=updated_values, shape=updated_values.shape, size=updated_values.size
+    )
+    new_jd = jd.apply_block_update(block)
+    new_j3 = np.asarray(new_jd.jastrow_three_body_data.j_matrix)
+    np.testing.assert_allclose(new_j3[:, :-1], new_j3[:, :-1].T, atol=1e-15)
+
+
+def test_apply_block_update_nonsymmetric_j3_free():
+    """L2-5: non-symmetric j3 is not symmetrized after update."""
+    rng = np.random.RandomState(21)
+    n = 4
+    sq_nonsym = rng.randn(n, n)
+    sq_nonsym[0, 1] = 100.0
+    last_col = rng.randn(n)
+    j_matrix = np.column_stack([sq_nonsym, last_col])
+    jd = _make_jastrow_with_j3(j_matrix)
+
+    delta = rng.randn(n, n + 1)
+    lr = 0.1
+    updated_values = j_matrix + lr * delta
+    block = VariationalParameterBlock(
+        name="j3_matrix", values=updated_values, shape=updated_values.shape, size=updated_values.size
+    )
+    new_jd = jd.apply_block_update(block)
+    new_j3 = np.asarray(new_jd.jastrow_three_body_data.j_matrix)
+    np.testing.assert_allclose(new_j3, updated_values)
 
 
 if __name__ == "__main__":

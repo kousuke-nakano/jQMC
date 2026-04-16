@@ -316,12 +316,16 @@ class TestGFMCtSaveLoadRoundtrip:
 
         assert gfmc2.comput_position_deriv is True
         np.testing.assert_array_equal(
-            np.asarray(gfmc2._GFMC_t__stored_grad_e_L_dR),
-            np.asarray(gfmc._GFMC_t__stored_grad_e_L_dR),
+            np.asarray(gfmc2._GFMC_t__stored_force_HF),
+            np.asarray(gfmc._GFMC_t__stored_force_HF),
         )
         np.testing.assert_array_equal(
-            np.asarray(gfmc2._GFMC_t__stored_grad_ln_Psi_dR),
-            np.asarray(gfmc._GFMC_t__stored_grad_ln_Psi_dR),
+            np.asarray(gfmc2._GFMC_t__stored_force_PP),
+            np.asarray(gfmc._GFMC_t__stored_force_PP),
+        )
+        np.testing.assert_array_equal(
+            np.asarray(gfmc2._GFMC_t__stored_E_L_force_PP),
+            np.asarray(gfmc._GFMC_t__stored_E_L_force_PP),
         )
 
 
@@ -477,10 +481,14 @@ class TestGFMCnSaveLoadRoundtrip:
 
         assert gfmc2.comput_position_deriv is True
         np.testing.assert_array_equal(
-            np.asarray(gfmc2._GFMC_n__stored_grad_e_L_dR),
-            np.asarray(gfmc._GFMC_n__stored_grad_e_L_dR),
+            np.asarray(gfmc2._GFMC_n__stored_force_HF),
+            np.asarray(gfmc._GFMC_n__stored_force_HF),
         )
         np.testing.assert_array_equal(
-            np.asarray(gfmc2._GFMC_n__stored_grad_ln_Psi_dR),
-            np.asarray(gfmc._GFMC_n__stored_grad_ln_Psi_dR),
+            np.asarray(gfmc2._GFMC_n__stored_force_PP),
+            np.asarray(gfmc._GFMC_n__stored_force_PP),
+        )
+        np.testing.assert_array_equal(
+            np.asarray(gfmc2._GFMC_n__stored_E_L_force_PP),
+            np.asarray(gfmc._GFMC_n__stored_E_L_force_PP),
         )

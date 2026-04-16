@@ -47,6 +47,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tomlkit
 import typer
+
+import jax.numpy as jnp
+
 from uncertainties import ufloat
 
 from ._checkpoint import (
@@ -362,16 +365,34 @@ def trexio_convert_to(
                         continue
 
                     # 3) Extract the unique basis exponents (uncontracted) and sort them
-                    basis_exps = sorted({ao_exps[i] for i in ao_idxs_l})
+                    basis_exps = sorted({float(ao_exps[i]) for i in ao_idxs_l})
                     if n_shells >= len(basis_exps):
                         sel_basis = basis_exps
                     else:
-                        # select N shells centered around the median exponent
-                        start = max(0, (len(basis_exps) - n_shells) // 2)
-                        sel_basis = basis_exps[start : start + n_shells]
+                        # Select n_shells exponents from a window centered on
+                        # the median of the log-exponent distribution.
+                        # The window width scales with n_shells/len: small
+                        # selections stay near the middle, larger ones spread out.
+                        # Using /2.5 for a wider window that covers more of the
+                        # exponent range (e.g. 2/10 -> [32%,68%] of CDF).
+                        log_exps = np.log(basis_exps)
+                        frac = n_shells / len(basis_exps)
+                        margin = (1.0 - frac) / 2.5
+                        cdf = np.linspace(0, 1, len(log_exps))
+                        lo = np.interp(margin, cdf, log_exps)
+                        hi = np.interp(1.0 - margin, cdf, log_exps)
+                        targets = np.linspace(lo, hi, n_shells)
+                        sel_basis = []
+                        remaining = list(basis_exps)
+                        log_remaining = list(log_exps)
+                        for t in targets:
+                            idx = int(np.argmin([abs(lr - t) for lr in log_remaining]))
+                            sel_basis.append(remaining.pop(idx))
+                            log_remaining.pop(idx)
+                        sel_basis.sort()
 
                     # 4) Select AO indices whose exponent is in the chosen basis group
-                    sel_ao = [i for i in ao_idxs_l if ao_exps[i] in sel_basis]
+                    sel_ao = [i for i in ao_idxs_l if float(ao_exps[i]) in sel_basis]
                     selected_ao_indices_total.extend(sel_ao)
 
             # 7) Remove duplicates and sort the selected AO indices globally
@@ -385,8 +406,8 @@ def trexio_convert_to(
 
             # 10) Reconstruct all common dataclass fields for the new AO object
             new_orbital_indices = [new_idx_map[aos_data.orbital_indices[p]] for p in new_prims]
-            new_exponents = [aos_data.exponents[p] for p in new_prims]
-            new_coefficients = [aos_data.coefficients[p] for p in new_prims]
+            new_exponents = jnp.array([float(aos_data.exponents[p]) for p in new_prims], dtype=jnp.float64)
+            new_coefficients = jnp.array([float(aos_data.coefficients[p]) for p in new_prims], dtype=jnp.float64)
             new_nucleus_index = [aos_data.nucleus_index[i] for i in selected_ao_indices]
             new_angular_momentums = [aos_data.angular_momentums[i] for i in selected_ao_indices]
 
@@ -786,9 +807,9 @@ def mcmc_compute_energy(
         e_L = obs["e_L"][num_mcmc_warmup_steps:]
         w_L = obs["w_L"][num_mcmc_warmup_steps:]
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-        w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+        w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
         w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-        w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+        w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
         w_L_binned_list += w_L_binned
         w_L_e_L_binned_list += w_L_e_L_binned
 
@@ -837,16 +858,9 @@ def mcmc_compute_force(
     _force_keys = [
         "e_L",
         "w_L",
-        "grad_e_L_dR",
-        "grad_e_L_r_up",
-        "grad_e_L_r_dn",
-        "grad_ln_Psi_r_up",
-        "grad_ln_Psi_r_dn",
-        "grad_ln_Psi_dR",
-        "omega_up",
-        "omega_dn",
-        "grad_omega_r_up",
-        "grad_omega_r_dn",
+        "force_HF",
+        "force_PP",
+        "E_L_force_PP",
     ]
     rank_data = load_observables_from_checkpoint(restart_chk, _force_keys)
     num_ranks = len(rank_data)
@@ -870,29 +884,9 @@ def mcmc_compute_force(
     for obs in rank_data:
         e_L = obs["e_L"][num_mcmc_warmup_steps:]
         w_L = obs["w_L"][num_mcmc_warmup_steps:]
-        de_L_dR = obs["grad_e_L_dR"][num_mcmc_warmup_steps:]
-        de_L_dr_up = obs["grad_e_L_r_up"][num_mcmc_warmup_steps:]
-        de_L_dr_dn = obs["grad_e_L_r_dn"][num_mcmc_warmup_steps:]
-        dln_Psi_dr_up = obs["grad_ln_Psi_r_up"][num_mcmc_warmup_steps:]
-        dln_Psi_dr_dn = obs["grad_ln_Psi_r_dn"][num_mcmc_warmup_steps:]
-        dln_Psi_dR = obs["grad_ln_Psi_dR"][num_mcmc_warmup_steps:]
-        omega_up = obs["omega_up"][num_mcmc_warmup_steps:]
-        omega_dn = obs["omega_dn"][num_mcmc_warmup_steps:]
-        domega_dr_up = obs["grad_omega_r_up"][num_mcmc_warmup_steps:]
-        domega_dr_dn = obs["grad_omega_r_dn"][num_mcmc_warmup_steps:]
-
-        force_HF = (
-            de_L_dR + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-        )
-
-        force_PP = (
-            dln_Psi_dR
-            + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-            + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-        )
-
-        E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+        force_HF = obs["force_HF"][num_mcmc_warmup_steps:]
+        force_PP = obs["force_PP"][num_mcmc_warmup_steps:]
+        E_L_force_PP = obs["E_L_force_PP"][num_mcmc_warmup_steps:]
 
         # split and binning with multiple walkers
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -1096,9 +1090,9 @@ def lrdmc_compute_energy(
             e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
             w_L = compute_accumulated_weights(raw_w_L, k)[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
             w_L_binned_list += w_L_binned
             w_L_e_L_binned_list += w_L_e_L_binned
 
@@ -1152,16 +1146,9 @@ def lrdmc_compute_force(
     _force_keys = [
         "e_L",
         "w_L",
-        "grad_e_L_dR",
-        "grad_e_L_r_up",
-        "grad_e_L_r_dn",
-        "grad_ln_Psi_r_up",
-        "grad_ln_Psi_r_dn",
-        "grad_ln_Psi_dR",
-        "omega_up",
-        "omega_dn",
-        "grad_omega_r_up",
-        "grad_omega_r_dn",
+        "force_HF",
+        "force_PP",
+        "E_L_force_PP",
     ]
     rank_data = load_observables_from_checkpoint(restart_chk, _force_keys)
     num_ranks = len(rank_data)
@@ -1192,31 +1179,9 @@ def lrdmc_compute_force(
         if raw_e_L.size != 0:
             e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
             w_L = compute_accumulated_weights(obs["w_L"], k)[num_mcmc_warmup_steps:]
-            de_L_dR = obs["grad_e_L_dR"][k:][num_mcmc_warmup_steps:]
-            de_L_dr_up = obs["grad_e_L_r_up"][k:][num_mcmc_warmup_steps:]
-            de_L_dr_dn = obs["grad_e_L_r_dn"][k:][num_mcmc_warmup_steps:]
-            dln_Psi_dr_up = obs["grad_ln_Psi_r_up"][k:][num_mcmc_warmup_steps:]
-            dln_Psi_dr_dn = obs["grad_ln_Psi_r_dn"][k:][num_mcmc_warmup_steps:]
-            dln_Psi_dR = obs["grad_ln_Psi_dR"][k:][num_mcmc_warmup_steps:]
-            omega_up = obs["omega_up"][k:][num_mcmc_warmup_steps:]
-            omega_dn = obs["omega_dn"][k:][num_mcmc_warmup_steps:]
-            domega_dr_up = obs["grad_omega_r_up"][k:][num_mcmc_warmup_steps:]
-            domega_dr_dn = obs["grad_omega_r_dn"][k:][num_mcmc_warmup_steps:]
-
-            force_HF = (
-                de_L_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-            )
-
-            force_PP = (
-                dln_Psi_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-            )
-
-            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+            force_HF = obs["force_HF"][k:][num_mcmc_warmup_steps:]
+            force_PP = obs["force_PP"][k:][num_mcmc_warmup_steps:]
+            E_L_force_PP = obs["E_L_force_PP"][k:][num_mcmc_warmup_steps:]
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -1368,9 +1333,9 @@ def lrdmc_extrapolate_energy(
                 e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
                 w_L = compute_accumulated_weights(obs["w_L"], k)[num_mcmc_warmup_steps:]
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
                 w_L_binned_list += w_L_binned
                 w_L_e_L_binned_list += w_L_e_L_binned
 

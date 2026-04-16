@@ -46,6 +46,7 @@ WF_DUMP_FREQ = 20  # WF dumping freq.
 Dt = 1.2  # MCMC hopping distance
 ALAT = 0.3  # LRDMC lattice spacing
 TARGET_SNR = 6.0  # target signal_to_noise for convergence.
+ENERGY_SLOPE_THRESHOLD = 2.0  # energy slope sigma threshold for convergence.
 TARGET_VMC_ERROR = 5e-4  # Target statistical error (Ha)
 TARGET_MCMC_ERROR = 5e-5  # Target statistical error (Ha)
 TARGET_LRDMC_ERROR = 5e-5  # Target statistical error (Ha)
@@ -275,7 +276,8 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 opt_with_projected_MOs=True,
                 target_error=TARGET_VMC_ERROR,
                 target_snr=TARGET_SNR,
-                optimizer_kwargs={"method": "sr", "delta": 0.300, "epsilon": 0.010, "adaptive_learning_rate": True},
+                energy_slope_sigma_threshold=ENERGY_SLOPE_THRESHOLD,
+                optimizer_kwargs={"method": "sr", "delta": 0.300, "epsilon": 0.010, "use_lm": True},
                 max_time=3000,
                 poll_interval=120,
                 max_continuation=1,

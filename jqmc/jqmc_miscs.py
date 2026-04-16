@@ -57,10 +57,11 @@ cli_parameters = {
         "num_mcmc_steps": None,
         "num_mcmc_per_measurement": 40,
         "num_mcmc_warmup_steps": 0,
-        "num_mcmc_bin_blocks": 1,
+        "num_mcmc_bin_blocks": 5,
         "Dt": 2.0,
         "epsilon_AS": 0.0,
         "atomic_force": False,
+        "use_swct": True,
         "parameter_derivatives": False,
     },
     "mcmc_comments": {
@@ -71,13 +72,14 @@ cli_parameters = {
         "Dt": "Step size for the MCMC update (bohr).",
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
         "atomic_force": "If true, compute atomic forces.",
+        "use_swct": "If true, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is True for MCMC.",
         "parameter_derivatives": "If true, compute parameter derivatives.",
     },
     "vmc": {
         "num_mcmc_steps": None,
         "num_mcmc_per_measurement": 40,
         "num_mcmc_warmup_steps": 0,
-        "num_mcmc_bin_blocks": 1,
+        "num_mcmc_bin_blocks": 5,
         "Dt": 2.0,
         "epsilon_AS": 0.0,
         "num_opt_steps": None,
@@ -88,15 +90,20 @@ cli_parameters = {
         "opt_JNN_param": False,
         "opt_lambda_param": False,
         "opt_with_projected_MOs": False,
-        "num_param_opt": 0,
+        "opt_J3_basis_exp": False,
+        "opt_J3_basis_coeff": False,
+        "opt_lambda_basis_exp": False,
+        "opt_lambda_basis_coeff": False,
         "optimizer_kwargs": {
             "method": "sr",
             "delta": 0.15,
             "epsilon": 0.001,
             "cg_flag": True,
             "cg_max_iter": 10000,
-            "cg_tol": 1e-6,
-            "adaptive_learning_rate": True,
+            "cg_tol": 1e-8,
+            "use_lm": True,
+            "lm_subspace_dim": 0,
+            "lm_cond": 0.001,
         },
     },
     "vmc_comments": {
@@ -117,7 +124,10 @@ cli_parameters = {
             "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. "
             "num_eigenvectors=num_electron_up in the present implementation."
         ),
-        "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
+        "opt_J3_basis_exp": "Optimize the AO basis exponents in the three-body Jastrow factor.",
+        "opt_J3_basis_coeff": "Optimize the AO basis contraction coefficients in the three-body Jastrow factor.",
+        "opt_lambda_basis_exp": "Optimize the AO basis exponents in the geminal (lambda) determinant.",
+        "opt_lambda_basis_coeff": "Optimize the AO basis contraction coefficients in the geminal (lambda) determinant.",
         "optimizer_kwargs": (
             "Optimizer configuration. Set 'method' to 'sr' (default) for stochastic reconfiguration or to any "
             "optax optimizer name (e.g., 'adam'). For SR, keep the 'delta' (prefactor in c_i <- c_i + delta * "
@@ -132,10 +142,11 @@ cli_parameters = {
         "alat": 0.30,
         "non_local_move": "tmove",
         "num_gfmc_warmup_steps": 0,
-        "num_gfmc_bin_blocks": 1,
+        "num_gfmc_bin_blocks": 5,
         "num_gfmc_collect_steps": 0,
         "E_scf": 0.0,
         "atomic_force": False,
+        "use_swct": False,
         "epsilon_PW": 0.0,
     },
     "lrdmc-bra_comments": {
@@ -148,6 +159,7 @@ cli_parameters = {
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "E_scf": "The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.",
         "atomic_force": "If true, compute atomic forces.",
+        "use_swct": "If true, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is False for LRDMC.",
         "epsilon_PW": "Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is regularized near the nodal surface. Default is 0.0 (no regularization).",
     },
     "lrdmc-tau": {
@@ -156,9 +168,10 @@ cli_parameters = {
         "alat": 0.30,
         "non_local_move": "tmove",
         "num_gfmc_warmup_steps": 0,
-        "num_gfmc_bin_blocks": 1,
+        "num_gfmc_bin_blocks": 5,
         "num_gfmc_collect_steps": 0,
         "atomic_force": False,
+        "use_swct": False,
         "epsilon_PW": 0.0,
     },
     "lrdmc-tau_comments": {
@@ -170,6 +183,7 @@ cli_parameters = {
         "num_gfmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "atomic_force": "If true, compute atomic forces.",
+        "use_swct": "If true, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is False for LRDMC.",
         "epsilon_PW": "Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is regularized near the nodal surface. Default is 0.0 (no regularization).",
     },
 }

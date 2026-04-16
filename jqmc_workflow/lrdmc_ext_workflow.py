@@ -54,6 +54,7 @@ from ._setting import (
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
+from ._state import WorkflowStatus
 from .lrdmc_workflow import LRDMC_Workflow
 from .workflow import Container, Workflow
 
@@ -70,7 +71,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
     Each ``alat`` run is wrapped in its own :class:`Container`
     and all alat values are executed in parallel.  Every ``alat``
-    independently calibrates its own ``num_mcmc_per_measurement``
+    independently calibrates its own ``num_projection_per_measurement``
     (when ``target_survived_walkers_ratio`` is set in GFMC_n mode),
     runs an error-bar pilot, and then runs production.
 
@@ -79,7 +80,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
     * **GFMC_t** (default) — set *time_projection_tau* (default 0.10).
     * **GFMC_n** — set *target_survived_walkers_ratio* or
-      *num_mcmc_per_measurement*.
+      *num_projection_per_measurement*.
 
     Parameters
     ----------
@@ -113,14 +114,14 @@ class LRDMC_Ext_Workflow(Workflow):
     time_projection_tau : float, optional
         Imaginary time step for GFMC_t mode (default 0.10).  Ignored
         when *target_survived_walkers_ratio* or
-        *num_mcmc_per_measurement* is set.
+        *num_projection_per_measurement* is set.
     target_survived_walkers_ratio : float, optional
         Target survived-walkers ratio (default *None*).  Each ``alat``
         independently runs a calibration pilot (``_pilot_a``) to
-        find its own optimal ``num_mcmc_per_measurement``.
+        find its own optimal ``num_projection_per_measurement``.
         Set to *None* to disable auto-calibration (requires explicit
-        *num_mcmc_per_measurement*).  Activates GFMC_n mode.
-    num_mcmc_per_measurement : int, optional
+        *num_projection_per_measurement*).  Activates GFMC_n mode.
+    num_projection_per_measurement : int, optional
         GFMC projections per measurement.  When given explicitly,
         automatic calibration is disabled and this value is used
         for every ``alat``.  Activates GFMC_n mode.
@@ -131,6 +132,9 @@ class LRDMC_Ext_Workflow(Workflow):
         Default from ``jqmc_miscs``.
     atomic_force : bool, optional
         Compute atomic forces.  Default from ``jqmc_miscs``.
+    use_swct : bool, optional
+        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+        Default is False for LRDMC.
     epsilon_PW : float, optional
         Pathak–Wagner regularization parameter (Bohr). When > 0,
         the force estimator is regularized near the nodal surface.
@@ -192,6 +196,21 @@ class LRDMC_Ext_Workflow(Workflow):
             ),
         )
 
+    Output Values
+    -------------
+    After ``launch()`` completes, ``output_values`` may contain:
+
+    extrapolated_energy : float
+        Continuum-limit (a²→0) extrapolated energy (Ha).
+    extrapolated_energy_error : float
+        Statistical error on ``extrapolated_energy`` (Ha).
+    per_alat_results : dict
+        Per-alat energy/error results keyed by ``alat``.
+    errors : list[str]
+        Error messages for alat runs that failed.
+    error : str
+        Top-level error message (only on failure).
+
     Notes
     -----
     * At least two ``alat`` values are required for extrapolation.
@@ -221,10 +240,11 @@ class LRDMC_Ext_Workflow(Workflow):
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
         time_projection_tau: Optional[float] = 0.10,
         target_survived_walkers_ratio: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
+        num_projection_per_measurement: Optional[int] = None,
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
+        use_swct: Optional[bool] = None,
         epsilon_PW: Optional[float] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
@@ -263,10 +283,11 @@ class LRDMC_Ext_Workflow(Workflow):
         # [lrdmc-bra / lrdmc-tau] section
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
-        self.num_mcmc_per_measurement = num_mcmc_per_measurement
+        self.num_projection_per_measurement = num_projection_per_measurement
         self.non_local_move = non_local_move
         self.E_scf = E_scf
         self.atomic_force = atomic_force
+        self.use_swct = use_swct
         self.epsilon_PW = epsilon_PW
         # [control] section
         self.mcmc_seed = mcmc_seed
@@ -307,10 +328,11 @@ class LRDMC_Ext_Workflow(Workflow):
             num_gfmc_collect_steps=self.num_gfmc_collect_steps,
             time_projection_tau=self.time_projection_tau,
             target_survived_walkers_ratio=self.target_survived_walkers_ratio,
-            num_mcmc_per_measurement=self.num_mcmc_per_measurement,
+            num_projection_per_measurement=self.num_projection_per_measurement,
             non_local_move=self.non_local_move,
             E_scf=self.E_scf,
             atomic_force=self.atomic_force,
+            use_swct=self.use_swct,
             epsilon_PW=self.epsilon_PW,
             mcmc_seed=self.mcmc_seed,
             verbosity=self.verbosity,
@@ -328,7 +350,20 @@ class LRDMC_Ext_Workflow(Workflow):
         )
         return enc
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        return {
+            "alat_list": self.alat_list,
+            "polynomial_order": self.polynomial_order,
+            "hamiltonian_file": self.hamiltonian_file,
+            "server_machine": self.server_machine_name,
+            "number_of_walkers": self.number_of_walkers,
+            "max_time": self.max_time,
+            "target_error": self.target_error,
+            "max_continuation": self.max_continuation,
+        }
+
+    async def run(self) -> tuple:
         """Run LRDMC at each alat, then extrapolate to a²→0.
 
         Every ``alat`` value is launched in parallel.  Each child
@@ -354,7 +389,12 @@ class LRDMC_Ext_Workflow(Workflow):
                 return enc, "failed", [], {}, exc
 
         # Create and launch all alat runs in parallel
+        # Set each child Container's root_dir to this workflow's project_dir
+        # so that lrdmc_alat_XXX directories are created inside it, not in CWD.
         enc_workflows = [self._make_lrdmc_workflow(alat) for alat in sorted_alats]
+        for enc in enc_workflows:
+            enc.root_dir = _wd
+            enc.project_dir = os.path.join(_wd, enc.dirname)
         logger.info(f"Launching {len(enc_workflows)} LRDMC runs in parallel...")
         for enc in enc_workflows:
             logger.info(f"  {enc.label}")
@@ -372,7 +412,7 @@ class LRDMC_Ext_Workflow(Workflow):
                 logger.error(f"[{enc.label}] failed: {error}")
                 errors.append(str(error))
                 continue
-            if status != "success":
+            if status not in ("success", "completed", WorkflowStatus.COMPLETED):
                 logger.error(f"[{enc.label}] returned status={status}")
                 errors.append(f"{enc.label}: status={status}")
                 continue
@@ -393,7 +433,7 @@ class LRDMC_Ext_Workflow(Workflow):
             )
 
         if errors:
-            self.status = "failed"
+            self.status = WorkflowStatus.FAILED
             self.output_values["errors"] = errors
             return self.status, [], {"error": "; ".join(errors)}
 
@@ -407,13 +447,15 @@ class LRDMC_Ext_Workflow(Workflow):
                 self.output_values["extrapolated_energy_error"] = ext_error
                 logger.info(f"Extrapolated energy (a->0): {ext_energy} +- {ext_error} Ha")
         else:
-            logger.warning(
-                f"Only {len(restart_chks)} checkpoint(s) found; cannot extrapolate. Returning per-alat results only."
-            )
+            msg = f"Only {len(restart_chks)} checkpoint(s) found; cannot extrapolate."
+            logger.error(msg)
+            self.status = WorkflowStatus.FAILED
+            self.output_values["error"] = msg
+            return self.status, [], {"error": msg}
 
         self.output_values["per_alat_results"] = per_alat_results
         self.output_files = restart_chks
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     def _extrapolate_energy(self, restart_chks: List[str]):

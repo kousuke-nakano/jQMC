@@ -1,16 +1,16 @@
 """LRDMC calibration utilities — survived walkers ratio.
 
 Provides helper functions for determining the optimal
-``num_mcmc_per_measurement`` based on a target survived-walkers ratio.
+``num_projection_per_measurement`` based on a target survived-walkers ratio.
 
 The calibration procedure is:
 
 1. Run short LRDMC calculations with varying
-   ``num_mcmc_per_measurement`` values (e.g. ``Ne*2, Ne*4, Ne*6``
+   ``num_projection_per_measurement`` values (e.g. ``Ne*2, Ne*4, Ne*6``
    where *Ne* is the total number of electrons).
 2. Parse the ``Survived walkers ratio`` from each output file.
 3. Fit a linear ``f(x) = a*x + b`` via least squares and solve for
-   the ``num_mcmc_per_measurement`` that gives the target
+   the ``num_projection_per_measurement`` that gives the target
    survived-walkers ratio (default 97 %).
 """
 
@@ -124,22 +124,22 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
 # ── Linear fitting ───────────────────────────────────────────────
 
 
-def fit_num_mcmc_per_measurement(
+def fit_num_projection_per_measurement(
     x_values: List[int],
     y_values: List[float],
     target_ratio: float,
 ) -> int:
-    r"""Determine the optimal ``num_mcmc_per_measurement`` by linear fit.
+    r"""Determine the optimal ``num_projection_per_measurement`` by linear fit.
 
     Given two or more data points
-    ``(num_mcmc_per_measurement, survived_walkers_ratio)`` the function
+    ``(num_projection_per_measurement, survived_walkers_ratio)`` the function
     fits a linear model :math:`f(x) = a x + b` via least squares and
     solves for the *x* at which :math:`f(x) = \text{target\_ratio}`.
 
     Parameters
     ----------
     x_values : list[int]
-        ``num_mcmc_per_measurement`` values used in calibration runs.
+        ``num_projection_per_measurement`` values used in calibration runs.
     y_values : list[float]
         Corresponding survived-walkers ratios (fractions, 0.0–1.0).
     target_ratio : float
@@ -148,7 +148,7 @@ def fit_num_mcmc_per_measurement(
     Returns
     -------
     int
-        Optimal ``num_mcmc_per_measurement`` (rounded up to the nearest
+        Optimal ``num_projection_per_measurement`` (rounded up to the nearest
         even integer, minimum 2).
 
     Raises
@@ -195,18 +195,18 @@ def fit_num_mcmc_per_measurement(
     if result % 2 != 0:
         result += 1
 
-    logger.info(f"Optimal num_mcmc_per_measurement for target ratio {target_ratio:.4f}: raw={x_opt:.2f} -> {result}")
+    logger.info(f"Optimal num_projection_per_measurement for target ratio {target_ratio:.4f}: raw={x_opt:.2f} -> {result}")
     return result
 
 
-def scale_num_mcmc_per_measurement(
+def scale_num_projection_per_measurement(
     nmpm_ref: int,
     alat_ref: float,
     alat: float,
 ) -> int:
-    r"""Scale ``num_mcmc_per_measurement`` to a different lattice spacing.
+    r"""Scale ``num_projection_per_measurement`` to a different lattice spacing.
 
-    The optimal ``num_mcmc_per_measurement`` is approximately proportional
+    The optimal ``num_projection_per_measurement`` is approximately proportional
     to :math:`1/a^2`.  Given a reference value calibrated at ``alat_ref``,
     the value at a different ``alat`` is:
 
@@ -218,7 +218,7 @@ def scale_num_mcmc_per_measurement(
     Parameters
     ----------
     nmpm_ref : int
-        Calibrated ``num_mcmc_per_measurement`` at ``alat_ref``.
+        Calibrated ``num_projection_per_measurement`` at ``alat_ref``.
     alat_ref : float
         Reference lattice spacing (bohr).
     alat : float
@@ -227,7 +227,7 @@ def scale_num_mcmc_per_measurement(
     Returns
     -------
     int
-        Scaled ``num_mcmc_per_measurement`` (rounded up to nearest even
+        Scaled ``num_projection_per_measurement`` (rounded up to nearest even
         integer, minimum 2).
     """
     raw = nmpm_ref * (alat_ref / alat) ** 2

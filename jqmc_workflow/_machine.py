@@ -112,7 +112,8 @@ class Machine:
         ssh_config = paramiko.SSHConfig()
         config_file = os.path.join(os.getenv("HOME"), ".ssh/config")
         try:
-            ssh_config.parse(open(config_file, "r"))
+            with open(config_file, "r") as fh:
+                ssh_config.parse(fh)
         except FileNotFoundError:
             logger.error(f"SSH config file ({config_file}) is required.")
             raise
@@ -157,6 +158,9 @@ class Machine:
                 if proxy_flag:
                     kwargs["sock"] = paramiko.ProxyCommand(proxy_command)
                 self.ssh.connect(**kwargs)
+                # Enable SSH keepalive so the client detects dead connections
+                # early instead of discovering them at close() time.
+                self.ssh.get_transport().set_keepalive(30)
                 logger.info(f"  SSH connected (attempt {tt + 1})")
                 break
             except paramiko.ssh_exception.SSHException:
@@ -172,25 +176,21 @@ class Machine:
     def ssh_close(self):
         if self.machine_type != "remote" or not self.ssh_status:
             return
-        max_retries = 3
         timeout_sec = 5.0
 
-        for obj_name, obj in [("ssh", self.ssh), ("sftp", self.sftp)]:
-            for attempt in range(1, max_retries + 1):
-                executor = ThreadPoolExecutor(max_workers=1)
-                future = executor.submit(obj.close)
-                try:
-                    future.result(timeout=timeout_sec)
-                    logger.debug(f"{obj_name}.close() ok (attempt {attempt})")
-                    break
-                except Exception as e:
-                    logger.warning(f"{obj_name}.close() attempt {attempt}: {e.__class__.__name__}: {e}")
-                    if attempt == max_retries:
-                        logger.error(f"{obj_name}.close() failed after {max_retries} attempts")
-                        raise ValueError(f"Cannot close {obj_name}")
-                    time.sleep(1)
-                finally:
-                    executor.shutdown(wait=False, cancel_futures=True)
+        for obj_name, obj in [("sftp", self.sftp), ("ssh", self.ssh)]:
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(obj.close)
+            try:
+                future.result(timeout=timeout_sec)
+                logger.debug(f"{obj_name}.close() ok")
+            except Exception as e:
+                logger.warning(f"{obj_name}.close() failed ({e.__class__.__name__}: {e}) — abandoning")
+                future.cancel()
+            finally:
+                # wait=False: the close thread may be stuck on a dead connection;
+                # waiting would hang forever (the reason we timed out in the first place).
+                executor.shutdown(wait=False)
 
         del self.ssh
         del self.sftp
@@ -198,11 +198,13 @@ class Machine:
 
     # ── Properties (read from machine_data.yaml) ──────────────────
 
-    def _get(self, key, default=None):
+    _MISSING = object()  # sentinel for _get() default detection
+
+    def _get(self, key, default=_MISSING):
         try:
             return self.data[key]
         except KeyError:
-            if default is not None:
+            if default is not self._MISSING:
                 return default
             raise KeyError(f"'{key}' not found for machine '{self.name}'")
 
@@ -315,9 +317,13 @@ class Machine:
     def _run_remote(self, command_r: str):
         self.ssh_open()
         _, pstdout, pstderr = self.ssh.exec_command(command=command_r)
-        exit_status = pstdout.channel.recv_exit_status()
-        stdout = pstdout.read().decode("utf-8").strip()
-        stderr = pstderr.read().decode("utf-8").strip()
+        try:
+            exit_status = pstdout.channel.recv_exit_status()
+            stdout = pstdout.read().decode("utf-8").strip()
+            stderr = pstderr.read().decode("utf-8").strip()
+        finally:
+            pstdout.close()
+            pstderr.close()
         if exit_status != 0:
             logger.error(f"Remote command failed: {command_r}")
             logger.error(f"stdout={stdout}")
@@ -340,7 +346,9 @@ class Machine:
                     raise RuntimeError(f"SFTP lstat failed for '{path}'")
                 time.sleep(1)
             finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+                # wait=False: the lstat thread may be stuck on a dead connection;
+                # waiting would hang forever.
+                executor.shutdown(wait=False)
 
     def is_file(self, file_name: str) -> bool:
         if self.machine_type == "local":
@@ -357,7 +365,10 @@ class Machine:
     def exist(self, object_name: str) -> bool:
         if self.machine_type == "local":
             return os.path.exists(object_name)
-        fileattr = self._sftp_lstat_with_retry(object_name)
+        try:
+            fileattr = self._sftp_lstat_with_retry(object_name)
+        except (RuntimeError, OSError):
+            return False
         return stat.S_ISDIR(fileattr.st_mode) or stat.S_ISREG(fileattr.st_mode)
 
     # ── Job list queries ──────────────────────────────────────────
@@ -380,8 +391,8 @@ class Machines_handler:
     The client is always localhost — only one Machine (server) is needed.
     """
 
-    def __init__(self, server_machine_name: str):
-        self.server_machine = Machine(server_machine_name)
+    def __init__(self, machine: Machine):
+        self.server_machine = machine
 
     def ssh_close(self):
         self.server_machine.ssh_close()
@@ -478,3 +489,53 @@ class Machines_handler:
                 self._get_sftp_dir(from_path, to_path, exclude_patterns)
             else:
                 self._get_sftp_file(from_path, to_path, exclude_patterns)
+
+
+# ── Machine catalog (MCP adapter helpers) ─────────────────────────
+
+
+def list_machines() -> list[dict]:
+    """Return a summary of all machines defined in ``machine_data.yaml``.
+
+    Each entry contains the machine name and key configuration fields.
+    Returns an empty list if the config file does not exist.
+    """
+    machine_data_path = os.path.join(get_config_dir(), "machine_data.yaml")
+    if not os.path.isfile(machine_data_path):
+        return []
+    with open(machine_data_path) as f:
+        data = yaml.safe_load(f)
+    if not data:
+        return []
+    return [
+        {
+            "name": name,
+            "machine_type": cfg.get("machine_type", "local"),
+            "queuing": cfg.get("queuing", False),
+            "ssh_host": cfg.get("ssh_host", ""),
+            "workspace_root": cfg.get("workspace_root", ""),
+        }
+        for name, cfg in data.items()
+    ]
+
+
+def probe_environment(machine_name: str) -> dict:
+    """Test connectivity to the named machine.
+
+    For remote machines an SSH connection is attempted; for local machines
+    reachability is always ``True``.  No software detection (jqmc, JAX, etc.)
+    is performed — that responsibility belongs to the MCP agent.
+    """
+    machine = Machine(machine_name)
+    result: dict = {"machine_name": machine_name, "machine_type": machine.machine_type}
+    try:
+        if machine.machine_type == "remote":
+            machine.ssh_open()
+        result["reachable"] = True
+    except Exception as e:
+        result["reachable"] = False
+        result["error"] = str(e)
+    finally:
+        if machine.machine_type == "remote" and machine.ssh_status:
+            machine.ssh_close()
+    return result

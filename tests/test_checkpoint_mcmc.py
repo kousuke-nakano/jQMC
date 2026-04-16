@@ -289,8 +289,8 @@ class TestMCMCSaveLoadRoundtrip:
         merged = _save_merge(mcmc, self.hd, self.tmp_path)
         mcmc2 = MCMC.load_from_hdf5(merged, rank=0)
 
-        np.testing.assert_array_equal(np.asarray(mcmc2.de_L_dR), np.asarray(mcmc.de_L_dR))
-        np.testing.assert_array_equal(np.asarray(mcmc2.dln_Psi_dR), np.asarray(mcmc.dln_Psi_dR))
+        np.testing.assert_array_equal(np.asarray(mcmc2.force_HF_stored), np.asarray(mcmc.force_HF_stored))
+        np.testing.assert_array_equal(np.asarray(mcmc2.force_PP_stored), np.asarray(mcmc.force_PP_stored))
 
 
 # ---------------------------------------------------------------------------

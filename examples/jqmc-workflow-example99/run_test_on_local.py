@@ -41,7 +41,7 @@ from jqmc_workflow import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────
-SERVER = "localhost"
+SERVER = "cluster"
 QUEUE_LABEL = "qM"
 
 # Tiny parameters for fast local testing
@@ -53,6 +53,7 @@ TARGET_LRDMC_ERROR = 0.005  # very loose
 ALAT = 0.30  # LRDMC lattice spacing (bohr)
 
 R_VALUES = [0.74, 1.00]
+R_VALUES = [0.74]
 
 # pySCF script template
 PYSCF_TEMPLATE = '''\
@@ -173,12 +174,13 @@ def build_pipeline() -> list[Container]:
                     "method": "sr",
                     "delta": 0.100,
                     "epsilon": 0.100,
-                    "adaptive_learning_rate": True,
+                    "use_lm": True,
                 },
                 max_time=600,
                 poll_interval=120,
                 max_continuation=2,
-                target_snr=10.0,
+                target_snr=None,
+                energy_slope_sigma_threshold=None,
             ),
         )
 

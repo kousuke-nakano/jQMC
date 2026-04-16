@@ -45,6 +45,7 @@ import subprocess
 from logging import getLogger
 from typing import List, Optional
 
+from ._state import WorkflowStatus
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -160,7 +161,19 @@ class WF_Workflow(Workflow):
 
         return shlex.join(cmd)
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        return {
+            "trexio_file": self.trexio_file,
+            "hamiltonian_file": self.hamiltonian_file,
+            "j1_parameter": self.j1_parameter,
+            "j1_type": self.j1_type,
+            "j2_parameter": self.j2_parameter,
+            "j2_type": self.j2_type,
+            "j3_basis_type": self.j3_basis_type,
+        }
+
+    async def run(self) -> tuple:
         """Run the TREXIO→hamiltonian conversion (locally).
 
         Returns
@@ -188,15 +201,15 @@ class WF_Workflow(Workflow):
                 logger.warning(f"stderr: {result.stderr}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed (rc={e.returncode}): {e.stderr}")
-            self.status = "failed"
+            self.status = WorkflowStatus.FAILED
             return self.status, [], {}
 
         if not os.path.isfile(os.path.join(_wd, self.hamiltonian_file)):
             logger.error(f"Output file not found: {self.hamiltonian_file}")
-            self.status = "failed"
+            self.status = WorkflowStatus.FAILED
             return self.status, [], {}
 
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         self.output_files = [self.hamiltonian_file]
         self.output_values = {"hamiltonian_file": self.hamiltonian_file}
         return self.status, self.output_files, self.output_values

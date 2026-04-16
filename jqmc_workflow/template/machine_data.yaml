@@ -4,14 +4,25 @@
 # Remote machines also require: ssh_host (Host alias in ~/.ssh/config).
 # The top-level key (e.g., "my-cluster") is a nickname; it does NOT have to match the SSH host.
 
+# Local execution without a batch scheduler (synchronous).
+# queuing: false  ->  bash runs submit.sh synchronously; no PID tracking needed.
 localhost:
   machine_type: local
-  queuing: true
+  queuing: false
   workspace_root: /home/username/jqmc_work
-  jobsubmit: /opt/pbs/bin/qsub
-  jobcheck: /opt/pbs/bin/qstat
-  jobdel: /opt/pbs/bin/qdel
-  jobnum_index: 0
+  jobsubmit: "bash"
+
+# Local execution without a batch scheduler (asynchronous / background).
+# queuing: true   ->  bash launches submit.sh in the background and prints PID;
+#                     ps -eo pid= is used to poll; kill to cancel.
+# localhost-async:
+#   machine_type: local
+#   queuing: true
+#   workspace_root: /home/username/jqmc_work
+#   jobsubmit: "bash -c 'bash \"$1\" &>/dev/null & echo $!' --"
+#   jobcheck: "ps -eo pid="
+#   jobdel: "kill"
+#   jobnum_index: 0
 
 # Example remote machine (PBS):
 # my-pbs-cluster:

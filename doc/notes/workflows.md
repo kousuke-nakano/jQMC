@@ -41,13 +41,13 @@ run_pipeline.py
      │  creates asyncio.Task per ready node
      │
      ├──► Container("vmc")
-     │         └─► VMC_Workflow.async_launch()
+     │         └─► VMC_Workflow.configure() → .run()
      │
      ├──► Container("mcmc-prod")   ← runs in parallel
-     │         └─► MCMC_Workflow.async_launch()
+     │         └─► MCMC_Workflow.configure() → .run()
      │
      └──► Container("lrdmc-ext")   ← runs in parallel
-               └─► LRDMC_Ext_Workflow.async_launch()
+               └─► LRDMC_Ext_Workflow.configure() → .run()
                        ├─► LRDMC_Workflow (alat=0.50)  ┐
                        ├─► LRDMC_Workflow (alat=0.40)  ├ parallel
                        └─► LRDMC_Workflow (alat=0.25)  ┘
@@ -55,9 +55,9 @@ run_pipeline.py
 
 ### Key components
 
-| Class | Role |
+| Class / Module | Role |
 |---|---|
-| `Launcher` | Executes a DAG of `Container` nodes in topological order, launching independent nodes in parallel. |
+| `Launcher` | Executes a DAG of `Container` nodes in topological order, launching independent nodes in parallel. Provides `get_session_state()`, `get_current_job()`, `get_job_history()` for session introspection. |
 | `Container` | Wraps any `Workflow` subclass in a dedicated project directory with state tracking (`workflow_state.toml`). |
 | `FileFrom` / `ValueFrom` | Declare inter-workflow dependencies (files or computed values). |
 | `WF_Workflow` | Converts a TREXIO file to `hamiltonian_data.h5`. |
@@ -65,6 +65,125 @@ run_pipeline.py
 | `MCMC_Workflow` | Production energy sampling (`job_type=mcmc`). |
 | `LRDMC_Workflow` | Lattice-regularized diffusion Monte Carlo for a single $a$ value. |
 | `LRDMC_Ext_Workflow` | Runs multiple `LRDMC_Workflow` instances at different lattice spacings and performs $a^2 \to 0$ extrapolation. |
+| `ScientificPhase` | Enum defining the scientific phases of a workflow session (INIT → SCF → WF_BUILD → VMC → MCMC → LRDMC → COMPLETED). See [Phase management](#phase-management). |
+| `WorkflowStatus` / `JobStatus` | Enums for workflow-level and per-job status values. See [Status enums](#status-enums). |
+
+
+### Inter-workflow data passing (`FileFrom` / `ValueFrom`)
+
+`FileFrom` and `ValueFrom` declare inter-workflow dependencies inside a
+`Container` definition.  At launch time, the `Launcher` resolves them
+to actual paths or values.
+
+#### `FileFrom(label, filename)`
+
+Pass a **file** produced by an upstream workflow.  `filename` can be:
+
+- A **static string** — when the exact name is known at definition time:
+
+  ```python
+  FileFrom("vmc", "hamiltonian_data_opt_step_9.h5")
+  ```
+
+- A **`ValueFrom` object** — when the name is determined at runtime
+  (e.g. VMC early convergence produces a step number that cannot be
+  predicted):
+
+  ```python
+  FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian"))
+  ```
+
+  Here the `ValueFrom` is resolved first, yielding the actual basename
+  (e.g. `"hamiltonian_data_opt_step_91.h5"`), which is then used to
+  locate the file in the upstream directory.
+
+> **Important: file renaming.**  When a dynamic `FileFrom` resolves to
+> a name that differs from what the downstream workflow expects (e.g.
+> `hamiltonian_data_opt_step_91.h5` vs. `hamiltonian_data.h5`), use
+> `rename_input_files` to map it to the expected name.  Entries of
+> `None` keep the original name.  A pre-launch validation check will
+> raise `FileNotFoundError` **before any job is submitted** if required
+> files are missing.
+>
+> ```python
+> Container(
+>     label="mcmc",
+>     dirname="02_mcmc",
+>     input_files=[
+>         FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian")),
+>     ],
+>     rename_input_files=["hamiltonian_data.h5"],
+>     workflow=MCMC_Workflow(...),
+> )
+> ```
+>
+> With multiple input files, use `None` to skip renaming for specific entries:
+>
+> ```python
+> input_files=[h5, FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian"))],
+> rename_input_files=[None, "hamiltonian_data.h5"],
+> ```
+
+#### `ValueFrom(label, key)`
+
+Pass a **scalar value** from an upstream workflow's `output_values`
+dict.  The available keys depend on the workflow class — see the
+table below.
+
+#### Available `output_values` keys
+
+Each workflow populates `output_values` on completion.  These keys
+can be referenced by downstream workflows via
+`ValueFrom("label", "key")`.
+
+##### `VMC_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `optimized_hamiltonian` | `str` | Basename of the last optimised Hamiltonian file (e.g. `"hamiltonian_data_opt_step_91.h5"`). |
+| `checkpoint` | `str` | Basename of the restart checkpoint file. |
+| `num_mcmc_steps` | `int` | Estimated MCMC steps per optimisation step (automatic mode). |
+| `estimated_mcmc_steps` | `int` | Same as above, in fixed-step mode. |
+| `energy` | `float` | Energy from the last optimisation step (Ha). |
+| `energy_error` | `float` | Statistical error on `energy` (Ha). |
+| `signal_to_noise` | `float` | Average S/N over the trailing window (force convergence only). |
+| `signal_to_noise_last` | `float` | S/N of the last optimisation step. |
+| `energy_slope` | `float` | Slope of energy vs. step (energy-slope check only). |
+| `energy_slope_std` | `float` | Standard deviation of the energy slope. |
+
+##### `MCMC_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `energy` | `float` | VMC energy (Ha). |
+| `energy_error` | `float` | Statistical error on `energy` (Ha). |
+| `restart_chk` | `str` | Basename of the restart checkpoint file. |
+| `forces` | `object` | Atomic forces (only when `atomic_force=True`). SWCT is applied when `use_swct=True`. |
+| `num_mcmc_steps` | `int` | Estimated total measurement steps (automatic mode). |
+| `estimated_steps` | `int` | Same as above, in fixed-step mode. |
+
+##### `LRDMC_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `energy` | `float` | DMC energy (Ha). |
+| `energy_error` | `float` | Statistical error on `energy` (Ha). |
+| `alat` | `float` | Lattice spacing used for this run. |
+| `restart_chk` | `str` | Basename of the restart checkpoint file. |
+| `forces` | `object` | Atomic forces (only when `atomic_force=True`). SWCT is applied when `use_swct=True`. |
+| `estimated_steps` | `int` | Estimated total measurement steps. |
+| `num_projection_per_measurement` | `int` | GFMC projections per measurement (GFMC_n mode only). |
+| `time_projection_tau` | `float` | Imaginary-time projection step (GFMC_t mode only). |
+
+##### `LRDMC_Ext_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `extrapolated_energy` | `float` | Continuum-limit ($a^2 \to 0$) extrapolated energy (Ha). |
+| `extrapolated_energy_error` | `float` | Statistical error on `extrapolated_energy` (Ha). |
+| `per_alat_results` | `dict` | Per-alat energy/error results. |
+| `errors` | `list[str]` | Error messages for alat runs that failed. |
+| `error` | `str` | Top-level error message (only on failure). |
 
 
 ### Target error-bar estimation
@@ -81,28 +200,132 @@ via `pilot_queue_label` (defaults to `queue_label`).
 #### LRDMC
 
 LRDMC has an additional calibration stage to automatically determine
-`num_mcmc_per_measurement` (GFMC projections per measurement) from
+`num_projection_per_measurement` (GFMC projections per measurement) from
 a `target_survived_walkers_ratio` (default 0.97):
 
 1. **Calibration** (`_pilot_a/_pilot1` – `_pilot_a/_pilot3`, parallel) —
    Three short LRDMC runs with
-   `num_mcmc_per_measurement = Ne × k × (0.3/alat)²` (k=2,4,6;
+   `num_projection_per_measurement = Ne × k × (0.3/alat)²` (k=2,4,6;
    $N_e$ is the total electron count).  A quadratic is fit to the
    observed survived-walkers ratio and the optimal
-   `num_mcmc_per_measurement` is determined.
+   `num_projection_per_measurement` is determined.
 2. **Error-bar pilot** (`_pilot_b`) — A run with the calibrated
-   `num_mcmc_per_measurement`; its error bar estimates the production
+   `num_projection_per_measurement`; its error bar estimates the production
    step count.
 3. **Production** (`_1`, `_2`, …) — Start from scratch, accumulate
    statistics until `target_error` is achieved.
 
-If `num_mcmc_per_measurement` is given explicitly, the calibration
+If `num_projection_per_measurement` is given explicitly, the calibration
 stage is skipped and only the error-bar pilot is executed.
 
 For `LRDMC_Ext_Workflow` (multi-alat extrapolation), every alat value
 independently runs its own calibration, error-bar pilot, and production
 in parallel.  There is no inter-alat interaction until the final
 extrapolation step.
+
+#### AO basis optimization
+
+`VMC_Workflow` supports optimizing the atomic-orbital (AO) Gaussian
+basis parameters alongside Jastrow / orbital coefficients.  Four
+boolean flags control which basis parameters are included in the
+optimization:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `opt_J3_basis_exp` | `False` | Optimize J3 (three-body Jastrow) AO Gaussian exponents |
+| `opt_J3_basis_coeff` | `False` | Optimize J3 AO contraction coefficients |
+| `opt_lambda_basis_exp` | `False` | Optimize Geminal AO Gaussian exponents |
+| `opt_lambda_basis_coeff` | `False` | Optimize Geminal AO contraction coefficients |
+
+`opt_lambda_basis_exp` and `opt_lambda_basis_coeff` cannot be combined
+with `opt_with_projected_MOs` (changing Geminal AO exponents/coefficients
+invalidates the overlap matrix used by the MO projection).
+`opt_J3_basis_exp` and `opt_J3_basis_coeff` **can** be used together
+with `opt_with_projected_MOs`.
+
+Primitives belonging to the same shell (same atom, same $l$, same
+initial radial parameters) are constrained to share identical values
+throughout optimization.  See {ref}`sec_opt_wf` for details on the
+shell-sharing constraint mechanism.
+
+When set, the corresponding parameters are passed through to the
+jqmc input TOML via `resolve_with_defaults()`.  When left as `None`
+(the default), the jqmc binary applies its own defaults (`false`).
+
+#### VMC convergence checks
+
+After all production runs complete, the VMC workflow checks whether
+the optimization has converged.  Two independent criteria are
+available; when both are active, both must pass for convergence.
+
+##### Signal-to-noise (S/N) check
+
+Enabled when `target_snr` is set (not `None`).  The workflow
+averages the signal-to-noise ratio (S/N = max(|f| / |std f|)) over
+the last `snr_avg_window` optimization steps (default 5).  If there
+are fewer steps than the window size, all available values are used.
+
+The convergence criterion is:
+
+$$
+\overline{\text{S/N}}_{\text{last } W} \le \text{target\_snr}
+$$
+
+where $W$ is `snr_avg_window`.
+
+##### Energy-slope check
+
+Enabled when `energy_slope_sigma_threshold` is set (not `None`).
+A weighted linear regression is fitted to the last
+`energy_slope_window_size` optimisation steps (default 5):
+
+$$
+E_k = a + b \cdot k + \varepsilon_k, \quad w_k = 1/\sigma_k^2
+$$
+
+The optimisation is considered converged (plateau) when the slope
+$b$ is not significantly negative:
+
+$$
+b \ge -\sigma_b \times \text{energy\_slope\_sigma\_threshold}
+$$
+
+If instead $b < -\sigma_b \times \text{threshold}$, the energy is
+still decreasing and optimisation has not yet plateaued.
+
+##### Combined verdict
+
+| `target_snr` | `energy_slope_sigma_threshold` | Behaviour |
+|:---:|:---:|:---|
+| `None` | `None` | No convergence check; always succeeds |
+| set | `None` | S/N check only |
+| `None` | set | Energy-slope check only |
+| set | set | Both must pass |
+
+All numerical values (averaged S/N, slope, slope std) are recorded
+in `output_values` for downstream inspection.
+
+In fixed-step mode (`num_mcmc_steps` is set), the convergence checks
+are not performed.
+
+##### Early exit on convergence
+
+When convergence criteria are set, the VMC production loop exits
+early as soon as all active checks pass, instead of always running
+the full `max_continuation` steps.  This avoids wasting compute
+time once the optimization has plateaued.
+
+On re-runs with changed criteria (e.g. lowering `target_snr`),
+convergence is re-evaluated from the fetched results before
+submitting new jobs.  If the existing results already satisfy the
+new criteria, the workflow completes immediately without launching
+additional runs.
+
+When no convergence criterion is set (`target_snr = None` and
+`energy_slope_sigma_threshold = None`), all `max_continuation`
+steps run unconditionally.  If convergence is **not** achieved
+after exhausting all production steps, the workflow returns
+`FAILED`.
 
 #### Step estimation formula
 
@@ -163,6 +386,51 @@ If it exceeds the target, additional steps are estimated and a
 continuation run is launched automatically, up to `max_continuation`
 times.
 
+#### Target error not met
+
+If `max_continuation` runs complete but the statistical error still
+exceeds `target_error`, the workflow logs a **warning** and returns
+`COMPLETED` (not `FAILED`).  The calculation itself succeeded; only
+the error-bar criterion was not fully met.  This applies to both
+`MCMC_Workflow` and `LRDMC_Workflow`.
+
+#### Continuation with tighter target error
+
+When re-running a pipeline with a stricter `target_error` (e.g.
+lowering from `1e-3` to `5e-4`), the workflow detects that the
+cached error from previous runs exceeds the new target and
+automatically re-estimates additional steps from the accumulated
+data.  Continuation runs are launched from where the previous
+execution left off, up to `max_continuation`.
+
+
+### Pre-launch validation
+
+Before any job is submitted, the engine verifies that all required
+files are present in the project directory.  Every resolved entry in
+`input_files` (after renaming) must exist.  Workflow-internal files
+(e.g. `hamiltonian_file`) are **not** checked because some workflows
+(e.g. `WF_Workflow`) *produce* them rather than consume them.
+
+If any file is missing, a `FileNotFoundError` is raised immediately
+with a message listing the missing files:
+
+```text
+FileNotFoundError: [mcmc-N2-0.80] Required file(s) missing in '05_mcmc/'
+before workflow launch: ['hamiltonian_data.h5'].
+Check that input_files and rename_input_files are configured correctly.
+```
+
+This catches misconfigured `rename_input_files` (e.g. a dynamic
+`FileFrom` + `ValueFrom` that produces `hamiltonian_data_opt_step_91.h5`
+but the workflow expects `hamiltonian_data.h5`) before wasting
+compute resources.
+
+Additionally, when the project directory already exists from a
+previous interrupted run, any input files that are missing (but
+available from the source) are automatically copied in.  Existing
+files are not overwritten.
+
 
 ### Restart behavior
 
@@ -182,6 +450,205 @@ On restart, the engine checks each job's status:
 This means a pipeline can be interrupted at any point (Ctrl-C, node
 failure, wall-time limit) and simply re-run; it will pick up exactly
 where it left off.
+
+When a job leaves the scheduler queue, the engine automatically collects
+**job accounting** data (if `jobacct` is configured in `machine_data.yaml`)
+before fetching output files.  The accounting command and output file
+path are stored in the corresponding `[[jobs]]` record.  See
+[Job accounting](#job-accounting).
+
+
+### Phase management
+
+A workflow session progresses through a sequence of **scientific phases**
+defined by the `ScientificPhase` enum (module `_phase`):
+
+```text
+INIT → SCF → WF_BUILD → VMC_PILOT → VMC → MCMC_PILOT → MCMC
+                                                         ↓
+                        COMPLETED ← LRDMC_FIT ← LRDMC ← LRDMC_PILOT
+```
+
+Not every pipeline uses every phase (e.g. a VMC-only pipeline skips
+LRDMC phases).  The allowed transitions are defined in
+`PHASE_TRANSITIONS` — for example, from `VMC` you may advance to
+`MCMC_PILOT`, `MCMC`, `LRDMC_PILOT`, `LRDMC`, or `COMPLETED`.
+
+Each phase has a list of **allowed actions** (`PHASE_ALLOWED_ACTIONS`)
+that further depends on the current `WorkflowStatus`:
+
+- When `status == RUNNING`, configuration actions (`configure_*`) are
+  filtered out.
+- When `status == FAILED`, only recovery actions (`recover_*`) and
+  `rollback_phase` are available.
+
+A set of **always-allowed actions** (`advance_phase`, `rollback_phase`,
+`close_session`, `register_artifact`, `mark_unhealthy`) is appended
+regardless of phase/status.
+
+The `require_action()` function enforces these rules at the boundary
+between an MCP tool call and a workflow method — if the action is not
+permitted, a `ValueError` is raised immediately.
+
+
+### Status enums
+
+Workflow status and job status are represented by `str`-based enums
+(`WorkflowStatus`, `JobStatus`) so they remain human-readable in
+`workflow_state.toml` and can be compared directly with strings.
+
+**WorkflowStatus** values:
+
+| Value | Meaning |
+|---|---|
+| `pending` | Not yet started |
+| `copying` | Input files being transferred |
+| `submitted` | Job submitted to scheduler |
+| `running` | Execution in progress |
+| `completed` | Finished successfully |
+| `failed` | Terminated with an error |
+| `cancelled` | Manually cancelled |
+
+**JobStatus** values (per-job, stored in `[[jobs]]` of
+`workflow_state.toml`):
+
+| Value | Meaning |
+|---|---|
+| `submitted` | Job submitted |
+| `completed` | Job finished (output not yet fetched) |
+| `fetched` | Output files retrieved |
+| `failed` | Job failed |
+
+Each `[[jobs]]` record contains:
+
+| Field | Description |
+|---|---|
+| `input_file` | Basename of the generated TOML input file (`input_{jobname}_{step}_{run_id}.toml`) |
+| `output_file` | Basename of the stdout capture file (`output_{jobname}_{step}_{run_id}.out`) |
+| `job_id` | Scheduler job ID (or `"local"` for local runs) |
+| `server_machine` | Machine name |
+| `status` | One of the `JobStatus` values above |
+| `submitted_at` | ISO 8601 timestamp |
+| `step` | Step index (0 = pilot, 1, 2, … = production) |
+| `run_id` | Short hex identifier for the job |
+| `completed_at` | ISO 8601 timestamp (set on completion) |
+| `fetched_at` | ISO 8601 timestamp (set on fetch) |
+| `job_stdout` | Scheduler stdout path (queuing systems only) |
+| `job_stderr` | Scheduler stderr path (queuing systems only) |
+| `job_acct_command` | Accounting command executed (queuing systems only) |
+| `job_acct_file` | Path to raw accounting output file (queuing systems only) |
+
+
+### Artifact registry
+
+The engine records file lineage in the `[[artifacts]]` array of
+`workflow_state.toml`.  Each entry tracks:
+
+| Field | Description |
+|---|---|
+| `filename` | Basename of the artifact file |
+| `produced_by_job` | Input file that produced this artifact |
+| `produced_at` | ISO 8601 timestamp |
+| `artifact_type` | `"file"` (default) |
+| `upstream` | Optional list of `{label, file}` dicts tracing the dependency chain |
+
+Use `register_artifact()` to add an entry, `get_artifact_lineage()` to
+look up a single file, and `get_artifact_registry()` to list all
+artifacts.
+
+
+### Input staleness detection
+
+When a `Container` completes successfully, it records the **SHA-256
+content hash** of each input file in the `[input_fingerprints]`
+section of `workflow_state.toml`.  On subsequent runs, if the container
+is already `completed` or `running`, the engine compares the current
+input files against the recorded fingerprints.
+
+If any input has changed (e.g. an upstream VMC produced a new optimised
+wavefunction), the engine logs a warning:
+
+```text
+WARNING: Inputs have changed but previous results are still present.
+Delete 'mcmc_prod/' to re-run with the updated inputs.
+```
+
+The container is **not** automatically re-run — the user must
+manually delete the stale directory.  This conservative approach
+avoids the risk of mixing old and new job data on the remote server.
+
+Staleness is tracked per-file by SHA-256 content hashing.  If an
+upstream workflow re-runs but produces a byte-identical output file,
+no warning is triggered.
+
+
+### Error recording
+
+When a workflow fails, the `[error]` section of `workflow_state.toml`
+is populated via `set_error()`:
+
+```toml
+[error]
+message = "Job killed after 86400s"
+exception_type = "RuntimeError"
+traceback = "..."
+```
+
+The engine records raw data only — failure classification and recovery
+strategy are responsibilities of external tooling (e.g. an MCP agent).
+
+
+### Job accounting
+
+For queuing systems (PBS, Slurm, Fujitsu TCS, etc.), the engine can
+collect scheduler accounting data after a job leaves the queue.  This
+is configured via the optional `jobacct` field in `machine_data.yaml`
+(see [machine_data.yaml parameters](#parameters)).
+
+The engine executes `{jobacct} {job_id}` and writes the raw output to
+a separate file `job_accounting_{job_id}.txt`.  The accounting command
+and file path are stored per-job in the `[[jobs]]` record:
+
+```toml
+[[jobs]]
+input_file = "input_vmc-H2-0.74_1_aebf13bd.toml"
+output_file = "output_vmc-H2-0.74_1_aebf13bd.out"
+job_id = "12345"
+server_machine = "my-cluster"
+status = "fetched"
+step = 1
+run_id = "aebf13bd"
+job_stdout = "job_vmc-H2-0.74.o"
+job_stderr = "job_vmc-H2-0.74.e"
+job_acct_command = "sacct -j 12345 --format=State,ExitCode,MaxRSS,Elapsed -P"
+job_acct_file = "job_accounting_12345.txt"
+```
+
+No parsing or interpretation is performed — that responsibility belongs
+to external tooling.  If `jobacct` is not configured, the
+`job_acct_command` and `job_acct_file` fields are simply absent.
+
+
+### Session state queries
+
+The `Launcher` provides three methods for programmatic introspection
+(useful for MCP adapters and monitoring tools):
+
+| Method | Returns |
+|---|---|
+| `get_session_state()` | Dict with per-workflow summaries, dependency graph, and progress counters (completed / failed / running / pending / total). |
+| `get_current_job()` | The first workflow with status `running` or `submitted`, or `None`. |
+| `get_job_history()` | Flat, chronologically-sorted list of all jobs across all workflows. |
+
+
+### Machine catalog
+
+Two helper functions are available for machine discovery:
+
+| Function | Description |
+|---|---|
+| `list_machines()` | Returns a list of dicts summarising all machines defined in `machine_data.yaml` (name, machine_type, queuing, ssh_host, workspace_root). |
+| `probe_environment(machine_name)` | Tests connectivity to the named machine (SSH for remote, always reachable for local). Returns `{"reachable": True/False, ...}`. |
 
 
 ## Configuration
@@ -235,6 +702,29 @@ my-cluster:                          # nickname (freely chosen)
   jobcheck: /opt/pbs/bin/qstat
   jobdel: /opt/pbs/bin/qdel
   jobnum_index: 0
+  jobacct: /opt/pbs/bin/qstat -xf
+
+my-slurm:                            # Slurm example
+  ssh_host: slurm-cluster
+  machine_type: remote
+  queuing: true
+  workspace_root: /home/user/jqmc_work
+  jobsubmit: sbatch
+  jobcheck: squeue --noheader
+  jobdel: scancel
+  jobnum_index: 3
+  jobacct: sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader
+
+my-fujitsu:                          # Fujitsu TCS example
+  ssh_host: fujitsu
+  machine_type: remote
+  queuing: true
+  workspace_root: /home/user/jqmc_work
+  jobsubmit: /usr/local/bin/pjsub
+  jobcheck: /usr/local/bin/pjstat
+  jobdel: /usr/local/bin/pjdel
+  jobnum_index: 5
+  jobacct: pjstat -H -s --choose jid,st,ec,elp,pc --data
 ```
 
 #### Parameters
@@ -249,6 +739,7 @@ my-cluster:                          # nickname (freely chosen)
 | `jobcheck` | String (command) | When `queuing: true` | Command to check job status (e.g. `qstat`, `squeue --noheader`, `pjstat`). |
 | `jobdel` | String (command) | When `queuing: true` | Command to cancel a job (e.g. `qdel`, `scancel`, `pjdel`). |
 | `jobnum_index` | Integer | When `queuing: true` | 0-based column index of the job ID in the output of `jobsubmit`. For PBS (`42.server`), use `0`. For Slurm (`Submitted batch job 42`), use `3`. |
+| `jobacct` | String (command) | No | Scheduler accounting command **with flags**. The engine executes `{jobacct} {job_id}` after a job leaves the queue and saves the raw output to `job_accounting_{job_id}.txt`. No parsing is performed. Examples: `sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader` (Slurm), `qstat -xf` (PBS), `pjstat -H -s --choose jid,st,ec,elp,pc --data` (Fujitsu TCS). If omitted, no accounting data is collected. |
 | `ip` | String | No | IP address or hostname of the remote machine. Usually the SSH alias in `~/.ssh/config` is used instead. |
 
 #### SSH connection
@@ -321,11 +812,27 @@ You can name the file anything you like (e.g. `submit_gpu.sh`).
 
 #### Predefined variables
 
-| Variable | Description |
-|---|---|
-| `_INPUT_` | Path to the input file |
-| `_OUTPUT_` | Path to the output file |
-| `_JOBNAME_` | Job name |
+| Variable | Description | Default |
+|---|---|---|
+| `_INPUT_` | Path to the jqmc input TOML file | (set by workflow) |
+| `_OUTPUT_` | Path to the jqmc stdout+stderr capture file | `"out.o"` |
+| `_JOBNAME_` | Job name | `"jqmc-wf"` |
+| `_JOB_STDOUT_` | Path for the **scheduler** stdout file (e.g. PBS `-o`, Slurm `--output`) | `"job_{jobname}.o"` |
+| `_JOB_STDERR_` | Path for the **scheduler** stderr file (e.g. PBS `-e`, Slurm `--error`) | `"job_{jobname}.e"` |
+
+`_JOB_STDOUT_` and `_JOB_STDERR_` allow the engine to track where the
+scheduler writes its output, which is useful for failure diagnosis.
+If these placeholders are not present in the template the scheduler's
+default naming convention is used (backward-compatible).
+The file paths are recorded per-job in the `[[jobs]]` records of
+`workflow_state.toml` (as `job_stdout` and `job_stderr`).
+
+> **Note:** `job_stdout` and `job_stderr` are treated as **optional**
+> during fetch.  If the files do not exist on the remote server (e.g.
+> the job script template does not include `#SBATCH --output` /
+> `#SBATCH --error` directives), the engine logs a warning and
+> continues instead of raising an error.  All other output files
+> remain mandatory.
 
 #### Custom variables
 
@@ -341,12 +848,34 @@ surrounding underscores. For example, `num_cores = 48` becomes
 #PBS -q _QUEUE_
 #PBS -l nodes=_NODES_:ppn=_MPI_PER_NODE_
 #PBS -l walltime=_MAX_TIME_
+#PBS -o _JOB_STDOUT_
+#PBS -e _JOB_STDERR_
 
 export OMP_NUM_THREADS=_OMP_NUM_THREADS_
 INPUT=_INPUT_
 OUTPUT=_OUTPUT_
 
+cd ${PBS_O_WORKDIR}
 mpirun -np _NUM_CORES_ jqmc ${INPUT} > ${OUTPUT} 2>&1
+```
+
+#### Example (`submit_mpi.sh` for Slurm)
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=_JOBNAME_
+#SBATCH --partition=_QUEUE_
+#SBATCH --nodes=_NODES_
+#SBATCH --ntasks=_NUM_CORES_
+#SBATCH --time=_MAX_TIME_
+#SBATCH --output=_JOB_STDOUT_
+#SBATCH --error=_JOB_STDERR_
+
+export OMP_NUM_THREADS=_OMP_NUM_THREADS_
+INPUT=_INPUT_
+OUTPUT=_OUTPUT_
+
+srun jqmc ${INPUT} > ${OUTPUT} 2>&1
 ```
 
 #### Example (`submit_serial.sh`)
@@ -357,11 +886,14 @@ mpirun -np _NUM_CORES_ jqmc ${INPUT} > ${OUTPUT} 2>&1
 #PBS -q _QUEUE_
 #PBS -l nodes=_NODES_
 #PBS -l walltime=_MAX_TIME_
+#PBS -o _JOB_STDOUT_
+#PBS -e _JOB_STDERR_
 
 export OMP_NUM_THREADS=_OMP_NUM_THREADS_
 INPUT=_INPUT_
 OUTPUT=_OUTPUT_
 
+cd ${PBS_O_WORKDIR}
 jqmc ${INPUT} > ${OUTPUT} 2>&1
 ```
 
@@ -403,8 +935,9 @@ mcmc = Container(
     dirname="mcmc_prod",
     input_files=[
         h5,
-        FileFrom("vmc", "hamiltonian_data_opt_step_*.h5"),
+        FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian")),
     ],
+    rename_input_files=[None, "hamiltonian_data.h5"],
     workflow=MCMC_Workflow(
         server_machine_name=server,
         hamiltonian_file=h5,
@@ -420,7 +953,7 @@ lrdmc = Container(
     dirname="lrdmc_ext",
     input_files=[
         h5,
-        FileFrom("vmc", "hamiltonian_data_opt_step_*.h5"),
+        FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian")),
     ],
     workflow=LRDMC_Ext_Workflow(
         server_machine_name=server,
@@ -440,10 +973,13 @@ pipeline.launch()
 ```
 
 In this example, `mcmc-prod` and `lrdmc-ext` depend on `vmc` (via
-`FileFrom`).  Additionally, `lrdmc-ext` depends on `mcmc-prod` (via
-`ValueFrom` for `E_scf`), so the DAG becomes
+`FileFrom`).  The optimised Hamiltonian filename is resolved
+dynamically through `ValueFrom("vmc", "optimized_hamiltonian")`,
+so the pipeline works correctly even when VMC converges early
+(e.g. step 91 instead of 150).  Additionally, `lrdmc-ext` depends on
+`mcmc-prod` (via `ValueFrom` for `E_scf`), so the DAG becomes
 VMC → MCMC → LRDMC-ext.  The `target_survived_walkers_ratio`
-triggers automatic calibration of `num_mcmc_per_measurement`
+triggers automatic calibration of `num_projection_per_measurement`
 independently at each lattice spacing.  All alat values run their
 calibration, error-bar pilot, and production phases in parallel.
 

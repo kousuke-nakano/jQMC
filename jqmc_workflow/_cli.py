@@ -274,15 +274,19 @@ class Monitor:
             from ._machine import Machine
 
             machine = Machine(server)
-            job_list_text = machine.get_job_list_as_text()
+            try:
+                job_list_text = machine.get_job_list_as_text()
 
-            found = any(stored_job_id in line for line in job_list_text)
-            if found:
-                logger.info(f"  Job {stored_job_id} is RUNNING on {server}.")
-            else:
-                logger.info(f"  Job {stored_job_id} is NOT in the queue on {server}.")
-                logger.info(f"  (it may have finished or been cancelled)")
-            machine.ssh_close()
+                # PBS may store "1428989.opbs" but qstat shows "1428989".
+                jid_short = stored_job_id.split(".")[0]
+                found = any(stored_job_id in line or jid_short in line for line in job_list_text)
+                if found:
+                    logger.info(f"  Job {stored_job_id} is RUNNING on {server}.")
+                else:
+                    logger.info(f"  Job {stored_job_id} is NOT in the queue on {server}.")
+                    logger.info(f"  (it may have finished or been cancelled)")
+            finally:
+                machine.ssh_close()
         except Exception as ex:
             logger.error(f"  Failed to check job on {server}: {ex}")
 
@@ -308,9 +312,11 @@ class Monitor:
                 from ._machine import Machine
 
                 machine = Machine(server)
-                result = machine.delete_job(stored_job_id)
-                logger.info(f"  Queue response: {' '.join(result)}")
-                machine.ssh_close()
+                try:
+                    result = machine.delete_job(stored_job_id)
+                    logger.info(f"  Queue response: {' '.join(result)}")
+                finally:
+                    machine.ssh_close()
             except Exception as ex:
                 logger.error(f"  Failed to delete job on {server}: {ex}")
 

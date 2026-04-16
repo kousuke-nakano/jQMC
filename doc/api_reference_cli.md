@@ -49,6 +49,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `Dt`                       |        `2.0` | MCMC step size (Bohr).                                                                                                                                                                                                                        |
 | `epsilon_AS`               |        `0.0` | ε parameter for the Attaccalite–Sorella regularization.                                                                                                                                                                                       |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                                                                                                                             |
+| `use_swct`                 |       `true` | If `true`, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is `true` for MCMC.                                                                                                                                    |
 
 ---
 
@@ -64,12 +65,17 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `epsilon_AS`               |        `0.0` | ε for Attaccalite–Sorella regularization.                                                                            |
 | `num_opt_steps`            | **required** | Number of optimization iterations.                                                                                   |
 | `wf_dump_freq`             |          `1` | Write wavefunction/Hamiltonian checkpoint every this many optimization steps.                                        |
-| `optimizer_kwargs`         | `{ "method": "sr", "delta": 0.01, "epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration or to an optax optimizer name (e.g., `"adam"`). `delta`/`epsilon` control SR step size and regularization; `cg_*` entries tune the SR conjugate-gradient solver. Any additional keys are forwarded to optax when `method` ≠ `"sr"`. |
-| `opt_J1_param`             |      `false` | Optimize J1 parameters.                                                                                              |
+| `optimizer_kwargs`         | `{ "method": "sr", "delta": 0.01, "epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration or to an optax optimizer name (e.g., `"adam"`). For `method = "sr"`: `delta`/`epsilon` control step size and regularization; `cg_*` entries tune the conjugate-gradient solver. To use the linear method, set `method = "sr"` with `use_lm = true`; `delta` controls the learning rate, `epsilon` controls SR regularization, `lm_subspace_dim` (default `0`) sets the LM subspace dimension (`0`=aSR, `>0`=LM with top-N params, `-1`=all params), and `lm_cond` (default `0.001`) sets the dgelscut correlation matrix min eigenvalue threshold (condition number ≤ 1/lm_cond). Any additional keys are forwarded to optax when `method` is an optax optimizer name. |
+| `opt_J1_param`             |       `true` | Optimize J1 parameters.                                                                                              |
 | `opt_J2_param`             |       `true` | Optimize J2 parameters.                                                                                              |
 | `opt_J3_param`             |       `true` | Optimize J3 parameters.                                                                                              |
+| `opt_JNN_param`            |      `false` | Optimize neural-network Jastrow parameters.                                                                          |
 | `opt_lambda_param`         |      `false` | Optimize geminal (λ) parameters.                                                                                     |
-| `num_param_opt`            |          `0` | Number of parameters to optimize, chosen in descending order of \|f\| / std(f). If `0`, optimize **all** parameters. |
+| `opt_with_projected_MOs`   |      `false` | If `true`, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. |
+| `opt_J3_basis_exp`         |      `false` | Optimize J3 AO Gaussian exponents. Can be combined with `opt_with_projected_MOs`. |
+| `opt_J3_basis_coeff`       |      `false` | Optimize J3 AO contraction coefficients. Can be combined with `opt_with_projected_MOs`. |
+| `opt_lambda_basis_exp`     |      `false` | Optimize Geminal AO Gaussian exponents (up and down spins, concatenated). Cannot be combined with `opt_with_projected_MOs`. |
+| `opt_lambda_basis_coeff`   |      `false` | Optimize Geminal AO contraction coefficients (up and down spins, concatenated). Cannot be combined with `opt_with_projected_MOs`. |
 
 ---
 
@@ -86,6 +92,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_gfmc_collect_steps`   |          `0` | Number of pre-binning measurements used to collect/accumulate weights.                                                                 |
 | `E_scf`                    |        `0.0` | Initial total-energy guess used to set the initial GFMC energy shift.                                                                  |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                      |
+| `use_swct`                 |      `false` | If `true`, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is `false` for LRDMC.                           |
 | `epsilon_PW`               |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---
@@ -102,6 +109,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_gfmc_bin_blocks`    |          `1` | Binning blocks for GFMC (total binned blocks = `num_gfmc_bin_blocks`). |
 | `num_gfmc_collect_steps` |          `0` | Pre-binning measurement count for weight collection.                   |
 | `atomic_force`           |      `false` | If `true`, compute atomic forces.                                      |
+| `use_swct`               |      `false` | If `true`, apply SWCT to atomic forces. Default is `false` for LRDMC.  |
 | `epsilon_PW`             |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---

@@ -192,6 +192,7 @@ def _cli():
             handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
+
     # print header
     _print_header()
 
@@ -224,6 +225,9 @@ def _cli():
         logger.info("*** XLA Local devices recognized by JAX***")
         logger.info(local_device_info)
         logger.info("")
+
+    # JAX environment info
+    logger.debug(jax.print_environment_info(return_string=True))
 
     logger.info(f"Input file = {toml_file}")
     if not all([type(value) is dict for value in dict_toml.values()]):
@@ -285,6 +289,7 @@ def _cli():
         Dt = parameters[section]["Dt"]
         epsilon_AS = parameters[section]["epsilon_AS"]
         atomic_force = parameters[section]["atomic_force"]
+        use_swct = parameters[section]["use_swct"]
         parameter_derivatives = parameters[section]["parameter_derivatives"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
@@ -309,7 +314,10 @@ def _cli():
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=atomic_force,
                 comput_log_WF_param_deriv=parameter_derivatives,
+                use_swct=use_swct,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        mcmc.hamiltonian_data._logger_info()
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -390,7 +398,10 @@ def _cli():
         opt_JNN_param = parameters[section]["opt_JNN_param"]
         opt_lambda_param = parameters[section]["opt_lambda_param"]
         opt_with_projected_MOs = parameters[section]["opt_with_projected_MOs"]
-        num_param_opt = parameters[section]["num_param_opt"]
+        opt_J3_basis_exp = parameters[section]["opt_J3_basis_exp"]
+        opt_J3_basis_coeff = parameters[section]["opt_J3_basis_coeff"]
+        opt_lambda_basis_exp = parameters[section]["opt_lambda_basis_exp"]
+        opt_lambda_basis_coeff = parameters[section]["opt_lambda_basis_coeff"]
         optimizer_kwargs = parameters[section]["optimizer_kwargs"]
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
@@ -417,9 +428,8 @@ def _cli():
         if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
             raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
-        _use_asr = optimizer_kwargs.get("method", "sr").lower() == "sr" and bool(
-            optimizer_kwargs.get("adaptive_learning_rate", False)
-        )
+        _method = optimizer_kwargs.get("method", "sr").lower()
+        _need_eL_deriv = _method == "sr" and bool(optimizer_kwargs.get("use_lm", False))
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
@@ -436,8 +446,10 @@ def _cli():
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=False,
                 comput_log_WF_param_deriv=True,
-                comput_e_L_param_deriv=_use_asr,
+                comput_e_L_param_deriv=_need_eL_deriv,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        mcmc.hamiltonian_data._logger_info()
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -450,7 +462,10 @@ def _cli():
             opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
             opt_with_projected_MOs=opt_with_projected_MOs,
-            num_param_opt=num_param_opt,
+            opt_J3_basis_exp=opt_J3_basis_exp,
+            opt_J3_basis_coeff=opt_J3_basis_coeff,
+            opt_lambda_basis_exp=opt_lambda_basis_exp,
+            opt_lambda_basis_coeff=opt_lambda_basis_coeff,
             max_time=max_time,
             optimizer_kwargs=optimizer_kwargs,
         )
@@ -503,6 +518,7 @@ def _cli():
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         E_scf = parameters[section]["E_scf"]
         atomic_force = parameters[section]["atomic_force"]
+        use_swct = parameters[section]["use_swct"]
         epsilon_PW = parameters[section]["epsilon_PW"]
 
         # Enforce GFMC minimum thresholds (E_scf unreliable before step 25)
@@ -541,7 +557,10 @@ def _cli():
                 non_local_move=non_local_move,
                 comput_position_deriv=atomic_force,
                 epsilon_PW=epsilon_PW,
+                use_swct=use_swct,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
@@ -614,6 +633,7 @@ def _cli():
         num_gfmc_bin_blocks = parameters[section]["num_gfmc_bin_blocks"]
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         atomic_force = parameters[section]["atomic_force"]
+        use_swct = parameters[section]["use_swct"]
         epsilon_PW = parameters[section]["epsilon_PW"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
@@ -639,7 +659,10 @@ def _cli():
                 non_local_move=non_local_move,
                 comput_position_deriv=atomic_force,
                 epsilon_PW=epsilon_PW,
+                use_swct=use_swct,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,

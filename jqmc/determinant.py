@@ -49,9 +49,11 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit, vmap
 
+from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
+    ShellPrimMap,
     _aos_cart_to_sphe,
     _aos_sphe_to_cart,
     compute_AOs,
@@ -60,7 +62,6 @@ from .atomic_orbital import (
     compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
-from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -154,6 +155,82 @@ class Geminal_data:
         for line in self._get_info():
             logger.info(line)
 
+    # --- AO basis property accessors (for basis optimization) ---
+
+    @property
+    def ao_exponents_up(self) -> jax.Array:
+        """AO Gaussian exponents for spin-up orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_up_spin.exponents
+        elif isinstance(self.orb_data_up_spin, MOs_data):
+            return self.orb_data_up_spin.aos_data.exponents
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+
+    @property
+    def ao_exponents_dn(self) -> jax.Array:
+        """AO Gaussian exponents for spin-down orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_dn_spin.exponents
+        elif isinstance(self.orb_data_dn_spin, MOs_data):
+            return self.orb_data_dn_spin.aos_data.exponents
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+
+    @property
+    def ao_coefficients_up(self) -> jax.Array:
+        """AO contraction coefficients for spin-up orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_up_spin.coefficients
+        elif isinstance(self.orb_data_up_spin, MOs_data):
+            return self.orb_data_up_spin.aos_data.coefficients
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+
+    @property
+    def ao_coefficients_dn(self) -> jax.Array:
+        """AO contraction coefficients for spin-down orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_dn_spin.coefficients
+        elif isinstance(self.orb_data_dn_spin, MOs_data):
+            return self.orb_data_dn_spin.aos_data.coefficients
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+
+    def _replace_orb_exponents(self, orb_data, new_exp):
+        """Helper to replace exponents in an orb_data (AO or MO)."""
+        if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return orb_data.replace(exponents=new_exp)
+        elif isinstance(orb_data, MOs_data):
+            new_aos = orb_data.aos_data.replace(exponents=new_exp)
+            return orb_data.replace(aos_data=new_aos)
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+
+    def _replace_orb_coefficients(self, orb_data, new_coeff):
+        """Helper to replace coefficients in an orb_data (AO or MO)."""
+        if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return orb_data.replace(coefficients=new_coeff)
+        elif isinstance(orb_data, MOs_data):
+            new_aos = orb_data.aos_data.replace(coefficients=new_coeff)
+            return orb_data.replace(aos_data=new_aos)
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+
+    def with_updated_ao_exponents(self, new_exp_up: jax.Array, new_exp_dn: jax.Array) -> "Geminal_data":
+        """Return a new instance with updated AO exponents for both spins."""
+        return self.replace(
+            orb_data_up_spin=self._replace_orb_exponents(self.orb_data_up_spin, new_exp_up),
+            orb_data_dn_spin=self._replace_orb_exponents(self.orb_data_dn_spin, new_exp_dn),
+        )
+
+    def with_updated_ao_coefficients(self, new_coeff_up: jax.Array, new_coeff_dn: jax.Array) -> "Geminal_data":
+        """Return a new instance with updated AO contraction coefficients for both spins."""
+        return self.replace(
+            orb_data_up_spin=self._replace_orb_coefficients(self.orb_data_up_spin, new_coeff_up),
+            orb_data_dn_spin=self._replace_orb_coefficients(self.orb_data_dn_spin, new_coeff_dn),
+        )
+
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Geminal_data":
         """Apply a single variational-parameter block update to this Geminal object.
 
@@ -170,8 +247,11 @@ class Geminal_data:
           geminal parameters.
         * Handle the splitting of a rectangular lambda matrix into paired and
           unpaired parts when needed.
-        * Enforce Geminal-specific structural constraints, especially the
-          symmetry conditions on the paired block of the lambda matrix.
+        * Enforce Geminal-specific structural constraints by calling the
+          callback returned by :meth:`get_symmetrize_metric`.  Both the
+          decision and the enforcement are fully encapsulated in that
+          method, which is the single source of truth for all symmetry
+          operations.
 
         All details about how the lambda parameters are stored and constrained
         live here (and in the surrounding ``Geminal_data`` class), not in
@@ -181,37 +261,97 @@ class Geminal_data:
         construction in ``Wavefunction_data.get_variational_blocks`` and adding
         the corresponding handling in this method.
         """
-        if block.name != "lambda_matrix":
-            return self
+        if block.name == "lambda_matrix":
+            lambda_new = np.array(block.values)
 
-        lambda_old = np.array(self.lambda_matrix)
-        lambda_new = np.array(block.values)
+            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
+            lambda_new = self.symmetrize_lambda(lambda_new)
 
-        # If the paired part of lambda_matrix is symmetric, keep it symmetric
-        # after the update. The unpaired block (if any) is left as-is.
-        # Use the actual matrix shape to decide: square means no unpaired columns.
-        if lambda_old.shape[0] == lambda_old.shape[1]:
-            # Full square matrix: check and enforce symmetry on the whole block.
-            if np.allclose(lambda_old, lambda_old.T, atol=atol_consistency, rtol=rtol_consistency):
-                lambda_new = 0.5 * (lambda_new + lambda_new.T)
-        else:
-            # Rectangular: split into paired (square) and unpaired parts.
-            n_paired_cols = lambda_old.shape[0]  # paired block is (n_row, n_row)
-            paired_old, unpaired_old = np.hsplit(lambda_old, [n_paired_cols])
-            paired_new, unpaired_new = np.hsplit(lambda_new, [n_paired_cols])
+            return Geminal_data(
+                num_electron_up=self.num_electron_up,
+                num_electron_dn=self.num_electron_dn,
+                orb_data_up_spin=self.orb_data_up_spin,
+                orb_data_dn_spin=self.orb_data_dn_spin,
+                lambda_matrix=lambda_new,
+            )
+        elif block.name == "lambda_basis_exp":
+            vals = np.asarray(block.values, dtype=np.float64)
+            vals = self._symmetrize_ao_basis(vals)
+            vals = jnp.asarray(vals, dtype=jnp.float64)
+            n_up = len(self.ao_exponents_up)
+            new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
+            return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
+        elif block.name == "lambda_basis_coeff":
+            vals = np.asarray(block.values, dtype=np.float64)
+            vals = self._symmetrize_ao_basis(vals)
+            vals = jnp.asarray(vals, dtype=jnp.float64)
+            n_up = len(self.ao_coefficients_up)
+            new_coeff_up, new_coeff_dn = vals[:n_up], vals[n_up:]
+            return self.with_updated_ao_coefficients(new_coeff_up, new_coeff_dn)
 
-            if np.allclose(paired_old, paired_old.T, atol=atol_consistency, rtol=rtol_consistency):
-                paired_new = 0.5 * (paired_new + paired_new.T)
+        return self
 
-            lambda_new = np.hstack([paired_new, unpaired_new])
+    def _symmetrize_ao_basis(self, arr: np.ndarray) -> np.ndarray:
+        """Average within same-atom same-shell primitive groups (up + dn concatenated).
 
-        return Geminal_data(
-            num_electron_up=self.num_electron_up,
-            num_electron_dn=self.num_electron_dn,
-            orb_data_up_spin=self.orb_data_up_spin,
-            orb_data_dn_spin=self.orb_data_dn_spin,
-            lambda_matrix=lambda_new,
+        This is the single source of truth for shell-sharing constraints
+        on AO basis exponents/coefficients in the Geminal.
+        """
+        from .wavefunction import _get_aos_data
+
+        spm = ShellPrimMap.concat(
+            ShellPrimMap.from_aos_data(_get_aos_data(self.orb_data_up_spin)),
+            ShellPrimMap.from_aos_data(_get_aos_data(self.orb_data_dn_spin)),
         )
+        return spm.symmetrize(arr)
+
+    def symmetrize_lambda(self, mat):
+        """Symmetrize a lambda matrix and return it, or return it unchanged.
+
+        If the current ``lambda_matrix`` (or its paired sub-block for
+        rectangular layouts) is symmetric within ``atol_consistency`` /
+        ``rtol_consistency``, this method enforces ``0.5*(A+A.T)`` on
+        the corresponding block and returns the symmetrized 2-D matrix.
+        Otherwise the input matrix is returned unchanged.
+
+        This method is the **single source of truth** for all symmetry
+        operations on the lambda matrix.  Both
+        :meth:`apply_block_update` (parameter enforcement) and the MCMC
+        driver (SN-metric symmetrization, selection-mask expansion)
+        use this method, so the symmetry logic is never duplicated.
+        (The MCMC driver wraps it with flatten/unflatten in
+        :meth:`~Wavefunction_data.get_variational_blocks`.)
+
+        .. note::
+
+           When molecular or crystal spatial symmetry is incorporated in
+           the future, **only this method** needs to be extended (e.g. to
+           average over a symmetry-group orbit) — every call site
+           automatically follows.
+
+        Args:
+            mat: 2-D lambda matrix to symmetrize.
+
+        Returns:
+            Symmetrized matrix, or the input unchanged if no symmetry applies.
+        """
+        if self.lambda_matrix is None:
+            return mat
+        lam = np.asarray(self.lambda_matrix)
+        if lam.ndim != 2:
+            return mat
+        if lam.shape[0] == lam.shape[1]:
+            if np.allclose(lam, lam.T, atol=atol_consistency, rtol=rtol_consistency):
+                return 0.5 * (mat + mat.T)
+        else:
+            n_paired = lam.shape[0]
+            paired = lam[:, :n_paired]
+            if np.allclose(paired, paired.T, atol=atol_consistency, rtol=rtol_consistency):
+                out = mat.copy()
+                p = out[:, :n_paired]
+                out[:, :n_paired] = 0.5 * (p + p.T)
+                return out
+        return mat
 
     def accumulate_position_grad(self, grad_geminal: "Geminal_data"):
         """Aggregate position gradients from geminal-related structures."""
@@ -227,6 +367,11 @@ class Geminal_data:
         grads: dict[str, any] = {}
         if hasattr(grad_geminal, "lambda_matrix"):
             grads["lambda_matrix"] = grad_geminal.lambda_matrix
+        # AO basis gradients (up + dn concatenated along the parameter axis)
+        grads["lambda_basis_exp"] = jnp.concatenate([grad_geminal.ao_exponents_up, grad_geminal.ao_exponents_dn], axis=-1)
+        grads["lambda_basis_coeff"] = jnp.concatenate(
+            [grad_geminal.ao_coefficients_up, grad_geminal.ao_coefficients_dn], axis=-1
+        )
         return grads
 
     @property

@@ -118,7 +118,10 @@ opt_J3_param = false
 opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 optimizer_kwargs = { method = "adam" }
 ```
 
@@ -209,6 +212,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).

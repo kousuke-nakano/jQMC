@@ -46,6 +46,16 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import (  # noqa: E402
+    atol_auto_vs_analytic_deriv,
+    atol_auto_vs_numerical_deriv,
+    atol_consistency,
+    atol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
+    rtol_auto_vs_numerical_deriv,
+    rtol_consistency,
+    rtol_debug_vs_production,
+)
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
@@ -69,18 +79,9 @@ from jqmc.determinant import (  # noqa: E402
     compute_ln_det_geminal_all_elements_fast,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    atol_consistency,
-    atol_debug_vs_production,
-    rtol_auto_vs_analytic_deriv,
-    rtol_auto_vs_numerical_deriv,
-    rtol_consistency,
-    rtol_debug_vs_production,
-)
 from jqmc.structure import Structure_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -1486,6 +1487,234 @@ def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
         )
 
     jax.clear_caches()
+
+
+# ---------------------------------------------------------------------------
+# L1: Unit tests for Geminal_data.symmetrize_lambda
+# ---------------------------------------------------------------------------
+
+
+def _make_geminal_with_lambda(lam, num_up=1, num_dn=1):
+    """Build a minimal Geminal_data whose lambda_matrix is *lam*.
+
+    Only the fields inspected by ``symmetrize_lambda`` are populated;
+    orbital data are left as default (unused in that method).
+    """
+    return Geminal_data(
+        num_electron_up=num_up,
+        num_electron_dn=num_dn,
+        lambda_matrix=np.asarray(lam, dtype=np.float64),
+    )
+
+
+def test_symmetrize_lambda_square_symmetric():
+    """L1-1: square symmetric lambda → 0.5*(mat+mat.T)."""
+    rng = np.random.RandomState(0)
+    n = 5
+    lam_sym = rng.randn(n, n)
+    lam_sym = 0.5 * (lam_sym + lam_sym.T)  # make symmetric
+    gd = _make_geminal_with_lambda(lam_sym)
+
+    mat = rng.randn(n, n)  # intentionally non-symmetric input
+    result = gd.symmetrize_lambda(mat)
+    expected = 0.5 * (mat + mat.T)
+    np.testing.assert_allclose(result, expected)
+    np.testing.assert_allclose(result, result.T)
+
+
+def test_symmetrize_lambda_square_nonsymmetric():
+    """L1-2: square non-symmetric lambda → no-op."""
+    rng = np.random.RandomState(1)
+    n = 5
+    lam_nonsym = rng.randn(n, n)
+    lam_nonsym[0, 1] = 100.0  # force asymmetry
+    gd = _make_geminal_with_lambda(lam_nonsym)
+
+    mat = rng.randn(n, n)
+    result = gd.symmetrize_lambda(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+def test_symmetrize_lambda_rect_paired_symmetric():
+    """L1-3: rectangular lambda, paired sub-block symmetric → only paired part symmetrized."""
+    rng = np.random.RandomState(2)
+    n_up = 3
+    n_extra = 2
+    n_cols = n_up + n_extra  # 5
+    paired = rng.randn(n_up, n_up)
+    paired = 0.5 * (paired + paired.T)
+    unpaired = rng.randn(n_up, n_extra)
+    lam_rect = np.column_stack([paired, unpaired])
+    gd = _make_geminal_with_lambda(lam_rect, num_up=n_up + n_extra, num_dn=n_up)
+
+    mat = rng.randn(n_up, n_cols)
+    result = gd.symmetrize_lambda(mat)
+    # paired part should be symmetrized
+    np.testing.assert_allclose(result[:, :n_up], result[:, :n_up].T)
+    # unpaired part should be unchanged
+    np.testing.assert_array_equal(result[:, n_up:], mat[:, n_up:])
+
+
+def test_symmetrize_lambda_rect_paired_nonsymmetric():
+    """L1-4: rectangular lambda, paired sub-block non-symmetric → no-op."""
+    rng = np.random.RandomState(3)
+    n_up = 3
+    n_extra = 2
+    paired = rng.randn(n_up, n_up)
+    paired[0, 1] = 100.0  # force asymmetry
+    unpaired = rng.randn(n_up, n_extra)
+    lam_rect = np.column_stack([paired, unpaired])
+    gd = _make_geminal_with_lambda(lam_rect, num_up=n_up + n_extra, num_dn=n_up)
+
+    mat = rng.randn(n_up, n_up + n_extra)
+    result = gd.symmetrize_lambda(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+def test_symmetrize_lambda_none():
+    """L1-5: lambda_matrix=None → no-op."""
+    gd_none = Geminal_data(lambda_matrix=None)
+    mat = np.random.RandomState(4).randn(3, 3)
+    result = gd_none.symmetrize_lambda(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+def test_symmetrize_lambda_1d():
+    """L1-6: 1-D lambda (ndim!=2) → no-op."""
+    gd = _make_geminal_with_lambda(np.array([1.0, 2.0, 3.0]))
+    mat = np.random.RandomState(5).randn(3, 3)
+    result = gd.symmetrize_lambda(mat)
+    np.testing.assert_array_equal(result, mat)
+
+
+# ---------------------------------------------------------------------------
+# L2: apply_block_update symmetry preservation for Geminal_data
+# ---------------------------------------------------------------------------
+
+
+def test_apply_block_update_square_symmetric_preserved():
+    """L2-1: symmetric square lambda stays symmetric after non-symmetric delta."""
+    rng = np.random.RandomState(10)
+    n = 5
+    lam_sym = rng.randn(n, n)
+    lam_sym = 0.5 * (lam_sym + lam_sym.T)
+    gd = _make_geminal_with_lambda(lam_sym)
+
+    delta = rng.randn(n, n)  # intentionally non-symmetric
+    lr = 0.1
+    updated_values = lam_sym + lr * delta
+    block = VariationalParameterBlock(
+        name="lambda_matrix", values=updated_values, shape=updated_values.shape, size=updated_values.size
+    )
+    new_gd = gd.apply_block_update(block)
+    new_lam = np.asarray(new_gd.lambda_matrix)
+    np.testing.assert_allclose(new_lam, new_lam.T, atol=1e-15)
+
+
+def test_apply_block_update_square_nonsymmetric_free():
+    """L2-2: non-symmetric lambda is not symmetrized after update."""
+    rng = np.random.RandomState(11)
+    n = 5
+    lam_nonsym = rng.randn(n, n)
+    lam_nonsym[0, 1] = 100.0
+    gd = _make_geminal_with_lambda(lam_nonsym)
+
+    updated_values = lam_nonsym + 0.1 * rng.randn(n, n)
+    block = VariationalParameterBlock(
+        name="lambda_matrix", values=updated_values, shape=updated_values.shape, size=updated_values.size
+    )
+    new_gd = gd.apply_block_update(block)
+    new_lam = np.asarray(new_gd.lambda_matrix)
+    # Should be the raw updated values (not symmetrized)
+    np.testing.assert_allclose(new_lam, updated_values)
+
+
+def test_apply_block_update_rect_paired_symmetric_preserved():
+    """L2-3: rectangular lambda, paired part stays symmetric after non-symmetric delta."""
+    rng = np.random.RandomState(12)
+    n_up = 4
+    n_extra = 2
+    paired = rng.randn(n_up, n_up)
+    paired = 0.5 * (paired + paired.T)
+    unpaired = rng.randn(n_up, n_extra)
+    lam_rect = np.column_stack([paired, unpaired])
+    gd = _make_geminal_with_lambda(lam_rect, num_up=n_up + n_extra, num_dn=n_up)
+
+    delta = rng.randn(n_up, n_up + n_extra)
+    lr = 0.1
+    updated_values = lam_rect + lr * delta
+    block = VariationalParameterBlock(
+        name="lambda_matrix", values=updated_values, shape=updated_values.shape, size=updated_values.size
+    )
+    new_gd = gd.apply_block_update(block)
+    new_lam = np.asarray(new_gd.lambda_matrix)
+    np.testing.assert_allclose(new_lam[:, :n_up], new_lam[:, :n_up].T, atol=1e-15)
+
+
+@pytest.mark.parametrize("num_walkers", [1, 2, 4])
+def test_collect_param_grads_walker_shapes(num_walkers):
+    """collect_param_grads must concatenate up/dn along the parameter axis, not walkers."""
+    rng = np.random.default_rng(42)
+
+    # -- build two different AO bases for up / dn spins --
+    def _make_aos(num_prim, seed):
+        r = np.random.default_rng(seed)
+        sd = Structure_data(
+            pbc_flag=False,
+            positions=np.zeros((1, 3)),
+            atomic_numbers=(1,),
+            element_symbols=("X",),
+            atomic_labels=("X",),
+        )
+        return AOs_sphe_data(
+            structure_data=sd,
+            nucleus_index=tuple([0] * num_prim),
+            num_ao=num_prim,
+            num_ao_prim=num_prim,
+            orbital_indices=tuple(range(num_prim)),
+            exponents=jnp.array(r.uniform(0.5, 2.0, num_prim)),
+            coefficients=jnp.array(r.uniform(0.5, 1.5, num_prim)),
+            angular_momentums=tuple([0] * num_prim),
+            magnetic_quantum_numbers=tuple([0] * num_prim),
+        )
+
+    num_prim_up, num_prim_dn = 5, 3
+    aos_up = _make_aos(num_prim_up, seed=10)
+    aos_dn = _make_aos(num_prim_dn, seed=20)
+
+    geminal = Geminal_data(
+        num_electron_up=2,
+        num_electron_dn=2,
+        orb_data_up_spin=aos_up,
+        orb_data_dn_spin=aos_dn,
+        lambda_matrix=rng.standard_normal((num_prim_up, num_prim_dn)),
+    )
+
+    # -- simulate vmap-batched gradient (walker dim prepended on pytree leaves) --
+    grad_lambda = jnp.array(rng.standard_normal((num_walkers, num_prim_up, num_prim_dn)))
+    grad_exp_up = jnp.array(rng.standard_normal((num_walkers, num_prim_up)))
+    grad_exp_dn = jnp.array(rng.standard_normal((num_walkers, num_prim_dn)))
+    grad_coeff_up = jnp.array(rng.standard_normal((num_walkers, num_prim_up)))
+    grad_coeff_dn = jnp.array(rng.standard_normal((num_walkers, num_prim_dn)))
+
+    grad_geminal = geminal.replace(
+        lambda_matrix=grad_lambda,
+        orb_data_up_spin=aos_up.replace(exponents=grad_exp_up, coefficients=grad_coeff_up),
+        orb_data_dn_spin=aos_dn.replace(exponents=grad_exp_dn, coefficients=grad_coeff_dn),
+    )
+
+    grads = geminal.collect_param_grads(grad_geminal)
+
+    # -- shape checks --
+    assert grads["lambda_matrix"].shape == (num_walkers, num_prim_up, num_prim_dn)
+    assert grads["lambda_basis_exp"].shape == (num_walkers, num_prim_up + num_prim_dn)
+    assert grads["lambda_basis_coeff"].shape == (num_walkers, num_prim_up + num_prim_dn)
+
+    # -- value checks: up part then dn part along last axis --
+    np.testing.assert_array_equal(grads["lambda_basis_exp"][:, :num_prim_up], grad_exp_up)
+    np.testing.assert_array_equal(grads["lambda_basis_exp"][:, num_prim_up:], grad_exp_dn)
+    np.testing.assert_array_equal(grads["lambda_basis_coeff"][:, :num_prim_up], grad_coeff_up)
+    np.testing.assert_array_equal(grads["lambda_basis_coeff"][:, num_prim_up:], grad_coeff_dn)
 
 
 if __name__ == "__main__":

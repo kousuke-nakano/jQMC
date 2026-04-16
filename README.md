@@ -10,7 +10,7 @@
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
 ![short-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
 ![full-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
-![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg?token=H0Z7M86C1E)
+![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg)
 ![DL](https://img.shields.io/pypi/dm/jqmc)
 ![python_version](https://img.shields.io/pypi/pyversions/jqmc)
 ![pypi_version](https://badge.fury.io/py/jqmc.svg)
@@ -34,7 +34,6 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 ## Known issues
 - On CPUs, **`jQMC` is slower than other QMC packages written in compiled languages (e.g., C++ or Fortran). On GPUs, however, `jQMC` achieves performance comparable to (or even faster than) compiled-language QMC codes**, thanks to `JAX`'s just-in-time compilation and hardware-level optimizations. Please use **GPUs** with a large number of walkers to fully exploit the performance.
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
-- During VMC optimization, `JAX` `jit`-compiled functions are recompiled at each optimization step, resulting in significant overhead. We are actively working on resolving this issue as quickly as possible.
 
 
 ## Ongoing works
