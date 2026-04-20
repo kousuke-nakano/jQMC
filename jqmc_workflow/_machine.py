@@ -87,6 +87,7 @@ class Machine:
 
         self.__name = machine
         self.ssh_status = False
+        self._proxy_cmd = None  # track ProxyCommand for cleanup
 
         # Validate ssh_host for remote machines
         if self.machine_type == "remote" and "ssh_host" not in self.data:
@@ -96,7 +97,46 @@ class Machine:
                 f"Please add 'ssh_host' (e.g. the Host alias in ~/.ssh/config)."
             )
 
+    def __del__(self):
+        """Safety net: clean up SSH resources if not explicitly closed."""
+        try:
+            if getattr(self, "ssh_status", False):
+                self.ssh_close()
+        except Exception:
+            pass
+
     # ── SSH management ──────────────────────────────────────────────
+
+    @staticmethod
+    def _kill_proxy_process(proxy_cmd):
+        """Force-kill a ProxyCommand subprocess and close its pipe FDs.
+
+        paramiko's ProxyCommand.close() only sends SIGTERM without
+        wait() or closing pipes, leaving zombie processes and leaked
+        file descriptors.  This method ensures full cleanup.
+        """
+        if proxy_cmd is None:
+            return
+        proc = getattr(proxy_cmd, "process", None)
+        if proc is None:
+            return
+        # Close pipe file descriptors first
+        for pipe in (proc.stdin, proc.stdout, proc.stderr):
+            if pipe is not None:
+                try:
+                    pipe.close()
+                except Exception:
+                    pass
+        # Kill the process (SIGKILL — SIGTERM may be ignored)
+        try:
+            proc.kill()
+        except OSError:
+            pass  # already dead
+        # Reap the zombie so the PID is released
+        try:
+            proc.wait(timeout=3)
+        except Exception:
+            pass
 
     def ssh_open(self):
         if self.machine_type != "remote":
@@ -149,6 +189,7 @@ class Machine:
         self.ssh.load_system_host_keys()
 
         for tt in range(self.ssh_retry_max_num):
+            proxy_cmd = None
             try:
                 kwargs = dict(
                     hostname=hostname,
@@ -156,14 +197,18 @@ class Machine:
                     key_filename=key_filename,
                 )
                 if proxy_flag:
-                    kwargs["sock"] = paramiko.ProxyCommand(proxy_command)
+                    proxy_cmd = paramiko.ProxyCommand(proxy_command)
+                    kwargs["sock"] = proxy_cmd
                 self.ssh.connect(**kwargs)
                 # Enable SSH keepalive so the client detects dead connections
                 # early instead of discovering them at close() time.
                 self.ssh.get_transport().set_keepalive(30)
+                self._proxy_cmd = proxy_cmd  # save reference for cleanup
                 logger.info(f"  SSH connected (attempt {tt + 1})")
                 break
             except paramiko.ssh_exception.SSHException:
+                # Clean up the ProxyCommand from this failed attempt
+                self._kill_proxy_process(proxy_cmd)
                 logger.warning(f"SSH connect failed (attempt {tt + 1}). Retrying in {self.ssh_retry_time}s.")
                 time.sleep(self.ssh_retry_time)
                 if tt == self.ssh_retry_max_num - 1:
@@ -176,8 +221,12 @@ class Machine:
     def ssh_close(self):
         if self.machine_type != "remote" or not self.ssh_status:
             return
-        timeout_sec = 5.0
 
+        # Save proxy reference before closing — ssh.close() may clear it
+        proxy_cmd = self._proxy_cmd
+        self._proxy_cmd = None
+
+        timeout_sec = 5.0
         for obj_name, obj in [("sftp", self.sftp), ("ssh", self.ssh)]:
             executor = ThreadPoolExecutor(max_workers=1)
             future = executor.submit(obj.close)
@@ -188,9 +237,15 @@ class Machine:
                 logger.warning(f"{obj_name}.close() failed ({e.__class__.__name__}: {e}) — abandoning")
                 future.cancel()
             finally:
-                # wait=False: the close thread may be stuck on a dead connection;
-                # waiting would hang forever (the reason we timed out in the first place).
                 executor.shutdown(wait=False)
+
+        # Force-kill the ProxyCommand subprocess and close its pipe FDs.
+        # This is essential because:
+        #  - paramiko's ProxyCommand.close() only sends SIGTERM, never
+        #    calls wait() or closes the subprocess pipes.
+        #  - If ssh.close() timed out above, the ProxyCommand process
+        #    is still alive with open file descriptors.
+        self._kill_proxy_process(proxy_cmd)
 
         del self.ssh
         del self.sftp
@@ -316,14 +371,25 @@ class Machine:
 
     def _run_remote(self, command_r: str):
         self.ssh_open()
-        _, pstdout, pstderr = self.ssh.exec_command(command=command_r)
+        try:
+            pstdin, pstdout, pstderr = self.ssh.exec_command(command=command_r)
+        except (paramiko.SSHException, OSError, EOFError):
+            # Connection may have died (e.g. keepalive timeout during
+            # a long asyncio.sleep between polls).  Reconnect once.
+            logger.warning("SSH connection lost during exec_command; reconnecting...")
+            self.ssh_close()
+            self.ssh_open()
+            pstdin, pstdout, pstderr = self.ssh.exec_command(command=command_r)
         try:
             exit_status = pstdout.channel.recv_exit_status()
             stdout = pstdout.read().decode("utf-8").strip()
             stderr = pstderr.read().decode("utf-8").strip()
         finally:
-            pstdout.close()
-            pstderr.close()
+            for ch in (pstdin, pstdout, pstderr):
+                try:
+                    ch.close()
+                except Exception:
+                    pass
         if exit_status != 0:
             logger.error(f"Remote command failed: {command_r}")
             logger.error(f"stdout={stdout}")
