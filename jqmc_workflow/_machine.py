@@ -114,6 +114,10 @@ class Machine:
         paramiko's ProxyCommand.close() only sends SIGTERM without
         wait() or closing pipes, leaving zombie processes and leaked
         file descriptors.  This method ensures full cleanup.
+
+        After cleanup, the ProxyCommand's close() is neutralised so
+        that paramiko's transport thread does not attempt to kill the
+        already-reaped process (which would log a ProcessLookupError).
         """
         if proxy_cmd is None:
             return
@@ -137,6 +141,9 @@ class Machine:
             proc.wait(timeout=3)
         except Exception:
             pass
+        # Neutralise the ProxyCommand so that paramiko's transport
+        # thread does not try os.kill() on the now-dead PID.
+        proxy_cmd.close = lambda: None
 
     def ssh_open(self):
         if self.machine_type != "remote":
