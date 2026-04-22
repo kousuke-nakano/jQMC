@@ -911,23 +911,35 @@ class MCMC:
             num_mcmc_done += 1
 
             # check max time
+            # Use rank 0's decision and broadcast to all ranks to prevent
+            # MPI deadlock caused by different ranks disagreeing on whether
+            # to break (due to slight differences in mcmc_total_start).
             mcmc_current = time.perf_counter()
-            if max_time < mcmc_current - mcmc_total_start:
+            should_stop = bool(max_time < mcmc_current - mcmc_total_start) if mpi_rank == 0 else False
+            should_stop = mpi_comm.bcast(should_stop, root=0)
+            if should_stop:
                 logger.info(f"  Stopping... max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the mcmc loop.")
                 break
 
             # check toml file (stop flag)
-            if os.path.isfile(toml_filename):
-                dict_toml = toml.load(open(toml_filename))
-                try:
-                    stop_flag = dict_toml["external_control"]["stop"]
-                except KeyError:
+            # Only rank 0 reads the file to avoid filesystem cache inconsistencies.
+            if mpi_rank == 0:
+                if os.path.isfile(toml_filename):
+                    dict_toml = toml.load(open(toml_filename))
+                    try:
+                        stop_flag = dict_toml["external_control"]["stop"]
+                    except KeyError:
+                        stop_flag = False
+                else:
                     stop_flag = False
-                if stop_flag:
-                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
-                    logger.info("  Break the mcmc loop.")
-                    break
+            else:
+                stop_flag = False
+            stop_flag = mpi_comm.bcast(stop_flag, root=0)
+            if stop_flag:
+                logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                logger.info("  Break the mcmc loop.")
+                break
 
         # Barrier after MCMC operation
         start = time.perf_counter()

@@ -223,14 +223,14 @@ class JobSubmission:
         """
         from_objects = from_objects or []
 
-        if not self.jobnum_check():
-            logger.info("Max job limit reached; not submitting.")
-            self.job_submit_date = None
-            self.job_number = None
-            self.job_running = False
-            return False, self.job_number
-
         try:
+            if not self.jobnum_check():
+                logger.info("Max job limit reached; not submitting.")
+                self.job_submit_date = None
+                self.job_number = None
+                self.job_running = False
+                return False, self.job_number
+
             local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 
             # ── Submit via queuing system or remote submit script ──
@@ -275,11 +275,16 @@ class JobSubmission:
     # ── Job checking ──────────────────────────────────────────────
 
     def jobcheck(self) -> bool:
-        """Return True if the job is still running."""
+        """Return True if the job is still running.
+
+        The SSH connection is intentionally kept open so that the
+        polling loop in ``_submit_and_wait`` reuses a single
+        connection instead of opening and closing one per poll.
+        The caller's ``finally: _close_ssh()`` handles cleanup.
+        """
         self.job_check_last_time = datetime.today()
 
         if not self.server_machine.queuing:
-            self._close_ssh()
             return False
 
         trial_num = 10
@@ -309,11 +314,15 @@ class JobSubmission:
             self.job_running = False
             flag = False
 
-        self._close_ssh()
         return flag
 
     def jobnum_check(self) -> bool:
-        """Check if we are below the max_job_submit limit."""
+        """Check if we are below the max_job_submit limit.
+
+        The SSH connection is kept open so that the subsequent
+        ``job_submit`` call can reuse it.  The caller's ``finally``
+        block handles cleanup.
+        """
         if not self.server_machine.queuing:
             return True
 
@@ -331,9 +340,7 @@ class JobSubmission:
         )
         logger.info(f"  {count} jobs running on {self.server_machine.name}")
 
-        flag = count < self.max_job_submit
-        self._close_ssh()
-        return flag
+        return count < self.max_job_submit
 
     # ── Fetch results ─────────────────────────────────────────────
 
