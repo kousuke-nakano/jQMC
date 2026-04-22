@@ -302,10 +302,10 @@ class Workflow:
             import glob as _glob
 
             for pattern in self.cleanup_patterns:
-                for fpath in sorted(_glob.glob(os.path.join(work_dir, pattern))):
+                for fpath in sorted(_glob.glob(os.path.join(work_dir, "**", pattern), recursive=True)):
                     if os.path.isfile(fpath):
                         os.remove(fpath)
-                        logger.info(f"  Cleanup: removed local file {os.path.basename(fpath)}")
+                        logger.info(f"  Cleanup: removed local file {os.path.relpath(fpath, work_dir)}")
             return
 
         from ._transfer import Data_transfer

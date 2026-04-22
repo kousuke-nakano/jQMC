@@ -450,6 +450,9 @@ MCMC_Workflow(
 
 - `cleanup_patterns` accepts a list of glob patterns (e.g.
   `["restart.h5", "hamiltonian_opt*.h5"]`).
+- Matching is **recursive** — patterns are applied to the workflow
+  directory **and** all subdirectories (e.g. `_pilot/`, `_pilot_a/`,
+  `_pilot_b/`).
 - **Local files** matching the patterns are always deleted.
 - **Remote files** are deleted only when the workflow targets a remote
   machine (`server_machine_name` is not `"localhost"`).
