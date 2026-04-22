@@ -47,6 +47,7 @@ from typing import List, Optional
 from ._job import JobSubmission
 from ._phase import ScientificPhase, require_action
 from ._state import (
+    CompletionStatus,
     WorkflowStatus,
     _now_iso,
     add_job,
@@ -880,8 +881,9 @@ class Container:
         # Write completion — but only if the workflow did not fail.
         if self.status != WorkflowStatus.FAILED:
             # Run all post-completion validation checks in one place.
-            ok, error_msg = validate_completion(proj, self.output_values)
-            if ok:
+            # Post-hoc mode (target_error=None): only OK / FAILED are possible.
+            status, error_msg = validate_completion(proj, self.output_values)
+            if status == CompletionStatus.OK:
                 result_fields = {}
                 for k, v in self.output_values.items():
                     result_fields[f"result_{k}"] = v

@@ -51,7 +51,14 @@ from ._error_estimator import (
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
-from ._state import WorkflowStatus, get_estimation, get_job_by_step, set_estimation
+from ._state import (
+    CompletionStatus,
+    WorkflowStatus,
+    get_estimation,
+    get_job_by_step,
+    set_estimation,
+    validate_completion,
+)
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -535,6 +542,17 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
+            # ── Abnormal-termination guard (single source of truth) ──
+            # target_error=None → only Program-ends / non-finite-energy
+            # checks are active. VMC's SNR/slope convergence is decided
+            # separately at end-of-workflow.
+            vstatus, vmsg = validate_completion(_wd, self.output_values)
+            if vstatus == CompletionStatus.FAILED:
+                logger.error(vmsg)
+                self.output_values["error"] = vmsg
+                self.status = WorkflowStatus.FAILED
+                break
+
         # ── Collect outputs ───────────────────────────────────────
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
@@ -557,7 +575,8 @@ class VMC_Workflow(Workflow):
             last_output = os.path.join(_wd, step_files[last_run][1])
             self._parse_output(last_output)
 
-        self.status = WorkflowStatus.COMPLETED
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _launch_auto(self, _wd):
@@ -782,6 +801,16 @@ class VMC_Workflow(Workflow):
             converged = converged_snr = converged_slope = None
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
+
+            # ── Abnormal-termination guard (single source of truth) ──
+            # target_error=None → only Program-ends / non-finite-energy
+            # checks; SNR/slope convergence is evaluated separately below.
+            vstatus, vmsg = validate_completion(_wd, self.output_values)
+            if vstatus == CompletionStatus.FAILED:
+                logger.error(vmsg)
+                self.output_values["error"] = vmsg
+                self.status = WorkflowStatus.FAILED
+                break
 
             # ── Early exit if convergence criteria met ────────────
             if _has_convergence_criteria and i < self.max_continuation:
