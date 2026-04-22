@@ -178,6 +178,11 @@ class VMC_Workflow(Workflow):
         the signal-to-noise ratio for the convergence check.
         When there are fewer S/N values than this window, all
         available values are averaged.
+    cleanup_patterns : list[str], optional
+        Glob patterns for files to delete after successful completion
+        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+        are always removed; remote files are removed only when the
+        workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples
     --------
@@ -305,8 +310,9 @@ class VMC_Workflow(Workflow):
         snr_avg_window: int = 5,
         energy_slope_sigma_threshold: Optional[float] = None,
         energy_slope_window_size: int = 5,
+        cleanup_patterns: Optional[list] = None,
     ):
-        super().__init__()
+        super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
         self.num_opt_steps = num_opt_steps
         self.hamiltonian_file = hamiltonian_file

@@ -432,6 +432,44 @@ available from the source) are automatically copied in.  Existing
 files are not overwritten.
 
 
+### Post-completion cleanup (`cleanup_patterns`)
+
+When large checkpoint files (e.g. `restart.h5`, `hamiltonian_opt*.h5`)
+are no longer needed after a successful run, the `cleanup_patterns`
+parameter can be used to automatically delete them.
+
+```python
+MCMC_Workflow(
+    server_machine_name="cluster",
+    target_error=0.001,
+    cleanup_patterns=["restart.h5", "hamiltonian_opt*.h5"],
+)
+```
+
+**Behaviour:**
+
+- `cleanup_patterns` accepts a list of glob patterns (e.g.
+  `["restart.h5", "hamiltonian_opt*.h5"]`).
+- **Local files** matching the patterns are always deleted.
+- **Remote files** are deleted only when the workflow targets a remote
+  machine (`server_machine_name` is not `"localhost"`).
+- Cleanup runs **after** `CompletionStatus.OK` is confirmed — it never
+  touches files while the workflow might still need them for
+  continuation.
+- Cleanup failures are logged as warnings and never cause a completed
+  workflow to fail.
+- Default is an empty list (no cleanup), preserving backward
+  compatibility.
+
+This is especially useful for massively-parallel MCMC runs where
+`restart.h5` can grow to tens of gigabytes.
+
+All workflow classes (`VMC_Workflow`, `MCMC_Workflow`,
+`LRDMC_Workflow`, `LRDMC_Ext_Workflow`) support this parameter.
+For `LRDMC_Ext_Workflow`, the patterns are passed through to each
+child `LRDMC_Workflow`.
+
+
 ### Restart behavior
 
 Every job is recorded in `workflow_state.toml` with a lifecycle:
@@ -945,6 +983,7 @@ mcmc = Container(
         pilot_queue_label="small",
         jobname="mcmc",
         target_error=0.001,
+        cleanup_patterns=["restart.h5"],  # delete large checkpoint on success
     ),
 )
 

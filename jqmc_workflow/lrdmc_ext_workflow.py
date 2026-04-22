@@ -158,6 +158,12 @@ class LRDMC_Ext_Workflow(Workflow):
         Default *None* (automatic mode).
     max_continuation : int
         Maximum number of production runs per sub-LRDMC.
+    cleanup_patterns : list[str], optional
+        Glob patterns for files to delete after successful completion
+        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+        are always removed; remote files are removed only when the
+        workflow targets a remote machine.  Passed through to each
+        child :class:`LRDMC_Workflow`.  Default *None* (no cleanup).
 
     Examples
     --------
@@ -255,8 +261,9 @@ class LRDMC_Ext_Workflow(Workflow):
         pilot_steps: int = 100,
         num_gfmc_projections: Optional[int] = None,
         max_continuation: int = 5,
+        cleanup_patterns: Optional[list] = None,
     ):
-        super().__init__()
+        super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
         self.alat_list = alat_list or [0.5, 0.4, 0.3]
         self.hamiltonian_file = hamiltonian_file
@@ -341,6 +348,7 @@ class LRDMC_Ext_Workflow(Workflow):
             pilot_steps=self.pilot_steps,
             num_gfmc_projections=self.num_gfmc_projections,
             max_continuation=self.max_continuation,
+            cleanup_patterns=self.cleanup_patterns,
         )
         enc = Container(
             label=label,

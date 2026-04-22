@@ -204,6 +204,11 @@ class LRDMC_Workflow(Workflow):
         Use a shorter/smaller queue for the pilot to save resources.
     max_continuation : int
         Maximum number of production runs after the pilot.
+    cleanup_patterns : list[str], optional
+        Glob patterns for files to delete after successful completion
+        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+        are always removed; remote files are removed only when the
+        workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples
     --------
@@ -318,8 +323,9 @@ class LRDMC_Workflow(Workflow):
         num_gfmc_projections: Optional[int] = None,
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
+        cleanup_patterns: Optional[list] = None,
     ):
-        super().__init__()
+        super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
         self.alat = alat
         self.hamiltonian_file = hamiltonian_file

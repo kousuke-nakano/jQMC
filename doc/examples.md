@@ -2859,6 +2859,7 @@ MCMC_Workflow(
     atomic_force=True,
     max_time=76000,
     max_continuation=2,
+    cleanup_patterns=["restart.h5"],  # delete large checkpoint on success
 )
 
 LRDMC_Workflow(
@@ -2871,6 +2872,7 @@ LRDMC_Workflow(
     num_gfmc_collect_steps=20,
     max_time=76000,
     max_continuation=2,
+    cleanup_patterns=["restart.h5"],  # delete large checkpoint on success
 )
 ```
 
