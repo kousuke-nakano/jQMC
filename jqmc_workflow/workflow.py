@@ -47,6 +47,7 @@ from typing import List, Optional
 from ._job import JobSubmission
 from ._phase import ScientificPhase, require_action
 from ._state import (
+    CompletionStatus,
     WorkflowStatus,
     _now_iso,
     add_job,
@@ -205,6 +206,12 @@ class Workflow:
         process CWD at the time :meth:`run` is first called.
         :class:`Container` sets this explicitly before launching the
         inner workflow.
+    cleanup_patterns : list[str], optional
+        Glob patterns for files to delete after the workflow completes
+        successfully (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).
+        Local files matching the patterns are always removed.  Remote
+        files are removed only when the workflow targets a remote
+        machine.  Default is *None* (empty list — no cleanup).
 
     Attributes
     ----------
@@ -218,6 +225,8 @@ class Workflow:
         Scalar results (energy, error, …) produced by the workflow.
     project_dir : str or None
         Working directory for file I/O.  Resolved to an absolute path.
+    cleanup_patterns : list[str]
+        Glob patterns for post-completion file cleanup.
 
     Notes
     -----
@@ -241,13 +250,14 @@ class Workflow:
                 return self.status, ["result.h5"], {"energy": -1.23}
     """
 
-    def __init__(self, project_dir: Optional[str] = None):
+    def __init__(self, project_dir: Optional[str] = None, cleanup_patterns: Optional[List[str]] = None):
         self.status: WorkflowStatus = WorkflowStatus.PENDING
         self.phase: ScientificPhase = ScientificPhase.INIT
         self.output_files: List[str] = []
         self.output_values: dict = {}
         self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
         self._bg_task: Optional[asyncio.Task] = None
+        self.cleanup_patterns: List[str] = cleanup_patterns or []
 
     # ── Filename generation (per-job run_id) ──────────────────────
 
@@ -271,6 +281,42 @@ class Workflow:
         """Lazily resolve *project_dir* to CWD when not set explicitly."""
         if self.project_dir is None:
             self.project_dir = os.path.abspath(os.getcwd())
+
+    def _cleanup_files(self):
+        """Delete files matching *cleanup_patterns* from local and remote.
+
+        Local files are always removed.  Remote files are removed only when
+        the workflow targets a remote machine (``server_machine_name`` is set
+        and not ``"localhost"``).
+        """
+        if not self.cleanup_patterns:
+            return
+
+        work_dir = self.project_dir
+        if work_dir is None:
+            return
+
+        server_machine_name = getattr(self, "server_machine_name", None)
+        if server_machine_name is None:
+            # No remote machine — local-only cleanup
+            import glob as _glob
+
+            for pattern in self.cleanup_patterns:
+                for fpath in sorted(_glob.glob(os.path.join(work_dir, "**", pattern), recursive=True)):
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+                        logger.info(f"  Cleanup: removed local file {os.path.relpath(fpath, work_dir)}")
+            return
+
+        from ._transfer import Data_transfer
+
+        dt = Data_transfer(server_machine_name)
+        try:
+            dt.remove_objects(patterns=self.cleanup_patterns, work_dir=work_dir)
+        except Exception:
+            dt.ssh_close()
+            raise
+        dt.ssh_close()
 
     # ── configure / run (new primary interface) ─────────────────────
 
@@ -880,12 +926,18 @@ class Container:
         # Write completion — but only if the workflow did not fail.
         if self.status != WorkflowStatus.FAILED:
             # Run all post-completion validation checks in one place.
-            ok, error_msg = validate_completion(proj, self.output_values)
-            if ok:
+            # Post-hoc mode (target_error=None): only OK / FAILED are possible.
+            status, error_msg = validate_completion(proj, self.output_values)
+            if status == CompletionStatus.OK:
                 result_fields = {}
                 for k, v in self.output_values.items():
                     result_fields[f"result_{k}"] = v
                 update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
+                # ── Post-completion cleanup ──
+                try:
+                    self.workflow._cleanup_files()
+                except Exception as e:
+                    logger.warning(f"[{self.label}] Cleanup failed (non-fatal): {e}")
             else:
                 logger.error(error_msg)
                 self.status = WorkflowStatus.FAILED

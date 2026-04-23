@@ -75,7 +75,14 @@ from ._setting import (
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
-from ._state import WorkflowStatus, get_estimation, get_job_by_step, set_estimation
+from ._state import (
+    CompletionStatus,
+    WorkflowStatus,
+    get_estimation,
+    get_job_by_step,
+    set_estimation,
+    validate_completion,
+)
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -197,6 +204,11 @@ class LRDMC_Workflow(Workflow):
         Use a shorter/smaller queue for the pilot to save resources.
     max_continuation : int
         Maximum number of production runs after the pilot.
+    cleanup_patterns : list[str], optional
+        Glob patterns for files to delete after successful completion
+        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+        are always removed; remote files are removed only when the
+        workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples
     --------
@@ -311,8 +323,9 @@ class LRDMC_Workflow(Workflow):
         num_gfmc_projections: Optional[int] = None,
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
+        cleanup_patterns: Optional[list] = None,
     ):
-        super().__init__()
+        super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
         self.alat = alat
         self.hamiltonian_file = hamiltonian_file
@@ -598,6 +611,16 @@ class LRDMC_Workflow(Workflow):
                         last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
                     )
 
+            # ── Abnormal-termination guard (single source of truth) ──
+            # Fixed-step mode has no convergence criterion, so only the
+            # Program-ends / non-finite-energy checks are active here.
+            vstatus, vmsg = validate_completion(_wd, self.output_values)
+            if vstatus == CompletionStatus.FAILED:
+                logger.error(vmsg)
+                self.output_values["error"] = vmsg
+                self.status = WorkflowStatus.FAILED
+                break
+
         # ── Final energy computation ─────────────────────────────
         last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
@@ -631,7 +654,8 @@ class LRDMC_Workflow(Workflow):
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = WorkflowStatus.COMPLETED
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _run_calibration(self, _wd):
@@ -1062,8 +1086,9 @@ class LRDMC_Workflow(Workflow):
             _prev_run_steps = estimated_steps
             last_run = i
 
-            # ── Convergence check (single estimation point) ──
+            # ── Side-effects: compute energy from checkpoint (if any) ──
             restart_chk = self._find_restart_chk(_wd)
+            energy = error = None
             if restart_chk:
                 energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
@@ -1087,32 +1112,42 @@ class LRDMC_Workflow(Workflow):
                         last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
                     )
 
-                    if error <= self.target_error * 1.20:
-                        logger.info(
-                            f"  Target error achieved: {error:.6g} <= "
-                            f"{self.target_error * 1.20:.6g} Ha (target*1.20) "
-                            f"(run {i}/{self.max_continuation})"
-                        )
-                        break
-                    elif i < self.max_continuation:
-                        old_steps = estimated_steps
-                        _additional = estimate_additional_steps(
-                            accumulated_measurement,
-                            error,
-                            self.target_error,
-                        )
-                        estimated_steps = _additional + warmup
-                        logger.info(
-                            f"  Re-estimated: {old_steps} -> {estimated_steps} steps "
-                            f"(measurement: {_additional}, warmup: {warmup}, "
-                            f"accumulated measurement: {accumulated_measurement})"
-                        )
-                    else:
-                        logger.warning(
-                            f"Error {error:.6g} > target "
-                            f"{self.target_error:.6g} Ha -- "
-                            f"max_continuation ({self.max_continuation}) reached"
-                        )
+            # ── Termination decision — single source of truth ──
+            vstatus, vmsg = validate_completion(
+                _wd,
+                self.output_values,
+                target_error=self.target_error,
+                target_tol=1.20,
+            )
+            if vstatus == CompletionStatus.FAILED:
+                logger.error(vmsg)
+                self.output_values["error"] = vmsg
+                self.status = WorkflowStatus.FAILED
+                break
+            if vstatus == CompletionStatus.OK:
+                logger.info(f"  Target error achieved: {vmsg} (run {i}/{self.max_continuation})")
+                break
+            # INCOMPLETE — prepare next iteration if we have an error estimate
+            if energy is not None:
+                if i < self.max_continuation:
+                    old_steps = estimated_steps
+                    _additional = estimate_additional_steps(
+                        accumulated_measurement,
+                        error,
+                        self.target_error,
+                    )
+                    estimated_steps = _additional + warmup
+                    logger.info(
+                        f"  Re-estimated: {old_steps} -> {estimated_steps} steps "
+                        f"(measurement: {_additional}, warmup: {warmup}, "
+                        f"accumulated measurement: {accumulated_measurement})"
+                    )
+                else:
+                    logger.warning(
+                        f"Error {error:.6g} > target "
+                        f"{self.target_error:.6g} Ha -- "
+                        f"max_continuation ({self.max_continuation}) reached"
+                    )
 
         # ── Final energy computation (safety net) ─────────────────
         last_output = step_files[last_run][1] if last_run in step_files else None

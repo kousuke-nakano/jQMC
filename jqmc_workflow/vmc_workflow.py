@@ -51,7 +51,14 @@ from ._error_estimator import (
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
-from ._state import WorkflowStatus, get_estimation, get_job_by_step, set_estimation
+from ._state import (
+    CompletionStatus,
+    WorkflowStatus,
+    get_estimation,
+    get_job_by_step,
+    set_estimation,
+    validate_completion,
+)
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -171,6 +178,11 @@ class VMC_Workflow(Workflow):
         the signal-to-noise ratio for the convergence check.
         When there are fewer S/N values than this window, all
         available values are averaged.
+    cleanup_patterns : list[str], optional
+        Glob patterns for files to delete after successful completion
+        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+        are always removed; remote files are removed only when the
+        workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples
     --------
@@ -298,8 +310,9 @@ class VMC_Workflow(Workflow):
         snr_avg_window: int = 5,
         energy_slope_sigma_threshold: Optional[float] = None,
         energy_slope_window_size: int = 5,
+        cleanup_patterns: Optional[list] = None,
     ):
-        super().__init__()
+        super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
         self.num_opt_steps = num_opt_steps
         self.hamiltonian_file = hamiltonian_file
@@ -535,6 +548,17 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
+            # ── Abnormal-termination guard (single source of truth) ──
+            # target_error=None → only Program-ends / non-finite-energy
+            # checks are active. VMC's SNR/slope convergence is decided
+            # separately at end-of-workflow.
+            vstatus, vmsg = validate_completion(_wd, self.output_values)
+            if vstatus == CompletionStatus.FAILED:
+                logger.error(vmsg)
+                self.output_values["error"] = vmsg
+                self.status = WorkflowStatus.FAILED
+                break
+
         # ── Collect outputs ───────────────────────────────────────
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
@@ -557,7 +581,8 @@ class VMC_Workflow(Workflow):
             last_output = os.path.join(_wd, step_files[last_run][1])
             self._parse_output(last_output)
 
-        self.status = WorkflowStatus.COMPLETED
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _launch_auto(self, _wd):
@@ -782,6 +807,16 @@ class VMC_Workflow(Workflow):
             converged = converged_snr = converged_slope = None
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
+
+            # ── Abnormal-termination guard (single source of truth) ──
+            # target_error=None → only Program-ends / non-finite-energy
+            # checks; SNR/slope convergence is evaluated separately below.
+            vstatus, vmsg = validate_completion(_wd, self.output_values)
+            if vstatus == CompletionStatus.FAILED:
+                logger.error(vmsg)
+                self.output_values["error"] = vmsg
+                self.status = WorkflowStatus.FAILED
+                break
 
             # ── Early exit if convergence criteria met ────────────
             if _has_convergence_criteria and i < self.max_continuation:

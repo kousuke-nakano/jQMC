@@ -239,3 +239,52 @@ class Data_transfer:
                         to_dir=to_path,
                         exclude_patterns=exclude_patterns,
                     )
+
+    # ── remove (local + remote) ──────────────────────────────────
+
+    def remove_objects(self, patterns: list[str], *, work_dir: str | None = None) -> None:
+        """Delete files matching *patterns* from local and (if remote) server.
+
+        Matching is **recursive** — each pattern is applied to *work_dir*
+        and all of its subdirectories (e.g. ``_pilot/``, ``_pilot_a/``).
+
+        Parameters
+        ----------
+        patterns : list[str]
+            Glob patterns relative to *work_dir* (e.g. ``["restart.h5",
+            "hamiltonian_opt*.h5"]``).  Each pattern is searched in
+            the top-level directory **and** all subdirectories.
+        work_dir : str, optional
+            Local directory.  When *None*, falls back to ``os.getcwd()``.
+        """
+        local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
+
+        # ── Local deletion (always, recursive) ───────────────────
+        for pattern in patterns:
+            for fpath in sorted(glob.glob(os.path.join(local_cwd, "**", pattern), recursive=True)):
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+                    relpath = os.path.relpath(fpath, local_cwd)
+                    logger.info(f"  Cleanup: removed local file {relpath}")
+
+        # ── Remote deletion (only for non-local machines) ────────
+        if self.server_machine.machine_type == "local":
+            return
+
+        local_root = self._local_root
+        server_root = self.server_machine.workspace_root
+        if server_root is None:
+            logger.warning("Cleanup: server workspace_root not configured; skipping remote cleanup.")
+            return
+
+        if local_root and local_root not in local_cwd:
+            logger.warning(f"Cleanup: work_dir ({local_cwd}) is not under local root ({local_root}). Skipping remote cleanup.")
+            return
+
+        server_dir = local_cwd.replace(local_root, server_root)
+        for pattern in patterns:
+            try:
+                self.server_machine.run_command(f"find {server_dir} -name '{pattern}' -type f -delete")
+                logger.info(f"  Cleanup: removed remote files matching {pattern} (recursive)")
+            except Exception as exc:
+                logger.warning(f"  Cleanup: failed to remove remote '{pattern}': {exc}")
