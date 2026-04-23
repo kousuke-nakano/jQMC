@@ -1,7 +1,11 @@
 """GFMC projection kernel benchmarks for Nsight Systems / Nsight Compute profiling.
 
 Profiles every computational kernel called within the "Projection time per
-branching" hot loop of GFMC_t and GFMC_n (``jqmc_gfmc.py``).
+branching" hot loop of GFMC_t and GFMC_n (``jqmc_gfmc.py``) using a
+**synthetic** system -- no TREXIO file needed.
+
+System size and wavefunction ansatz are controlled by the configuration
+block below.
 
 Designed to be run under NVIDIA profiling tools:
 
@@ -37,8 +41,6 @@ Kernels benchmarked (in projection-step order):
 """
 
 import ctypes
-import os
-import sys
 import time
 
 import jax
@@ -48,7 +50,9 @@ import numpy as np
 from functools import partial
 from jax import jit, lax, vmap
 
+from jqmc.atomic_orbital import AOs_cart_data
 from jqmc.coulomb_potential import (
+    Coulomb_potential_data,
     compute_bare_coulomb_potential_el_el,
     compute_bare_coulomb_potential_el_ion_element_wise,
     compute_bare_coulomb_potential_ion_ion,
@@ -57,6 +61,7 @@ from jqmc.coulomb_potential import (
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
 from jqmc.determinant import (
+    Geminal_data,
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
@@ -69,7 +74,7 @@ from jqmc.jastrow_factor import (
     Jastrow_two_body_data,
     _compute_ratio_Jastrow_part_rank1_update,
 )
-from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.structure import Structure_data
 from jqmc.wavefunction import (
     Wavefunction_data,
     compute_discretized_kinetic_energy_fast_update,
@@ -157,14 +162,29 @@ def nvtx_pop():
 
 
 # ==============================================================================
-# Configuration  (edit these directly)
+# Configuration  (edit these to control the synthetic benchmark system)
 # ==============================================================================
-TREXIO_FILE = os.path.join(os.path.dirname(__file__), "C6H6_ccecp_augccpvtz.h5")
+# --- System size ---
+N_ATOMS = 12  # number of atoms
+VALENCE_ELECTRONS_PER_ATOM = 4  # valence electrons per atom (neutral charge)
+N_AO_PER_ATOM_DET = 10  # AOs per atom for determinant
+N_AO_PER_ATOM_J3 = 5  # AOs per atom for J3
+ATOM_SPACING = 3.0  # inter-atom distance (Bohr)
+
+# --- Jastrow ---
+J1_FLAG = True  # one-body Jastrow
+J2_FLAG = True  # two-body Jastrow
+J3_FLAG = True  # three-body Jastrow (analytic)
+
+# --- ECP ---
+ECP_FLAG = True  # effective core potential
+ECP_CORE_ELECTRONS = 2  # core electrons per atom (only if ECP_FLAG)
+
+# --- Benchmark ---
 N_WALKERS = 4096  # number of walkers (vmapped)
 REPEATS = 1  # repeats per kernel (after warmup)
 SEED = 42
 ALAT = 0.30
-R_CART_MIN, R_CART_MAX = -5.0, +5.0
 NON_LOCAL_MOVE = "tmove"  # "tmove" or "dltmove"
 
 # ==============================================================================
@@ -204,23 +224,178 @@ def bench(label, fn, repeats=REPEATS):
 
 
 # ==============================================================================
-# Load system
+# Build synthetic system
 # ==============================================================================
-print(f"Loading system from {TREXIO_FILE} ...")
-(
-    structure_data,
-    aos_data,
-    _,
-    _,
-    geminal_mo_data,
-    coulomb_potential_data,
-) = read_trexio_file(trexio_file=TREXIO_FILE, store_tuple=True)
 
+
+def _cartesian_ao_specs(n_ao_per_atom):
+    """Return a list of ``(l, nx, ny, nz, exponent)`` for Cartesian AOs.
+
+    Fills complete angular-momentum shells (s=1, p=3, d=6, f=10, ...)
+    until *n_ao_per_atom* AOs are reached; the last shell may be partial.
+    """
+    specs = []
+    l = 0
+    # Moderate exponents per shell -- broad enough to overlap
+    _exp_by_l = [5.0, 3.0, 1.5, 0.8, 0.4, 0.2]
+    while len(specs) < n_ao_per_atom:
+        exp = _exp_by_l[min(l, len(_exp_by_l) - 1)]
+        for nx in range(l, -1, -1):
+            for ny in range(l - nx, -1, -1):
+                nz = l - nx - ny
+                if len(specs) >= n_ao_per_atom:
+                    return specs
+                specs.append((l, nx, ny, nz, exp))
+        l += 1
+    return specs
+
+
+def _build_aos_cart(structure_data, n_ao_per_atom, n_atoms):
+    """Build an ``AOs_cart_data`` with *n_ao_per_atom* primitives per atom."""
+    specs = _cartesian_ao_specs(n_ao_per_atom)
+    num_ao = n_atoms * len(specs)
+    num_ao_prim = num_ao  # one primitive per contracted AO
+
+    nucleus_index = []
+    orbital_indices = []
+    exponents_list = []
+    coefficients_list = []
+    angular_momentums = []
+    poly_x, poly_y, poly_z = [], [], []
+
+    ao_idx = 0
+    for atom_idx in range(n_atoms):
+        for l, nx, ny, nz, exp in specs:
+            nucleus_index.append(atom_idx)
+            orbital_indices.append(ao_idx)
+            exponents_list.append(exp)
+            coefficients_list.append(1.0)
+            angular_momentums.append(l)
+            poly_x.append(nx)
+            poly_y.append(ny)
+            poly_z.append(nz)
+            ao_idx += 1
+
+    return AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=tuple(orbital_indices),
+        exponents=jnp.array(exponents_list, dtype=jnp.float64),
+        coefficients=jnp.array(coefficients_list, dtype=jnp.float64),
+        angular_momentums=tuple(angular_momentums),
+        polynominal_order_x=tuple(poly_x),
+        polynominal_order_y=tuple(poly_y),
+        polynominal_order_z=tuple(poly_z),
+    )
+
+
+print("Building synthetic system ...")
+
+# --- Atom positions (cubic grid) ----------------------------------------
+_side = int(np.ceil(N_ATOMS ** (1.0 / 3.0)))
+_positions_list = []
+for _ix in range(_side):
+    for _iy in range(_side):
+        for _iz in range(_side):
+            if len(_positions_list) >= N_ATOMS:
+                break
+            _positions_list.append([_ix * ATOM_SPACING, _iy * ATOM_SPACING, _iz * ATOM_SPACING])
+        if len(_positions_list) >= N_ATOMS:
+            break
+    if len(_positions_list) >= N_ATOMS:
+        break
+positions = np.array(_positions_list[:N_ATOMS])
+
+# --- Atomic numbers / core electrons ------------------------------------
+if ECP_FLAG:
+    atomic_numbers = tuple([VALENCE_ELECTRONS_PER_ATOM + ECP_CORE_ELECTRONS] * N_ATOMS)
+    z_cores = tuple([float(ECP_CORE_ELECTRONS)] * N_ATOMS)
+else:
+    atomic_numbers = tuple([VALENCE_ELECTRONS_PER_ATOM] * N_ATOMS)
+    z_cores = tuple([0.0] * N_ATOMS)
+
+structure_data = Structure_data(
+    positions=positions,
+    pbc_flag=False,
+    atomic_numbers=atomic_numbers,
+    element_symbols=tuple(["X"] * N_ATOMS),
+    atomic_labels=tuple([f"X{i}" for i in range(N_ATOMS)]),
+)
+
+# --- Determinant basis --------------------------------------------------
+aos_data = _build_aos_cart(structure_data, N_AO_PER_ATOM_DET, N_ATOMS)
+num_ao_det = aos_data.num_ao
+
+# --- Electron counts ----------------------------------------------------
+total_val_el = N_ATOMS * VALENCE_ELECTRONS_PER_ATOM
+num_ele_up = (total_val_el + 1) // 2
+num_ele_dn = total_val_el // 2
+delta_spin = num_ele_up - num_ele_dn
+
+# --- Lambda matrix (identity + small perturbation for numerical safety) --
+rng = np.random.default_rng(SEED)
+_lambda_np = np.eye(num_ao_det, num_ao_det + delta_spin)
+_lambda_np += rng.normal(0, 0.01, size=_lambda_np.shape)
+lambda_matrix = jnp.array(_lambda_np, dtype=jnp.float64)
+
+geminal_mo_data = Geminal_data(
+    num_electron_up=num_ele_up,
+    num_electron_dn=num_ele_dn,
+    orb_data_up_spin=aos_data,
+    orb_data_dn_spin=aos_data,
+    lambda_matrix=lambda_matrix,
+)
+
+# --- Coulomb potential --------------------------------------------------
+if ECP_FLAG:
+    # 3 terms per atom: non-local l=0, non-local l=1, local l=2
+    _ecp_ang, _ecp_nuc, _ecp_exp, _ecp_coef, _ecp_pow = [], [], [], [], []
+    for _a in range(N_ATOMS):
+        # non-local s-channel (l = 0)
+        _ecp_ang.append(0)
+        _ecp_nuc.append(_a)
+        _ecp_exp.append(3.0)
+        _ecp_coef.append(-1.0)
+        _ecp_pow.append(2)
+        # non-local p-channel (l = 1)
+        _ecp_ang.append(1)
+        _ecp_nuc.append(_a)
+        _ecp_exp.append(2.0)
+        _ecp_coef.append(-0.5)
+        _ecp_pow.append(2)
+        # local channel (l = 2 = max_ang_mom_plus_1)
+        _ecp_ang.append(2)
+        _ecp_nuc.append(_a)
+        _ecp_exp.append(5.0)
+        _ecp_coef.append(float(VALENCE_ELECTRONS_PER_ATOM))
+        _ecp_pow.append(2)
+
+    coulomb_potential_data = Coulomb_potential_data(
+        structure_data=structure_data,
+        ecp_flag=True,
+        z_cores=z_cores,
+        max_ang_mom_plus_1=tuple([2] * N_ATOMS),
+        num_ecps=N_ATOMS * 3,
+        ang_moms=tuple(_ecp_ang),
+        nucleus_index=tuple(_ecp_nuc),
+        exponents=tuple(_ecp_exp),
+        coefficients=tuple(_ecp_coef),
+        powers=tuple(_ecp_pow),
+    )
+else:
+    coulomb_potential_data = Coulomb_potential_data(
+        structure_data=structure_data,
+        ecp_flag=False,
+    )
+
+# --- Jastrow components -------------------------------------------------
 jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
 jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
     jastrow_1b_param=1.0,
     structure_data=structure_data,
-    core_electrons=coulomb_potential_data.z_cores,
+    core_electrons=z_cores,
 )
 jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
     orb_data=aos_data,
@@ -232,6 +407,8 @@ jastrow_data = Jastrow_data(
     jastrow_two_body_data=jastrow_twobody_data,
     jastrow_three_body_data=jastrow_threebody_data,
 )
+
+# --- Wavefunction and Hamiltonian ---------------------------------------
 wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 hamiltonian_data = Hamiltonian_data(
     structure_data=structure_data,
@@ -239,20 +416,25 @@ hamiltonian_data = Hamiltonian_data(
     wavefunction_data=wavefunction_data,
 )
 
-num_ele_up = geminal_mo_data.num_electron_up
-num_ele_dn = geminal_mo_data.num_electron_dn
 ecp_flag = coulomb_potential_data.ecp_flag
 
+# --- Print summary ------------------------------------------------------
+print(f"  atoms: {N_ATOMS} | val.el./atom: {VALENCE_ELECTRONS_PER_ATOM}")
 print(f"  electrons: {num_ele_up} up, {num_ele_dn} dn | ECP: {ecp_flag}")
+print(f"  AOs (det): {num_ao_det} ({N_AO_PER_ATOM_DET}/atom)")
 print(f"  walkers: {N_WALKERS} | alat: {ALAT} | non_local_move: {NON_LOCAL_MOVE}")
 print(f"  repeats per kernel: {REPEATS}\n")
 
 # ==============================================================================
-# Initialize walkers  (batched arrays of shape (N_WALKERS, ...))
+# Initialize walkers  (electrons placed near atoms with Gaussian scatter)
 # ==============================================================================
-rng = np.random.default_rng(SEED)
-r_up_batch = jnp.asarray(rng.uniform(R_CART_MIN, R_CART_MAX, size=(N_WALKERS, num_ele_up, 3)))
-r_dn_batch = jnp.asarray(rng.uniform(R_CART_MIN, R_CART_MAX, size=(N_WALKERS, num_ele_dn, 3)))
+_atom_idx_up = np.arange(num_ele_up) % N_ATOMS
+_atom_idx_dn = np.arange(num_ele_dn) % N_ATOMS
+_centers_up = positions[_atom_idx_up]  # (num_ele_up, 3)
+_centers_dn = positions[_atom_idx_dn]  # (num_ele_dn, 3)
+
+r_up_batch = jnp.asarray(np.tile(_centers_up, (N_WALKERS, 1, 1)) + rng.normal(0, 1.0, size=(N_WALKERS, num_ele_up, 3)))
+r_dn_batch = jnp.asarray(np.tile(_centers_dn, (N_WALKERS, 1, 1)) + rng.normal(0, 1.0, size=(N_WALKERS, num_ele_dn, 3)))
 
 RT = jnp.eye(3)
 
