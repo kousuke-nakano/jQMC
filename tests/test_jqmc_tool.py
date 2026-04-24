@@ -61,10 +61,7 @@ from jqmc.jqmc_tool import (  # noqa: E402
     vmc_analyze_output,
     vmc_generate_input,
 )
-from jqmc._setting import (  # noqa: E402
-    atol_consistency,
-    rtol_consistency,
-)
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 trexio_files = [
@@ -607,8 +604,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("io", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_mcmc_multi_rank_random(self, tmp_path):
         """Multiple MPI ranks with random data should match np.sum reference."""
@@ -638,8 +636,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("io", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_mcmc_warmup_discards_steps(self, tmp_path):
         """Warmup discard + random data post-warmup must match reference."""
@@ -669,8 +668,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("io", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_lrdmc_random_energy_jackknife(self, tmp_path):
         """LRDMC jqmc-tool must match the np.sum-based reference jackknife for random data."""
@@ -699,8 +699,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("io", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_lrdmc_multi_rank_random(self, tmp_path):
         """Multiple LRDMC ranks with random data must match np.sum reference."""
@@ -730,8 +731,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("io", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_lrdmc_extrapolate_energy(self, tmp_path):
         """extrapolate-energy with two LRDMC checkpoints should report a->0 result."""

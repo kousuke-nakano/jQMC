@@ -2,6 +2,11 @@
 
 Module containing classes and methods related to Atomic Orbitals
 
+Precision Zones:
+    - ``orb_eval``: forward AO evaluation (compute_AOs and internal helpers).
+    - ``kinetic``: AO gradient and Laplacian (compute_AOs_grad, compute_AOs_laplacian).
+
+See :mod:`jqmc._precision` for details.
 """
 
 from __future__ import annotations
@@ -52,6 +57,7 @@ from jax import typing as jnpt
 from numpy import linalg as LA
 
 from ._jqmc_utility import _spherical_to_cart_matrix
+from ._precision import get_dtype
 from ._setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, rtol_consistency
 from .structure import Structure_data
 
@@ -701,6 +707,7 @@ class AOs_cart_data:
     @property
     def _normalization_factorial_ratio_prim_jnp(self) -> jax.Array:
         """Return factorial ratio used in AO normalization (primitive-wise)."""
+        dtype = get_dtype("io")
         nx = self._polynominal_order_x_prim_np
         ny = self._polynominal_order_y_prim_np
         nz = self._polynominal_order_z_prim_np
@@ -714,18 +721,21 @@ class AOs_cart_data:
             * scipy.special.factorial(2 * ny, exact=True)
             * scipy.special.factorial(2 * nz, exact=True)
         )
-        ratio = np.asarray(num / den, dtype=np.float64)
-        return jnp.array(ratio, dtype=jnp.float64)
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+        ratio = np.asarray(num / den, dtype=dtype_np)
+        return jnp.array(ratio, dtype=dtype)
 
     @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        return jnp.asarray(self.exponents, dtype=jnp.float64)
+        dtype = get_dtype("io")
+        return jnp.asarray(self.exponents, dtype=dtype)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        return jnp.asarray(self.coefficients, dtype=jnp.float64)
+        dtype = get_dtype("io")
+        return jnp.asarray(self.coefficients, dtype=dtype)
 
     @property
     def _num_orb(self) -> int:
@@ -1268,12 +1278,14 @@ class AOs_sphe_data:
     @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        return jnp.asarray(self.exponents, dtype=jnp.float64)
+        dtype = get_dtype("io")
+        return jnp.asarray(self.exponents, dtype=dtype)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        return jnp.asarray(self.coefficients, dtype=jnp.float64)
+        dtype = get_dtype("io")
+        return jnp.asarray(self.coefficients, dtype=dtype)
 
     @property
     def _num_orb(self) -> int:
@@ -1340,12 +1352,14 @@ class ShellPrimMap:
     @classmethod
     def from_aos_data(cls, aos_data: "AOs_sphe_data | AOs_cart_data") -> "ShellPrimMap":
         """Build a shell map from an AO dataclass instance."""
+        dtype = get_dtype("io")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
         ao_prims: dict[int, list[int]] = {}
         for prim_idx, ao_idx in enumerate(aos_data.orbital_indices):
             ao_prims.setdefault(ao_idx, []).append(prim_idx)
 
-        exps_np = np.asarray(aos_data.exponents, dtype=np.float64)
-        coefs_np = np.asarray(aos_data.coefficients, dtype=np.float64)
+        exps_np = np.asarray(aos_data.exponents, dtype=dtype_np)
+        coefs_np = np.asarray(aos_data.coefficients, dtype=dtype_np)
 
         shells: list[tuple[int, list[int]]] = []
         _shell_keys: list[tuple] = []
@@ -1406,8 +1420,10 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
         tuple: (AOs_cart_data, transform_matrix) where transform_matrix maps
         spherical -> Cartesian coefficients with shape (num_ao_sph, num_ao_cart).
     """
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     if isinstance(aos_data, AOs_cart_data):
-        transform_matrix = np.eye(aos_data.num_ao, dtype=np.float64)
+        transform_matrix = np.eye(aos_data.num_ao, dtype=dtype_np)
         return aos_data, transform_matrix
     if not isinstance(aos_data, AOs_sphe_data):
         raise ValueError("Cartesian conversion is only available from spherical AOs.")
@@ -1426,8 +1442,8 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
 
     for ao_idx in range(aos_sphe.num_ao):
         prim_indices = [i for i, v in enumerate(aos_sphe.orbital_indices) if v == ao_idx]
-        exps = np.asarray([aos_sphe.exponents[i] for i in prim_indices], dtype=np.float64)
-        coefs = np.asarray([aos_sphe.coefficients[i] for i in prim_indices], dtype=np.float64)
+        exps = np.asarray([aos_sphe.exponents[i] for i in prim_indices], dtype=dtype_np)
+        coefs = np.asarray([aos_sphe.coefficients[i] for i in prim_indices], dtype=dtype_np)
         nucleus = aos_sphe.nucleus_index[ao_idx]
         l = aos_sphe.angular_momentums[ao_idx]
 
@@ -1440,7 +1456,7 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
 
     total_cart = sum((shell["l"] + 1) * (shell["l"] + 2) // 2 for shell in shells)
     total_sph = aos_sphe.num_ao
-    transform_matrix = np.zeros((total_sph, total_cart), dtype=np.float64)
+    transform_matrix = np.zeros((total_sph, total_cart), dtype=dtype_np)
 
     new_nucleus_index: list[int] = []
     new_angular_momentums: list[int] = []
@@ -1485,8 +1501,8 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
         num_ao=total_cart,
         num_ao_prim=len(new_exponents),
         orbital_indices=new_orbital_indices,
-        exponents=jnp.array(new_exponents, dtype=jnp.float64),
-        coefficients=jnp.array(new_coefficients, dtype=jnp.float64),
+        exponents=jnp.array(new_exponents, dtype=dtype),
+        coefficients=jnp.array(new_coefficients, dtype=dtype),
         angular_momentums=new_angular_momentums,
         polynominal_order_x=new_polynominal_order_x,
         polynominal_order_y=new_polynominal_order_y,
@@ -1503,8 +1519,10 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
         tuple: (AOs_sphe_data, transform_pinv) where transform_pinv maps
         Cartesian -> spherical coefficients with shape (num_ao_cart, num_ao_sph).
     """
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     if isinstance(aos_data, AOs_sphe_data):
-        transform_pinv = np.eye(aos_data.num_ao, dtype=np.float64)
+        transform_pinv = np.eye(aos_data.num_ao, dtype=dtype_np)
         return aos_data, transform_pinv
     if not isinstance(aos_data, AOs_cart_data):
         raise ValueError("Spherical conversion is only available from Cartesian AOs.")
@@ -1523,8 +1541,8 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
 
     for ao_idx in range(aos_cart.num_ao):
         prim_indices = [i for i, v in enumerate(aos_cart.orbital_indices) if v == ao_idx]
-        exps = np.asarray([aos_cart.exponents[i] for i in prim_indices], dtype=np.float64)
-        coefs = np.asarray([aos_cart.coefficients[i] for i in prim_indices], dtype=np.float64)
+        exps = np.asarray([aos_cart.exponents[i] for i in prim_indices], dtype=dtype_np)
+        coefs = np.asarray([aos_cart.coefficients[i] for i in prim_indices], dtype=dtype_np)
         nucleus = aos_cart.nucleus_index[ao_idx]
         l = aos_cart.angular_momentums[ao_idx]
         order = (
@@ -1550,7 +1568,7 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
 
     total_sph = sum(2 * shell["l"] + 1 for shell in shells)
     total_cart = aos_cart.num_ao
-    transform_matrix = np.zeros((total_sph, total_cart), dtype=np.float64)
+    transform_matrix = np.zeros((total_sph, total_cart), dtype=dtype_np)
 
     new_nucleus_index: list[int] = []
     new_angular_momentums: list[int] = []
@@ -1598,8 +1616,8 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
         num_ao=total_sph,
         num_ao_prim=len(new_exponents),
         orbital_indices=new_orbital_indices,
-        exponents=jnp.array(new_exponents, dtype=jnp.float64),
-        coefficients=jnp.array(new_coefficients, dtype=jnp.float64),
+        exponents=jnp.array(new_exponents, dtype=dtype),
+        coefficients=jnp.array(new_coefficients, dtype=dtype),
         angular_momentums=new_angular_momentums,
         magnetic_quantum_numbers=new_magnetic_quantum_numbers,
     )
@@ -1650,18 +1668,20 @@ def _compute_overlap_1d_cart(
 
 def _compute_overlap_matrix_cart_analytic(aos_cart_data: AOs_cart_data) -> npt.NDArray[np.float64]:
     """Compute AO overlap matrix analytically for Cartesian contracted GTOs."""
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     num_ao = aos_cart_data.num_ao
-    overlap_matrix = np.zeros((num_ao, num_ao), dtype=np.float64)
+    overlap_matrix = np.zeros((num_ao, num_ao), dtype=dtype_np)
 
-    centers = np.asarray(aos_cart_data._atomic_center_carts_np, dtype=np.float64)
+    centers = np.asarray(aos_cart_data._atomic_center_carts_np, dtype=dtype_np)
     orbital_indices = list(aos_cart_data.orbital_indices)
 
     primitive_indices_by_ao: list[list[int]] = [[] for _ in range(num_ao)]
     for primitive_index, ao_index in enumerate(orbital_indices):
         primitive_indices_by_ao[ao_index].append(primitive_index)
 
-    exponents = np.asarray(aos_cart_data.exponents, dtype=np.float64)
-    coefficients = np.asarray(aos_cart_data.coefficients, dtype=np.float64)
+    exponents = np.asarray(aos_cart_data.exponents, dtype=dtype_np)
+    coefficients = np.asarray(aos_cart_data.coefficients, dtype=dtype_np)
 
     nx = np.asarray(aos_cart_data.polynominal_order_x, dtype=np.int32)
     ny = np.asarray(aos_cart_data.polynominal_order_y, dtype=np.int32)
@@ -1670,7 +1690,7 @@ def _compute_overlap_matrix_cart_analytic(aos_cart_data: AOs_cart_data) -> npt.N
     normalization = np.sqrt(
         (2.0 * exponents / np.pi) ** (3.0 / 2.0)
         * (8.0 * exponents) ** np.asarray(aos_cart_data._angular_momentums_prim_np, dtype=np.int32)
-        * np.asarray(aos_cart_data._normalization_factorial_ratio_prim_jnp, dtype=np.float64)
+        * np.asarray(aos_cart_data._normalization_factorial_ratio_prim_jnp, dtype=dtype_np)
     )
 
     for mu in range(num_ao):
@@ -1720,11 +1740,13 @@ def _estimate_overlap_integration_box(
     tail_tolerance: float = 1.0e-11,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Estimate finite integration bounds for numerical overlap integration."""
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     if tail_tolerance <= 0.0 or tail_tolerance >= 1.0:
         raise ValueError(f"tail_tolerance must satisfy 0 < tail_tolerance < 1. Got {tail_tolerance}.")
 
-    centers = np.asarray(aos_data.structure_data.positions, dtype=np.float64)
-    exponents = np.asarray(aos_data.exponents, dtype=np.float64)
+    centers = np.asarray(aos_data.structure_data.positions, dtype=dtype_np)
+    exponents = np.asarray(aos_data.exponents, dtype=dtype_np)
     positive_exponents = exponents[exponents > 0.0]
     if positive_exponents.size == 0:
         raise ValueError("All AO exponents are non-positive. Cannot estimate integration bounds.")
@@ -1744,6 +1766,8 @@ def _build_overlap_integration_grid(
     tail_tolerance: float,
 ) -> tuple[np.ndarray, float]:
     """Build a uniform midpoint grid and volume element for numerical overlap integration."""
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     if num_grid_points < 3:
         raise ValueError(f"num_grid_points must be >= 3. Got {num_grid_points}.")
 
@@ -1751,9 +1775,9 @@ def _build_overlap_integration_grid(
     lengths = upper - lower
     dx, dy, dz = lengths / float(num_grid_points)
 
-    x = lower[0] + (np.arange(num_grid_points, dtype=np.float64) + 0.5) * dx
-    y = lower[1] + (np.arange(num_grid_points, dtype=np.float64) + 0.5) * dy
-    z = lower[2] + (np.arange(num_grid_points, dtype=np.float64) + 0.5) * dz
+    x = lower[0] + (np.arange(num_grid_points, dtype=dtype_np) + 0.5) * dx
+    y = lower[1] + (np.arange(num_grid_points, dtype=dtype_np) + 0.5) * dy
+    z = lower[2] + (np.arange(num_grid_points, dtype=dtype_np) + 0.5) * dz
 
     xx, yy, zz = np.meshgrid(x, y, z, indexing="ij")
     r_carts = np.stack([xx, yy, zz], axis=-1).reshape((-1, 3))
@@ -1768,13 +1792,15 @@ def _compute_overlap_matrix_debug(
     tail_tolerance: float = 1.0e-11,
 ) -> npt.NDArray[np.float64]:
     """Numerically compute AO overlap matrix by 3D midpoint integration (debug)."""
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     r_carts, volume_element = _build_overlap_integration_grid(
         aos_data=aos_data,
         num_grid_points=num_grid_points,
         tail_tolerance=tail_tolerance,
     )
 
-    ao_values = np.asarray(_compute_AOs_debug(aos_data=aos_data, r_carts=r_carts), dtype=np.float64)
+    ao_values = np.asarray(_compute_AOs_debug(aos_data=aos_data, r_carts=r_carts), dtype=dtype_np)
     overlap_matrix = np.dot(ao_values, ao_values.T) * volume_element
     overlap_matrix = 0.5 * (overlap_matrix + overlap_matrix.T)
     return overlap_matrix
@@ -1786,6 +1812,7 @@ def compute_overlap_matrix(aos_data: AOs_sphe_data | AOs_cart_data) -> jax.Array
     For spherical AOs, the overlap is evaluated by conversion to Cartesian AOs and
     transformed back with the spherical-to-Cartesian matrix.
     """
+    dtype = get_dtype("orb_eval")
     aos_cart_data, transform_matrix = _aos_sphe_to_cart(aos_data)
     cart_overlap_matrix = _compute_overlap_matrix_cart_analytic(aos_cart_data)
 
@@ -1797,7 +1824,7 @@ def compute_overlap_matrix(aos_data: AOs_sphe_data | AOs_cart_data) -> jax.Array
         raise NotImplementedError
 
     overlap_matrix = 0.5 * (overlap_matrix + overlap_matrix.T)
-    return jnp.asarray(overlap_matrix, dtype=jnp.float64)
+    return jnp.asarray(overlap_matrix, dtype=dtype)
 
 
 def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> jax.Array:
@@ -1818,7 +1845,8 @@ def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> 
     Raises:
         NotImplementedError: If ``aos_data`` is neither Cartesian nor spherical.
     """
-    r_carts = jnp.asarray(r_carts, dtype=jnp.float64)
+    dtype = get_dtype("orb_eval")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
 
     if isinstance(aos_data, AOs_sphe_data):
         AOs = _compute_AOs_sphe(aos_data, r_carts)
@@ -1848,6 +1876,8 @@ def _compute_AOs_sphe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.flo
     The method is for computing the value of the given atomic orbital at r_carts
     for debugging purpose. See compute_AOs_api.
     """
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     aos_values = []
 
     for ao_index in range(aos_data.num_ao):
@@ -1901,6 +1931,8 @@ def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.flo
     The method is for computing the value of the given atomic orbital at r_carts
     for debugging purpose. See compute_AOs_api.
     """
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     aos_values = []
 
     for ao_index in range(aos_data.num_ao):
@@ -2285,39 +2317,40 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
         tuple: (values, grads, laps) where values has shape (49, num_R, num_r), grads has shape (49, num_R, num_r, 3),
         and laps has shape (49, num_R, num_r).
     """
+    dtype = get_dtype("kinetic")
     S_L_M_COEFFS = (
-        jnp.array([1.0], dtype=jnp.float64),
-        jnp.array([1.0], dtype=jnp.float64),
-        jnp.array([1.0], dtype=jnp.float64),
-        jnp.array([1.0], dtype=jnp.float64),
-        jnp.array([1.7320508075688774], dtype=jnp.float64),
-        jnp.array([1.7320508075688774], dtype=jnp.float64),
-        jnp.array([1.0, -0.5, -0.5], dtype=jnp.float64),
-        jnp.array([1.7320508075688774], dtype=jnp.float64),
-        jnp.array([-0.8660254037844387, 0.8660254037844387], dtype=jnp.float64),
-        jnp.array([-0.7905694150420949, 2.3717082451262845], dtype=jnp.float64),
-        jnp.array([3.8729833462074166], dtype=jnp.float64),
-        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=jnp.float64),
-        jnp.array([1.0, -1.5, -1.5], dtype=jnp.float64),
-        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=jnp.float64),
-        jnp.array([-1.9364916731037083, 1.9364916731037083], dtype=jnp.float64),
-        jnp.array([-2.3717082451262845, 0.7905694150420949], dtype=jnp.float64),
-        jnp.array([-2.958039891549808, 2.958039891549808], dtype=jnp.float64),
-        jnp.array([-2.091650066335189, 6.274950199005566], dtype=jnp.float64),
-        jnp.array([6.708203932499371, -1.1180339887498951, -1.1180339887498951], dtype=jnp.float64),
-        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=jnp.float64),
-        jnp.array([1.0, -3.0, 0.375, -3.0, 0.75, 0.375], dtype=jnp.float64),
-        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=jnp.float64),
-        jnp.array([-3.3541019662496856, 0.5590169943749476, 3.3541019662496856, -0.5590169943749476], dtype=jnp.float64),
-        jnp.array([-6.274950199005566, 2.091650066335189], dtype=jnp.float64),
-        jnp.array([0.739509972887452, -4.437059837324712, 0.739509972887452], dtype=jnp.float64),
-        jnp.array([0.7015607600201141, -7.015607600201141, 3.5078038001005707], dtype=jnp.float64),
-        jnp.array([-8.874119674649426, 8.874119674649426], dtype=jnp.float64),
+        jnp.array([1.0], dtype=dtype),
+        jnp.array([1.0], dtype=dtype),
+        jnp.array([1.0], dtype=dtype),
+        jnp.array([1.0], dtype=dtype),
+        jnp.array([1.7320508075688774], dtype=dtype),
+        jnp.array([1.7320508075688774], dtype=dtype),
+        jnp.array([1.0, -0.5, -0.5], dtype=dtype),
+        jnp.array([1.7320508075688774], dtype=dtype),
+        jnp.array([-0.8660254037844387, 0.8660254037844387], dtype=dtype),
+        jnp.array([-0.7905694150420949, 2.3717082451262845], dtype=dtype),
+        jnp.array([3.8729833462074166], dtype=dtype),
+        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=dtype),
+        jnp.array([1.0, -1.5, -1.5], dtype=dtype),
+        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=dtype),
+        jnp.array([-1.9364916731037083, 1.9364916731037083], dtype=dtype),
+        jnp.array([-2.3717082451262845, 0.7905694150420949], dtype=dtype),
+        jnp.array([-2.958039891549808, 2.958039891549808], dtype=dtype),
+        jnp.array([-2.091650066335189, 6.274950199005566], dtype=dtype),
+        jnp.array([6.708203932499371, -1.1180339887498951, -1.1180339887498951], dtype=dtype),
+        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=dtype),
+        jnp.array([1.0, -3.0, 0.375, -3.0, 0.75, 0.375], dtype=dtype),
+        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=dtype),
+        jnp.array([-3.3541019662496856, 0.5590169943749476, 3.3541019662496856, -0.5590169943749476], dtype=dtype),
+        jnp.array([-6.274950199005566, 2.091650066335189], dtype=dtype),
+        jnp.array([0.739509972887452, -4.437059837324712, 0.739509972887452], dtype=dtype),
+        jnp.array([0.7015607600201141, -7.015607600201141, 3.5078038001005707], dtype=dtype),
+        jnp.array([-8.874119674649426, 8.874119674649426], dtype=dtype),
         jnp.array(
             [-4.183300132670378, 0.5229125165837972, 12.549900398011133, -1.0458250331675945, -1.5687375497513916],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
-        jnp.array([10.2469507659596, -5.1234753829798, -5.1234753829798], dtype=jnp.float64),
+        jnp.array([10.2469507659596, -5.1234753829798, -5.1234753829798], dtype=dtype),
         jnp.array(
             [
                 3.872983346207417,
@@ -2327,9 +2360,9 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 0.9682458365518543,
                 0.4841229182759271,
             ],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
-        jnp.array([1.0, -5.0, 1.875, -5.0, 3.75, 1.875], dtype=jnp.float64),
+        jnp.array([1.0, -5.0, 1.875, -5.0, 3.75, 1.875], dtype=dtype),
         jnp.array(
             [
                 3.872983346207417,
@@ -2339,21 +2372,21 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 0.9682458365518543,
                 0.4841229182759271,
             ],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
-        jnp.array([-5.1234753829798, 2.5617376914899, 5.1234753829798, -2.5617376914899], dtype=jnp.float64),
+        jnp.array([-5.1234753829798, 2.5617376914899, 5.1234753829798, -2.5617376914899], dtype=dtype),
         jnp.array(
             [-12.549900398011133, 1.5687375497513916, 4.183300132670378, 1.0458250331675945, -0.5229125165837972],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
-        jnp.array([2.2185299186623566, -13.311179511974139, 2.2185299186623566], dtype=jnp.float64),
-        jnp.array([3.5078038001005707, -7.015607600201141, 0.7015607600201141], dtype=jnp.float64),
-        jnp.array([4.030159736288377, -13.433865787627923, 4.030159736288377], dtype=jnp.float64),
-        jnp.array([2.3268138086232857, -23.268138086232856, 11.634069043116428], dtype=jnp.float64),
-        jnp.array([-19.843134832984433, 1.9843134832984433, 19.843134832984433, -1.9843134832984433], dtype=jnp.float64),
+        jnp.array([2.2185299186623566, -13.311179511974139, 2.2185299186623566], dtype=dtype),
+        jnp.array([3.5078038001005707, -7.015607600201141, 0.7015607600201141], dtype=dtype),
+        jnp.array([4.030159736288377, -13.433865787627923, 4.030159736288377], dtype=dtype),
+        jnp.array([2.3268138086232857, -23.268138086232856, 11.634069043116428], dtype=dtype),
+        jnp.array([-19.843134832984433, 1.9843134832984433, 19.843134832984433, -1.9843134832984433], dtype=dtype),
         jnp.array(
             [-7.245688373094719, 2.7171331399105196, 21.737065119284157, -5.434266279821039, -8.15139941973156],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
         jnp.array(
             [
@@ -2364,16 +2397,16 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 1.8114220932736798,
                 0.9057110466368399,
             ],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
         jnp.array(
             [4.58257569495584, -11.4564392373896, 2.8641098093474, -11.4564392373896, 5.7282196186948, 2.8641098093474],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
-        jnp.array([1.0, -7.5, 5.625, -0.3125, -7.5, 11.25, -0.9375, 5.625, -0.9375, -0.3125], dtype=jnp.float64),
+        jnp.array([1.0, -7.5, 5.625, -0.3125, -7.5, 11.25, -0.9375, 5.625, -0.9375, -0.3125], dtype=dtype),
         jnp.array(
             [4.58257569495584, -11.4564392373896, 2.8641098093474, -11.4564392373896, 5.7282196186948, 2.8641098093474],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
         jnp.array(
             [
@@ -2386,11 +2419,11 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 0.45285552331841994,
                 0.45285552331841994,
             ],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
         jnp.array(
             [-21.737065119284157, 8.15139941973156, 7.245688373094719, 5.434266279821039, -2.7171331399105196],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
         jnp.array(
             [
@@ -2402,10 +2435,10 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 2.480391854123054,
                 -0.4960783708246108,
             ],
-            dtype=jnp.float64,
+            dtype=dtype,
         ),
-        jnp.array([11.634069043116428, -23.268138086232856, 2.3268138086232857], dtype=jnp.float64),
-        jnp.array([-0.6716932893813962, 10.075399340720942, -10.075399340720942, 0.6716932893813962], dtype=jnp.float64),
+        jnp.array([11.634069043116428, -23.268138086232856, 2.3268138086232857], dtype=dtype),
+        jnp.array([-0.6716932893813962, 10.075399340720942, -10.075399340720942, 0.6716932893813962], dtype=dtype),
     )
 
     S_L_M_EXPS = (
@@ -2531,6 +2564,7 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 @jit
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for Cartesian AOs (contracted)."""
+    dtype = get_dtype("kinetic")
     r_carts = jnp.asarray(r_carts)
     R_carts = aos_data._atomic_center_carts_prim_jnp
     c = aos_data._coefficients_jnp
@@ -2575,6 +2609,7 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 @jit
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for spherical AOs (contracted)."""
+    dtype = get_dtype("kinetic")
     r_carts = jnp.asarray(r_carts)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
     R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
@@ -2584,8 +2619,8 @@ def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.n
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
-    l_f64 = l_jnp.astype(jnp.float64)
-    Z_f64 = Z_jnp.astype(jnp.float64)
+    l_f64 = l_jnp.astype(dtype)
+    Z_f64 = Z_jnp.astype(dtype)
     factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
     factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
 
@@ -2646,7 +2681,8 @@ def compute_AOs_laplacian(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.
     Raises:
         NotImplementedError: If ``aos_data`` is not Cartesian or spherical.
     """
-    r_carts = jnp.asarray(r_carts, dtype=jnp.float64)
+    dtype = get_dtype("kinetic")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
 
     if isinstance(aos_data, AOs_cart_data):
         return _compute_AOs_laplacian_analytic_cart(aos_data, r_carts)
@@ -2700,9 +2736,11 @@ def _compute_S_l_m_debug(
         They can be hardcoded into a code, or they can be computed analytically (e.g., https://en.wikipedia.org/wiki/Solid_harmonics).
         The latter one is the strategy employed in this code,
     """
+    dtype = get_dtype("orb_eval")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     R_cart = atomic_center_cart
-    x, y, z = np.array(r_cart) - np.array(R_cart)
-    r_norm = LA.norm(np.array(r_cart) - np.array(R_cart))
+    x, y, z = np.array(r_cart, dtype=dtype_np) - np.array(R_cart, dtype=dtype_np)
+    r_norm = LA.norm(np.array(r_cart, dtype=dtype_np) - np.array(R_cart, dtype=dtype_np))
     l, m = angular_momentum, magnetic_quantum_number
     m_abs = np.abs(m)
 
@@ -2756,6 +2794,7 @@ def _compute_AOs_laplacian_autodiff(aos_data: AOs_sphe_data | AOs_cart_data, r_c
     See compute_AOs_laplacian_api
 
     """
+    dtype = get_dtype("kinetic")  # noqa: F841
     # not very fast, but it works.
     ao_matrix_hessian = hessian(compute_AOs, argnums=1)(aos_data, r_carts)
     ao_matrix_laplacian = jnp.einsum("m i i u i u -> mi", ao_matrix_hessian)
@@ -2781,6 +2820,8 @@ def _compute_AOs_laplacian_debug(
             Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
 
     """
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32  # noqa: F841
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
@@ -2829,6 +2870,7 @@ def _compute_AOs_laplacian_debug(
 @jit
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for Cartesian AOs (contracted)."""
+    dtype = get_dtype("kinetic")  # noqa: F841
     r_carts = jnp.asarray(r_carts)
     R_carts = aos_data._atomic_center_carts_prim_jnp
     c = aos_data._coefficients_jnp
@@ -2876,6 +2918,7 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 @jit
 def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for spherical AOs (contracted)."""
+    dtype = get_dtype("kinetic")
     r_carts = jnp.asarray(r_carts)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
     R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
@@ -2885,8 +2928,8 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
-    l_f64 = l_jnp.astype(jnp.float64)
-    Z_f64 = Z_jnp.astype(jnp.float64)
+    l_f64 = l_jnp.astype(dtype)
+    Z_f64 = Z_jnp.astype(dtype)
     factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
     factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
 
@@ -2955,7 +2998,8 @@ def compute_AOs_grad(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array
     Raises:
         NotImplementedError: If ``aos_data`` is neither Cartesian nor spherical.
     """
-    r_carts = jnp.asarray(r_carts, dtype=jnp.float64)
+    dtype = get_dtype("kinetic")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
 
     if isinstance(aos_data, AOs_cart_data):
         return _compute_AOs_grad_analytic_cart(aos_data, r_carts)
@@ -2983,6 +3027,7 @@ def _compute_AOs_grad_autodiff(
         The dim. of each matrix is (num_ao, N_e)
 
     """
+    dtype = get_dtype("kinetic")  # noqa: F841
     grad_full = jacrev(compute_AOs, argnums=1)(aos_data, r_carts)
     grad_diag = jnp.diagonal(grad_full, axis1=1, axis2=2)
     grad_diag = jnp.swapaxes(grad_diag, 1, 2)
@@ -3004,6 +3049,8 @@ def _compute_AOs_grad_debug(
     the given atomic orbital at r_carts using FDM for debugging JAX
     implementations. See compute_AOs_grad_api
     """
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32  # noqa: F841
     # Gradients of AOs (numerical)
     diff_h = 1.0e-5
 

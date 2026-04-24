@@ -68,18 +68,7 @@ from jqmc.atomic_orbital import (  # noqa: E402
     compute_AOs_laplacian,
     compute_overlap_matrix,
 )
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    rtol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    rtol_auto_vs_numerical_deriv,
-    atol_consistency,
-    rtol_consistency,
-    atol_debug_vs_production,
-    rtol_debug_vs_production,
-    atol_numerical_vs_analytic_deriv,
-    rtol_numerical_vs_analytic_deriv,
-)
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
@@ -220,6 +209,7 @@ def test_spherical_harmonics_debug_vs_production(l, m):
     r_y_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
     r_z_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand, strict=True):
         r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
         r_cart_rel = np.array(r_cart) - np.array(R_cart)
@@ -232,7 +222,7 @@ def test_spherical_harmonics_debug_vs_production(l, m):
         ref_S_lm = np.sqrt((4 * np.pi) / (2 * l + 1)) * r_norm**l * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
         assert not np.any(np.isnan(np.asarray(test_S_lm))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(ref_S_lm))), "NaN detected in second argument"
-        assert_allclose(test_S_lm, ref_S_lm, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        assert_allclose(test_S_lm, ref_S_lm, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -273,9 +263,10 @@ def test_solid_harmonics_debug_vs_production():
 
     # print(f"batch_S_l_m.shape = {batch_S_l_m.shape}.")
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
     assert not np.any(np.isnan(np.asarray(S_l_m_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(S_l_m_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(S_l_m_debug, S_l_m_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(S_l_m_debug, S_l_m_jax, atol=atol, rtol=rtol)
     jax.clear_caches()
 
 
@@ -326,12 +317,14 @@ def test_AOs_sphe_debug_vs_production():
     )
     aos_data.sanity_check()
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
+
     aos_jax = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert not np.any(np.isnan(np.asarray(aos_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(aos_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol, rtol=rtol)
 
     num_el = 150
     num_ao = len(ml_list)
@@ -382,7 +375,7 @@ def test_AOs_sphe_debug_vs_production():
 
     assert not np.any(np.isnan(np.asarray(aos_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(aos_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -451,12 +444,14 @@ def test_AOs_cart_debug_vs_production():
     )
     aos_data.sanity_check()
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
+
     aos_jax = _compute_AOs_cart(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert not np.any(np.isnan(np.asarray(aos_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(aos_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -509,20 +504,22 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     gx_auto, gy_auto, gz_auto = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
     gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(gx_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(gx_an, gx_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(gx_an, gx_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gy_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(gy_an, gy_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(gy_an, gy_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gz_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(gz_an, gz_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(gz_an, gz_auto, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     """Test the grad AOs computation, comparing the JAX and debug implementations."""
     # Cartesian case
@@ -570,15 +567,16 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     gx_auto_cart, gy_auto_cart, gz_auto_cart = _compute_AOs_grad_autodiff(aos_data=aos_data_cart, r_carts=r_carts)
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data_cart, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(gx_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gy_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(gy_auto_cart, gy_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gy_auto_cart, gy_num_cart, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gz_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(gz_auto_cart, gz_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gz_auto_cart, gz_num_cart, atol=atol, rtol=rtol)
 
     # Spherical case
     num_r_cart_samples = 10
@@ -634,14 +632,14 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(gx_auto_sphe, gx_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gx_auto_sphe, gx_num_sphe, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gy_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(gy_auto_sphe, gy_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gy_auto_sphe, gy_num_sphe, atol=atol, rtol=rtol)
 
     assert not np.any(np.isnan(np.asarray(gz_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(gz_auto_sphe, gz_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gz_auto_sphe, gz_num_sphe, atol=atol, rtol=rtol)
 
     # Spherical case (additional coverage)
     num_r_cart_samples = 2
@@ -697,17 +695,18 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(gx_auto_sphe, gx_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gx_auto_sphe, gx_num_sphe, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gy_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(gy_auto_sphe, gy_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gy_auto_sphe, gy_num_sphe, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gz_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(gz_auto_sphe, gz_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gz_auto_sphe, gz_num_sphe, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
+@pytest.mark.numerical_diff
 def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     """Analytic AO gradients match numerical finite-difference implementation."""
     seed = 2028
@@ -756,21 +755,16 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
     gx_an_cart, gy_an_cart, gz_an_cart = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(gx_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        gx_an_cart, gx_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(gx_an_cart, gx_num_cart, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gy_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        gy_an_cart, gy_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(gy_an_cart, gy_num_cart, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gz_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        gz_an_cart, gz_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(gz_an_cart, gz_num_cart, atol=atol, rtol=rtol)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -813,19 +807,13 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        gx_an_sphe, gx_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(gx_an_sphe, gx_num_sphe, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gy_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        gy_an_sphe, gy_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(gy_an_sphe, gy_num_sphe, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(gz_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        gz_an_sphe, gz_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(gz_an_sphe, gz_num_sphe, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -879,9 +867,10 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     lap_auto_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_an_cart, lap_auto_cart, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(lap_an_cart, lap_auto_cart, atol=atol, rtol=rtol)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -924,9 +913,10 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
 
     assert not np.any(np.isnan(np.asarray(lap_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_an_sphe, lap_auto_sphe, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(lap_an_sphe, lap_auto_sphe, atol=atol, rtol=rtol)
 
 
+@pytest.mark.numerical_diff
 def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     """Analytic Laplacians match numerical finite-difference implementation."""
     seed = 2027
@@ -975,11 +965,10 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        lap_an_cart, lap_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(lap_an_cart, lap_num_cart, atol=atol, rtol=rtol)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -1022,14 +1011,13 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        lap_an_sphe, lap_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(lap_an_sphe, lap_num_sphe, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     """Test the laplacian AOs computation, comparing the JAX and debug implementations."""
     # Cartesian case
@@ -1077,11 +1065,10 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        lap_auto_cart, lap_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(lap_auto_cart, lap_num_cart, atol=atol, rtol=rtol)
 
     # Spherical cases
     num_r_cart_samples = 10
@@ -1133,9 +1120,7 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        lap_num_sphe, lap_auto_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(lap_num_sphe, lap_auto_sphe, atol=atol, rtol=rtol)
 
     num_r_cart_samples = 2
     num_R_cart_samples = 3
@@ -1186,13 +1171,12 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        lap_num_sphe, lap_auto_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(lap_num_sphe, lap_auto_sphe, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
+@pytest.mark.numerical_diff
 def test_overlap_matrix_cart_analytic_vs_numerical_debug():
     """Cartesian AO overlap matrix from analytic formula matches numerical integration."""
     centers = np.array([[-0.45, 0.0, 0.0], [0.45, 0.0, 0.0]], dtype=np.float64)
@@ -1224,19 +1208,19 @@ def test_overlap_matrix_cart_analytic_vs_numerical_debug():
     overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
     overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        overlap_analytic, overlap_numerical, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(overlap_analytic, overlap_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_analytic.T))), "NaN detected in second argument"
-    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, atol=atol_consistency, rtol=rtol_consistency)
+    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, atol=atol, rtol=rtol)
     assert np.all(np.diag(overlap_analytic) > 0.0)
 
     jax.clear_caches()
 
 
+@pytest.mark.numerical_diff
 def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
     """Spherical AO overlap matrix from analytic formula matches numerical integration."""
     centers = np.array([[-0.35, 0.0, 0.0], [0.35, 0.0, 0.0]], dtype=np.float64)
@@ -1266,14 +1250,14 @@ def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
     overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
     overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
 
+    atol_l, rtol_l = get_tolerance("orb_eval", "loose")
+    atol_s, rtol_s = get_tolerance("orb_eval", "strict")
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        overlap_analytic, overlap_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(overlap_analytic, overlap_numerical, atol=atol_l, rtol=rtol_l)
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_analytic.T))), "NaN detected in second argument"
-    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, atol=atol_consistency, rtol=rtol_consistency)
+    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, atol=atol_s, rtol=rtol_s)
     assert np.all(np.diag(overlap_analytic) > 0.0)
 
     jax.clear_caches()

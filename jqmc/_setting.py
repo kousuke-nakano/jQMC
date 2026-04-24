@@ -1,4 +1,8 @@
-"""setting."""
+"""Setting module.
+
+Contains physical constants, numerical stability parameters, and
+test tolerance definitions used across jQMC.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -31,6 +35,8 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
+import numpy as np
 
 # Unit conversion
 Bohr_to_Angstrom = 0.529177210903
@@ -67,6 +73,58 @@ atol_debug_vs_production = 1.0e-8
 rtol_debug_vs_production = 1.0e-6
 atol_consistency = 1.0e-8
 rtol_consistency = 1.0e-6
+
+# --- Test tolerance dict (dtype-aware) ---
+#
+# Accessed via ``_precision.get_tolerance(zone, level)`` which resolves the
+# zone's current dtype and returns ``(atol, rtol)``.
+#
+# Levels:
+#   strict — two exact implementations of the same quantity (debug vs
+#            production, analytic vs autodiff).  Difference is pure
+#            floating-point round-off.
+#   loose  — comparison involving numerical differentiation or quadrature.
+#            Finite-difference truncation error dominates, so tolerances
+#            are much wider.
+_TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
+    "strict": {"float64": (1e-8, 1e-6), "float32": (1e-5, 1e-3)},
+    "loose": {"float64": (1e-1, 1e-4), "float32": (1e-1, 1e-3)},
+}
+
+# --- Dtype-aware EPS constants ---
+#
+# Some EPS values are tuned for float64 and break under float32 (underflow,
+# loss of stabilization).  Use ``get_eps(name, dtype)`` to obtain the
+# appropriate value for the current precision zone.
+#
+# Constants:
+#   machine_precision — floor for safe ratio in diagnostics.
+#   stabilizing_ao    — small epsilon for AO Cartesian derivative stabilization.
+#   rcond_svd         — threshold for SVD pseudoinverse of the geminal matrix.
+_EPS_DTYPE_AWARE: dict[str, dict[str, float]] = {
+    "machine_precision": {"float64": 1e-300, "float32": 1e-38},
+    "stabilizing_ao": {"float64": 1e-16, "float32": 1e-7},
+    "rcond_svd": {"float64": 1e-20, "float32": 1e-6},
+}
+
+
+def get_eps(name: str, dtype) -> float:
+    """Return a dtype-aware numerical stability constant.
+
+    Args:
+        name: One of ``"machine_precision"``, ``"stabilizing_ao"``,
+            ``"rcond_svd"``.
+        dtype: A NumPy/JAX dtype (e.g. ``jnp.float32``, ``np.float64``).
+
+    Returns:
+        The appropriate epsilon value for the given dtype.
+
+    Raises:
+        KeyError: If *name* is not a known EPS constant.
+    """
+    dtype_key = "float32" if np.dtype(dtype) == np.float32 else "float64"
+    return _EPS_DTYPE_AWARE[name][dtype_key]
+
 
 # Numerical stability settings for AO
 EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16

@@ -1,4 +1,12 @@
-"""Jastrow module."""
+"""Jastrow module.
+
+Precision Zones:
+    - ``jastrow``: forward Jastrow evaluation (compute_Jastrow_part, J1/J2/J3).
+    - ``kinetic``: Jastrow derivatives (compute_grads_and_laplacian_Jastrow_*).
+    - ``mcmc``: ratio and update functions.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -53,6 +61,7 @@ from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 from jax.tree_util import tree_flatten, tree_unflatten
 
+from ._precision import get_dtype
 from ._setting import EPS_safe_distance, atol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
@@ -347,7 +356,7 @@ class NNJastrow(nn.Module):
                 jnp.ndarray: ``(n_e, hidden_dim)`` messages summarizing nuclear influence.
             """
             if nuclear_embeddings.shape[0] == 0:
-                return jnp.zeros((radial_features.shape[0], self.hidden_dim))
+                return jnp.zeros((radial_features.shape[0], self.hidden_dim), dtype=radial_features.dtype)
             weights = weights_net(radial_features)
             messages = weights * nuclear_embeddings[None, :, :]
             return jnp.sum(messages, axis=1)
@@ -424,8 +433,9 @@ class NNJastrow(nn.Module):
             jnp.ndarray: ``(n_a, n_b)`` matrix with a small epsilon added before the square
             root to keep gradients finite when particles coincide.
         """
+        dtype_j = get_dtype("jastrow")
         if A.shape[0] == 0 or B.shape[0] == 0:
-            return jnp.zeros((A.shape[0], B.shape[0]))
+            return jnp.zeros((A.shape[0], B.shape[0]), dtype=dtype_j)
         diff = A[:, None, :] - B[None, :, :]
         return jnp.sqrt(jnp.sum(diff**2, axis=-1) + EPS_safe_distance)
 
@@ -439,9 +449,10 @@ class NNJastrow(nn.Module):
             jnp.ndarray: ``(n_nuc, hidden_dim)`` embeddings looked up through
             ``species_lookup``. Returns an empty array when no nuclei are present.
         """
+        dtype = get_dtype("jastrow")
         n_nuc = Z_n.shape[0]
         if n_nuc == 0:
-            return jnp.zeros((0, self.hidden_dim))
+            return jnp.zeros((0, self.hidden_dim), dtype=dtype)
 
         lookup = jnp.asarray(self.species_lookup)
         species_ids = jnp.take(lookup, Z_n.astype(jnp.int32), mode="clip")
@@ -500,9 +511,10 @@ class NNJastrow(nn.Module):
             The network is permutation equivariant within each spin channel and rotation
             invariant by construction of the PhysNet radial features.
         """
-        r_up = jnp.asarray(r_up)
-        r_dn = jnp.asarray(r_dn)
-        R_n = jnp.asarray(R_n)
+        dtype = get_dtype("jastrow")
+        r_up = jnp.asarray(r_up, dtype=dtype)
+        r_dn = jnp.asarray(r_dn, dtype=dtype)
+        R_n = jnp.asarray(R_n, dtype=dtype)
         Z_n = jnp.asarray(Z_n)
 
         n_up = r_up.shape[0]
@@ -613,8 +625,10 @@ class Jastrow_one_body_data:
     @classmethod
     def init_jastrow_one_body_data(cls, jastrow_1b_param, structure_data, core_electrons, jastrow_1b_type="exp"):
         """Initialization."""
+        dtype = get_dtype("jastrow")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
         jastrow_one_body_data = cls(
-            jastrow_1b_param=np.asarray(jastrow_1b_param, dtype=np.float64).reshape(()),
+            jastrow_1b_param=np.asarray(jastrow_1b_param, dtype=dtype_np).reshape(()),
             jastrow_1b_type=jastrow_1b_type,
             structure_data=structure_data,
             core_electrons=core_electrons,
@@ -641,10 +655,11 @@ def compute_Jastrow_one_body(
     Returns:
         float: One-body Jastrow value (before exponentiation).
     """
+    dtype = get_dtype("jastrow")
     # Retrieve structure data and convert to JAX arrays
-    R_carts = jnp.array(jastrow_one_body_data.structure_data.positions)
-    atomic_numbers = jnp.array(jastrow_one_body_data.structure_data.atomic_numbers)
-    core_electrons = jnp.array(jastrow_one_body_data.core_electrons)
+    R_carts = jnp.array(jastrow_one_body_data.structure_data.positions, dtype=dtype)
+    atomic_numbers = jnp.array(jastrow_one_body_data.structure_data.atomic_numbers, dtype=dtype)
+    core_electrons = jnp.array(jastrow_one_body_data.core_electrons, dtype=dtype)
     effective_charges = atomic_numbers - core_electrons
 
     j1b_type = jastrow_one_body_data.jastrow_1b_type
@@ -696,10 +711,12 @@ def _compute_Jastrow_one_body_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_Jastrow_one_body_api."""
+    dtype = get_dtype("jastrow")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     positions = jastrow_one_body_data.structure_data.positions
     atomic_numbers = jastrow_one_body_data.structure_data.atomic_numbers
     core_electrons = jastrow_one_body_data.core_electrons
-    effective_charges = np.array(atomic_numbers) - np.array(core_electrons)
+    effective_charges = np.array(atomic_numbers, dtype=dtype_np) - np.array(core_electrons, dtype=dtype_np)
 
     j1b_type = jastrow_one_body_data.jastrow_1b_type
 
@@ -751,9 +768,11 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
     np.ndarray,
 ]:
     """Numerical gradients and Laplacian for one-body Jastrow (debug)."""
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     diff_h = 1.0e-5
-    r_up_carts = np.array(r_up_carts, dtype=float)
-    r_dn_carts = np.array(r_dn_carts, dtype=float)
+    r_up_carts = np.array(r_up_carts, dtype=dtype_np)
+    r_dn_carts = np.array(r_dn_carts, dtype=dtype_np)
 
     # grad up
     grad_x_up = []
@@ -817,14 +836,14 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
         grad_y_dn.append((J_p_y_dn - J_m_y_dn) / (2.0 * diff_h))
         grad_z_dn.append((J_p_z_dn - J_m_z_dn) / (2.0 * diff_h))
 
-    grad_J1_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
-    grad_J1_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+    grad_J1_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
+    grad_J1_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
     # laplacian
     diff_h2 = 1.0e-3
     J_ref = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, r_dn_carts)
 
-    lap_J1_up = np.zeros(len(r_up_carts), dtype=float)
+    lap_J1_up = np.zeros(len(r_up_carts), dtype=dtype_np)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -856,7 +875,7 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
 
         lap_J1_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
-    lap_J1_dn = np.zeros(len(r_dn_carts), dtype=float)
+    lap_J1_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -903,8 +922,9 @@ def _compute_grads_and_laplacian_Jastrow_one_body_auto(
     jax.Array,
 ]:
     """Auto-diff gradients and Laplacian for one-body Jastrow."""
-    r_up_carts = jnp.array(r_up_carts)
-    r_dn_carts = jnp.array(r_dn_carts)
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.array(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.array(r_dn_carts, dtype=dtype)
 
     grad_J1_up = grad(compute_Jastrow_one_body, argnums=1)(jastrow_one_body_data, r_up_carts, r_dn_carts)
     grad_J1_dn = grad(compute_Jastrow_one_body, argnums=2)(jastrow_one_body_data, r_up_carts, r_dn_carts)
@@ -936,7 +956,8 @@ def compute_grads_and_laplacian_Jastrow_one_body(
             Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``,
             Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
-    positions = jnp.asarray(jastrow_one_body_data.structure_data.positions)
+    dtype = get_dtype("kinetic")
+    positions = jnp.asarray(jastrow_one_body_data.structure_data.positions, dtype=dtype)
     atomic_numbers = jnp.asarray(jastrow_one_body_data.structure_data.atomic_numbers)
     core_electrons = jnp.asarray(jastrow_one_body_data.core_electrons)
     z_eff = atomic_numbers - core_electrons
@@ -988,8 +1009,8 @@ def compute_grads_and_laplacian_Jastrow_one_body(
     else:
         raise ValueError(f"Unknown jastrow_1b_type: {j1b_type}")
 
-    grad_up, lap_up = _grad_lap_one_spin(jnp.asarray(r_up_carts))
-    grad_dn, lap_dn = _grad_lap_one_spin(jnp.asarray(r_dn_carts))
+    grad_up, lap_up = _grad_lap_one_spin(jnp.asarray(r_up_carts, dtype=dtype))
+    grad_dn, lap_dn = _grad_lap_one_spin(jnp.asarray(r_dn_carts, dtype=dtype))
 
     return grad_up, grad_dn, lap_up, lap_dn
 
@@ -1056,8 +1077,10 @@ class Jastrow_two_body_data:
     @classmethod
     def init_jastrow_two_body_data(cls, jastrow_2b_param=1.0, jastrow_2b_type="pade"):
         """Initialization."""
+        dtype = get_dtype("jastrow")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
         jastrow_two_body_data = cls(
-            jastrow_2b_param=np.asarray(jastrow_2b_param, dtype=np.float64).reshape(()),
+            jastrow_2b_param=np.asarray(jastrow_2b_param, dtype=dtype_np).reshape(()),
             jastrow_2b_type=jastrow_2b_type,
         )
         return jastrow_two_body_data
@@ -1332,11 +1355,13 @@ class Jastrow_three_body_data:
             random_scale: Upper bound of uniform sampler when random_init is True (default 0.01).
             seed: Optional seed for deterministic initialization when random_init is True.
         """
+        dtype = get_dtype("jastrow")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
         if random_init:
             rng = np.random.default_rng(seed)
-            j_matrix = rng.uniform(0.0, random_scale, size=(orb_data._num_orb, orb_data._num_orb + 1))
+            j_matrix = rng.uniform(0.0, random_scale, size=(orb_data._num_orb, orb_data._num_orb + 1)).astype(dtype_np)
         else:
-            j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1))
+            j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1), dtype=dtype_np)
 
         jastrow_three_body_data = cls(
             orb_data=orb_data,
@@ -1359,8 +1384,10 @@ class Jastrow_three_body_data:
 
         aos_cart, transform_matrix = _aos_sphe_to_cart(self.orb_data)
 
-        square_sph = np.asarray(self.j_matrix[:, :-1], dtype=np.float64)
-        j1_sph = np.asarray(self.j_matrix[:, -1], dtype=np.float64)
+        dtype = get_dtype("jastrow")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+        square_sph = np.asarray(self.j_matrix[:, :-1], dtype=dtype_np)
+        j1_sph = np.asarray(self.j_matrix[:, -1], dtype=dtype_np)
         square_cart = transform_matrix.T @ square_sph @ transform_matrix
         j1_cart = transform_matrix.T @ j1_sph
 
@@ -1385,8 +1412,10 @@ class Jastrow_three_body_data:
 
         aos_sphe, transform_pinv = _aos_cart_to_sphe(self.orb_data)
 
-        square_cart = np.asarray(self.j_matrix[:, :-1], dtype=np.float64)
-        j1_cart = np.asarray(self.j_matrix[:, -1], dtype=np.float64)
+        dtype = get_dtype("jastrow")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+        square_cart = np.asarray(self.j_matrix[:, :-1], dtype=dtype_np)
+        j1_cart = np.asarray(self.j_matrix[:, -1], dtype=dtype_np)
         square_sph = transform_pinv.T @ square_cart @ transform_pinv
         j1_sph = transform_pinv.T @ j1_cart
 
@@ -1550,9 +1579,10 @@ class Jastrow_NN_data:
         # Dummy electron positions for parameter initialization:
         # use one spin-up and one spin-down electron at the origin so that
         # both PauliNet channels are initialized with valid shapes.
-        r_up_init = jnp.zeros((1, 3))
-        r_dn_init = jnp.zeros((1, 3))
-        R_n = jnp.asarray(structure_data.positions)  # (n_nuc, 3)
+        dtype = get_dtype("jastrow")
+        r_up_init = jnp.zeros((1, 3), dtype=dtype)
+        r_dn_init = jnp.zeros((1, 3), dtype=dtype)
+        R_n = jnp.asarray(structure_data.positions, dtype=dtype)  # (n_nuc, 3)
         Z_n = jnp.asarray(structure_data.atomic_numbers)  # (n_nuc,)
 
         rngs = {"params": key}
@@ -1625,14 +1655,15 @@ def compute_Jastrow_three_body(
     Returns:
         float: Three-body Jastrow value (before exponentiation).
     """
+    dtype = get_dtype("jastrow")
     num_electron_up = len(r_up_carts)
     num_electron_dn = len(r_dn_carts)
 
-    aos_up = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_up_carts))
-    aos_dn = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_dn_carts))
+    aos_up = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_up_carts), dtype=dtype)
+    aos_dn = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_dn_carts), dtype=dtype)
 
-    K_up = jnp.tril(jnp.ones((num_electron_up, num_electron_up)), k=-1)
-    K_dn = jnp.tril(jnp.ones((num_electron_dn, num_electron_dn)), k=-1)
+    K_up = jnp.tril(jnp.ones((num_electron_up, num_electron_up), dtype=dtype), k=-1)
+    K_dn = jnp.tril(jnp.ones((num_electron_dn, num_electron_dn), dtype=dtype), k=-1)
 
     j1_matrix_up = jastrow_three_body_data.j_matrix[:, -1]
     j1_matrix_dn = jastrow_three_body_data.j_matrix[:, -1]
@@ -1640,8 +1671,8 @@ def compute_Jastrow_three_body(
     j3_matrix_dn_dn = jastrow_three_body_data.j_matrix[:, :-1]
     j3_matrix_up_dn = jastrow_three_body_data.j_matrix[:, :-1]
 
-    e_up = jnp.ones(num_electron_up).T
-    e_dn = jnp.ones(num_electron_dn).T
+    e_up = jnp.ones(num_electron_up, dtype=dtype).T
+    e_dn = jnp.ones(num_electron_dn, dtype=dtype).T
 
     # print(f"aos_up.shape={aos_up.shape}")
     # print(f"aos_dn.shape={aos_dn.shape}")
@@ -1668,6 +1699,8 @@ def _compute_Jastrow_three_body_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See _api method."""
+    dtype = get_dtype("jastrow")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     aos_up = jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_up_carts)
     aos_dn = jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_dn_carts)
 
@@ -1852,13 +1885,15 @@ class Jastrow_data:
         in ``Wavefunction_data.get_variational_blocks`` and add the
         corresponding handling here, without touching the SR/MCMC driver.
         """
+        dtype = get_dtype("jastrow")
+        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
         j1 = self.jastrow_one_body_data
         j2 = self.jastrow_two_body_data
         j3 = self.jastrow_three_body_data
         nn3 = self.jastrow_nn_data
 
         if block.name == "j1_param" and j1 is not None:
-            new_param = np.asarray(block.values, dtype=np.float64).reshape(())
+            new_param = np.asarray(block.values, dtype=dtype_np).reshape(())
             j1 = Jastrow_one_body_data(
                 jastrow_1b_param=new_param,
                 structure_data=j1.structure_data,
@@ -1866,26 +1901,26 @@ class Jastrow_data:
                 jastrow_1b_type=j1.jastrow_1b_type,
             )
         elif block.name == "j2_param" and j2 is not None:
-            new_param = np.asarray(block.values, dtype=np.float64).reshape(())
+            new_param = np.asarray(block.values, dtype=dtype_np).reshape(())
             j2 = Jastrow_two_body_data(jastrow_2b_param=new_param, jastrow_2b_type=j2.jastrow_2b_type)
         elif block.name == "j3_matrix" and j3 is not None:
-            j3_new = np.array(block.values)
+            j3_new = np.array(block.values, dtype=dtype_np)
 
             # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
             j3_new = self.symmetrize_j3(j3_new)
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
         elif block.name == "j3_basis_exp" and j3 is not None:
-            new_exp = np.asarray(block.values, dtype=np.float64)
-            new_exp = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_exp), dtype=jnp.float64)
+            new_exp = np.asarray(block.values, dtype=dtype_np)
+            new_exp = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_exp), dtype=dtype)
             j3 = j3.with_updated_ao_exponents(new_exp)
         elif block.name == "j3_basis_coeff" and j3 is not None:
-            new_coeff = np.asarray(block.values, dtype=np.float64)
-            new_coeff = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_coeff), dtype=jnp.float64)
+            new_coeff = np.asarray(block.values, dtype=dtype_np)
+            new_coeff = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_coeff), dtype=dtype)
             j3 = j3.with_updated_ao_coefficients(new_coeff)
         elif block.name == "jastrow_nn_params" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
-            flat = jnp.asarray(block.values).reshape(-1)
+            flat = jnp.asarray(block.values, dtype=dtype).reshape(-1)
             params_new = nn3.unflatten_fn(flat)
             nn3 = nn3.replace(params=params_new)
 
@@ -1998,8 +2033,9 @@ def compute_Jastrow_part(jastrow_data: Jastrow_data, r_up_carts: jax.Array, r_dn
     Returns:
         float: Total Jastrow value before exponentiation.
     """
-    r_up_carts = jnp.asarray(r_up_carts)
-    r_dn_carts = jnp.asarray(r_dn_carts)
+    dtype = get_dtype("jastrow")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
 
     J1 = 0.0
     J2 = 0.0
@@ -2023,7 +2059,7 @@ def compute_Jastrow_part(jastrow_data: Jastrow_data, r_up_carts: jax.Array, r_dn
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
-        R_n = jnp.asarray(nn3.structure_data.positions)
+        R_n = jnp.asarray(nn3.structure_data.positions, dtype=dtype)
         Z_n = jnp.asarray(nn3.structure_data.atomic_numbers)
         J3_nn = nn3.nn_def.apply({"params": nn3.params}, r_up_carts, r_dn_carts, R_n, Z_n)
         J3 = J3 + J3_nn
@@ -2037,6 +2073,8 @@ def _compute_Jastrow_part_debug(
     jastrow_data: Jastrow_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
 ) -> float:
     """See compute_Jastrow_part_jax for more details."""
+    dtype = get_dtype("jastrow")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     J1 = 0.0
     J2 = 0.0
     J3 = 0.0
@@ -2059,12 +2097,16 @@ def _compute_Jastrow_part_debug(
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3 (debug).")
 
-        R_n = np.asarray(nn3.structure_data.positions, dtype=float)
-        Z_n = np.asarray(nn3.structure_data.atomic_numbers, dtype=float)
+        R_n = np.asarray(nn3.structure_data.positions, dtype=dtype_np)
+        Z_n = np.asarray(nn3.structure_data.atomic_numbers, dtype=dtype_np)
 
         # Use JAX NN for debug as well; convert inputs to jnp and back to float
         J3_nn = nn3.nn_def.apply(
-            {"params": nn3.params}, jnp.asarray(r_up_carts), jnp.asarray(r_dn_carts), jnp.asarray(R_n), jnp.asarray(Z_n)
+            {"params": nn3.params},
+            jnp.asarray(r_up_carts, dtype=dtype),
+            jnp.asarray(r_dn_carts, dtype=dtype),
+            jnp.asarray(R_n, dtype=dtype),
+            jnp.asarray(Z_n, dtype=dtype),
         )
         J3 += float(J3_nn)
 
@@ -2106,10 +2148,11 @@ def _compute_ratio_Jastrow_part_rank1_update(
         grid generated by the MCMC loop, where exactly one electron is displaced
         per grid point by construction.
     """
-    old_r_up_carts = jnp.asarray(old_r_up_carts)
-    old_r_dn_carts = jnp.asarray(old_r_dn_carts)
-    new_r_up_carts_arr = jnp.asarray(new_r_up_carts_arr)
-    new_r_dn_carts_arr = jnp.asarray(new_r_dn_carts_arr)
+    dtype = get_dtype("mcmc")
+    old_r_up_carts = jnp.asarray(old_r_up_carts, dtype=dtype)
+    old_r_dn_carts = jnp.asarray(old_r_dn_carts, dtype=dtype)
+    new_r_up_carts_arr = jnp.asarray(new_r_up_carts_arr, dtype=dtype)
+    new_r_dn_carts_arr = jnp.asarray(new_r_dn_carts_arr, dtype=dtype)
 
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
@@ -2119,7 +2162,7 @@ def _compute_ratio_Jastrow_part_rank1_update(
         jastrow_xp = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(jastrow_data, new_r_up_carts_arr, new_r_dn_carts_arr)
         return jnp.exp(jastrow_xp - jastrow_x)
 
-    J_ratio = jnp.ones(n_grid)
+    J_ratio = jnp.ones(n_grid, dtype=dtype)
 
     # J1 part
     if jastrow_data.jastrow_one_body_data is not None:
@@ -2133,8 +2176,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
                 idx_dn = jnp.argmax(nonzero_dn)
                 r_dn_new = new_r_dn_carts[idx_dn]
                 r_dn_old = old_r_dn_carts[idx_dn]
-                j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_new, axis=0))
-                j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_old, axis=0))
+                j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3), dtype=dtype), jnp.expand_dims(r_dn_new, axis=0))
+                j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3), dtype=dtype), jnp.expand_dims(r_dn_old, axis=0))
                 return jnp.exp(j1_new - j1_old)
 
         elif num_dn == 0:
@@ -2145,8 +2188,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
                 idx_up = jnp.argmax(nonzero_up)
                 r_up_new = new_r_up_carts[idx_up]
                 r_up_old = old_r_up_carts[idx_up]
-                j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
-                j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
+                j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3), dtype=dtype))
+                j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3), dtype=dtype))
                 return jnp.exp(j1_new - j1_old)
 
         else:
@@ -2165,16 +2208,24 @@ def _compute_ratio_Jastrow_part_rank1_update(
                     j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts = args
                     r_up_new = new_r_up_carts[idx_up]
                     r_up_old = old_r_up_carts[idx_up]
-                    j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
-                    j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
+                    j1_new = compute_Jastrow_one_body(
+                        j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3), dtype=dtype)
+                    )
+                    j1_old = compute_Jastrow_one_body(
+                        j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3), dtype=dtype)
+                    )
                     return jnp.exp(j1_new - j1_old)
 
                 def dn_case(args):
                     j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts = args
                     r_dn_new = new_r_dn_carts[idx_dn]
                     r_dn_old = old_r_dn_carts[idx_dn]
-                    j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_new, axis=0))
-                    j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_old, axis=0))
+                    j1_new = compute_Jastrow_one_body(
+                        j1_data, jnp.zeros((0, 3), dtype=dtype), jnp.expand_dims(r_dn_new, axis=0)
+                    )
+                    j1_old = compute_Jastrow_one_body(
+                        j1_data, jnp.zeros((0, 3), dtype=dtype), jnp.expand_dims(r_dn_old, axis=0)
+                    )
                     return jnp.exp(j1_new - j1_old)
 
                 return jax.lax.cond(
@@ -2316,7 +2367,7 @@ def _compute_ratio_Jastrow_part_rank1_update(
 
         def compute_pairwise_sums(pos1, pos2):
             if pos1.shape[0] == 0 or pos2.shape[0] == 0:
-                return jnp.zeros(pos1.shape[0])
+                return jnp.zeros(pos1.shape[0], dtype=dtype)
             dists = _safe_norm(pos1[:, None, :] - pos2[None, :, :])
             vals = _j2_from_dist(dists, j2_param)
             return jnp.sum(vals, axis=1)
@@ -2380,8 +2431,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
         j1_vec = j3d.j_matrix[:, -1]  # (n_ao,)
 
         # Old AOs evaluated once
-        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts))  # (n_ao, N_up)
-        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts))  # (n_ao, N_dn)
+        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts), dtype=dtype)  # (n_ao, N_up)
+        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts), dtype=dtype)  # (n_ao, N_dn)
 
         N_batch = new_r_up_carts_arr.shape[0]
 
@@ -2401,8 +2452,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
         r_old_moved = jnp.where(up_moved_batch[:, None], r_old_up_moved, r_old_dn_moved)  # (N, 3)
 
         # Single batched AO evaluation for all N configs (replaces N per-config calls inside vmap)
-        aos_new_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_new_moved))  # (n_ao, N)
-        aos_old_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_old_moved))  # (n_ao, N)
+        aos_new_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_new_moved), dtype=dtype)  # (n_ao, N)
+        aos_old_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_old_moved), dtype=dtype)  # (n_ao, N)
         aos_p_batch = aos_new_batch - aos_old_batch  # (n_ao, N)
 
         # Precompute constant products (independent of config)
@@ -2422,8 +2473,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
         # UP formula  -----------------------------------------------------------
         V_up = jnp.dot(aos_p_batch.T, W_up)  # (N, N_up)
         P_up = jnp.dot(U_up, aos_p_batch)  # (N_up, N)
-        Q_up_c = (idx_for_Q[:, None] < jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (N, N_up)
-        Q_up_r = (idx_for_Q[:, None] > jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (N, N_up)
+        Q_up_c = (idx_for_Q[:, None] < jnp.arange(num_up)[None, :]).astype(dtype)  # (N, N_up)
+        Q_up_r = (idx_for_Q[:, None] > jnp.arange(num_up)[None, :]).astype(dtype)  # (N, N_up)
         term2_up = jnp.sum(V_up * Q_up_c, axis=1)  # (N,)
         term3_up = jnp.sum(P_up.T * Q_up_r, axis=1)  # (N,)
         term4_up = dn_cross_vec @ aos_p_batch  # (N,)
@@ -2432,8 +2483,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
         # DN formula  -----------------------------------------------------------
         V_dn = jnp.dot(aos_p_batch.T, W_dn)  # (N, N_dn)
         P_dn = jnp.dot(U_dn, aos_p_batch)  # (N_dn, N)
-        Q_dn_c = (idx_for_Q[:, None] < jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (N, N_dn)
-        Q_dn_r = (idx_for_Q[:, None] > jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (N, N_dn)
+        Q_dn_c = (idx_for_Q[:, None] < jnp.arange(num_dn)[None, :]).astype(dtype)  # (N, N_dn)
+        Q_dn_r = (idx_for_Q[:, None] > jnp.arange(num_dn)[None, :]).astype(dtype)  # (N, N_dn)
         term2_dn = jnp.sum(V_dn * Q_dn_c, axis=1)  # (N,)
         term3_dn = jnp.sum(P_dn.T * Q_dn_r, axis=1)  # (N,)
         term4_dn = up_cross_vec @ aos_p_batch  # (N,)
@@ -2455,7 +2506,7 @@ def _compute_ratio_Jastrow_part_rank1_update(
         if nn.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
-        R_n = jnp.asarray(nn.structure_data.positions)
+        R_n = jnp.asarray(nn.structure_data.positions, dtype=dtype)
         Z_n = jnp.asarray(nn.structure_data.atomic_numbers)
 
         def compute_one_grid_JNN(new_r_up_carts, new_r_dn_carts):
@@ -2509,10 +2560,11 @@ def _compute_ratio_Jastrow_part_split_spin(
         exclusively for the block-structured non-local ECP grids produced by
         the MCMC loop.
     """
-    old_r_up_carts = jnp.asarray(old_r_up_carts)
-    old_r_dn_carts = jnp.asarray(old_r_dn_carts)
-    new_r_up_shifted = jnp.asarray(new_r_up_shifted)
-    new_r_dn_shifted = jnp.asarray(new_r_dn_shifted)
+    dtype = get_dtype("mcmc")
+    old_r_up_carts = jnp.asarray(old_r_up_carts, dtype=dtype)
+    old_r_dn_carts = jnp.asarray(old_r_dn_carts, dtype=dtype)
+    new_r_up_shifted = jnp.asarray(new_r_up_shifted, dtype=dtype)
+    new_r_dn_shifted = jnp.asarray(new_r_dn_shifted, dtype=dtype)
 
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
@@ -2548,8 +2600,8 @@ def _compute_ratio_Jastrow_part_split_spin(
     r_up_old_moved = old_r_up_carts[idx_up_block]  # (G_up, 3)
     r_dn_old_moved = old_r_dn_carts[idx_dn_block]  # (G_dn, 3)
 
-    J_up = jnp.ones(g_up)
-    J_dn = jnp.ones(g_dn)
+    J_up = jnp.ones(g_up, dtype=dtype)
+    J_dn = jnp.ones(g_dn, dtype=dtype)
 
     # ── J1 part ──────────────────────────────────────────────────────────────
     if jastrow_data.jastrow_one_body_data is not None:
@@ -2557,8 +2609,8 @@ def _compute_ratio_Jastrow_part_split_spin(
 
         # UP block: only the moved up electron contributes to the J1 change.
         def compute_J1_up_one(r_up_new: jax.Array, r_up_old: jax.Array) -> jax.Array:
-            j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
-            j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
+            j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3), dtype=dtype))
+            j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3), dtype=dtype))
             return jnp.exp(j1_new - j1_old)
 
         J1_up_block = vmap(compute_J1_up_one)(r_up_moved, r_up_old_moved)  # (G_up,)
@@ -2566,8 +2618,8 @@ def _compute_ratio_Jastrow_part_split_spin(
 
         # DN block: only the moved dn electron contributes.
         def compute_J1_dn_one(r_dn_new: jax.Array, r_dn_old: jax.Array) -> jax.Array:
-            j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_new, axis=0))
-            j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_old, axis=0))
+            j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3), dtype=dtype), jnp.expand_dims(r_dn_new, axis=0))
+            j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3), dtype=dtype), jnp.expand_dims(r_dn_old, axis=0))
             return jnp.exp(j1_new - j1_old)
 
         J1_dn_block = vmap(compute_J1_dn_one)(r_dn_moved, r_dn_old_moved)  # (G_dn,)
@@ -2633,8 +2685,8 @@ def _compute_ratio_Jastrow_part_split_spin(
         j1_vec = j3d.j_matrix[:, -1]  # (n_ao,)
 
         # Old AOs evaluated once; column slices give old AO at each moved position.
-        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts))  # (n_ao, N_up)
-        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts))  # (n_ao, N_dn)
+        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts), dtype=dtype)  # (n_ao, N_up)
+        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts), dtype=dtype)  # (n_ao, N_dn)
 
         # Precompute constant products (shared between blocks).
         W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)
@@ -2646,15 +2698,15 @@ def _compute_ratio_Jastrow_part_split_spin(
 
         # ── UP BLOCK ─────────────────────────────────────────────────────────
         # New AOs at the moved up-electron positions; old AOs by column-slice.
-        aos_up_new_moved = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_up_moved))  # (n_ao, G_up)
+        aos_up_new_moved = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_up_moved), dtype=dtype)  # (n_ao, G_up)
         aos_up_old_moved = aos_up_old[:, idx_up_block]  # (n_ao, G_up)
         aos_p_up = aos_up_new_moved - aos_up_old_moved  # (n_ao, G_up)
 
         term1_up = j1_vec @ aos_p_up  # (G_up,)
         V_up_block = jnp.dot(aos_p_up.T, W_up)  # (G_up, N_up)
         P_up_block = jnp.dot(U_up, aos_p_up)  # (N_up, G_up)
-        Q_up_c = (idx_up_block[:, None] < jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (G_up, N_up)
-        Q_up_r = (idx_up_block[:, None] > jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (G_up, N_up)
+        Q_up_c = (idx_up_block[:, None] < jnp.arange(num_up)[None, :]).astype(dtype)  # (G_up, N_up)
+        Q_up_r = (idx_up_block[:, None] > jnp.arange(num_up)[None, :]).astype(dtype)  # (G_up, N_up)
         term2_up = jnp.sum(V_up_block * Q_up_c, axis=1)  # (G_up,)
         term3_up = jnp.sum(P_up_block.T * Q_up_r, axis=1)  # (G_up,)
         term4_up = dn_cross_vec @ aos_p_up  # (G_up,)
@@ -2662,15 +2714,15 @@ def _compute_ratio_Jastrow_part_split_spin(
 
         # ── DN BLOCK ─────────────────────────────────────────────────────────
         # New AOs at the moved dn-electron positions; old AOs by column-slice.
-        aos_dn_new_moved = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_dn_moved))  # (n_ao, G_dn)
+        aos_dn_new_moved = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_dn_moved), dtype=dtype)  # (n_ao, G_dn)
         aos_dn_old_moved = aos_dn_old[:, idx_dn_block]  # (n_ao, G_dn)
         aos_p_dn = aos_dn_new_moved - aos_dn_old_moved  # (n_ao, G_dn)
 
         term1_dn = j1_vec @ aos_p_dn  # (G_dn,)
         V_dn_block = jnp.dot(aos_p_dn.T, W_dn)  # (G_dn, N_dn)
         P_dn_block = jnp.dot(U_dn, aos_p_dn)  # (N_dn, G_dn)
-        Q_dn_c = (idx_dn_block[:, None] < jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (G_dn, N_dn)
-        Q_dn_r = (idx_dn_block[:, None] > jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (G_dn, N_dn)
+        Q_dn_c = (idx_dn_block[:, None] < jnp.arange(num_dn)[None, :]).astype(dtype)  # (G_dn, N_dn)
+        Q_dn_r = (idx_dn_block[:, None] > jnp.arange(num_dn)[None, :]).astype(dtype)  # (G_dn, N_dn)
         term2_dn = jnp.sum(V_dn_block * Q_dn_c, axis=1)  # (G_dn,)
         term3_dn = jnp.sum(P_dn_block.T * Q_dn_r, axis=1)  # (G_dn,)
         term4_dn = up_cross_vec @ aos_p_dn  # (G_dn,)
@@ -2682,7 +2734,7 @@ def _compute_ratio_Jastrow_part_split_spin(
         if nn.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
-        R_n = jnp.asarray(nn.structure_data.positions)
+        R_n = jnp.asarray(nn.structure_data.positions, dtype=dtype)
         Z_n = jnp.asarray(nn.structure_data.atomic_numbers)
 
         def compute_one_grid_JNN_split(r_up: jax.Array, r_dn: jax.Array) -> jax.Array:
@@ -2709,12 +2761,15 @@ def _compute_ratio_Jastrow_part_debug(
     new_r_dn_carts_arr: npt.NDArray[np.float64],
 ) -> npt.NDArray:
     """See _api method."""
+    dtype = get_dtype("mcmc")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     return np.array(
         [
             np.exp(compute_Jastrow_part(jastrow_data, new_r_up_carts, new_r_dn_carts))
             / np.exp(compute_Jastrow_part(jastrow_data, old_r_up_carts, old_r_dn_carts))
             for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr, strict=True)
-        ]
+        ],
+        dtype=dtype_np,
     )
 
 
@@ -2745,13 +2800,14 @@ def compute_grads_and_laplacian_Jastrow_part(
             Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``
             and Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
-    r_up = jnp.asarray(r_up_carts)
-    r_dn = jnp.asarray(r_dn_carts)
+    dtype = get_dtype("kinetic")
+    r_up = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype)
 
     grad_J_up = jnp.zeros_like(r_up)
     grad_J_dn = jnp.zeros_like(r_dn)
-    lap_J_up = jnp.zeros((r_up.shape[0],))
-    lap_J_dn = jnp.zeros((r_dn.shape[0],))
+    lap_J_up = jnp.zeros((r_up.shape[0],), dtype=dtype)
+    lap_J_dn = jnp.zeros((r_dn.shape[0],), dtype=dtype)
 
     # one-body (analytic)
     if jastrow_data.jastrow_one_body_data is not None:
@@ -2795,9 +2851,9 @@ def compute_grads_and_laplacian_Jastrow_part(
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
-        r_up_carts_jnp = jnp.asarray(r_up_carts)
-        r_dn_carts_jnp = jnp.asarray(r_dn_carts)
-        R_n = jnp.asarray(nn3.structure_data.positions)
+        r_up_carts_jnp = jnp.asarray(r_up_carts, dtype=dtype)
+        r_dn_carts_jnp = jnp.asarray(r_dn_carts, dtype=dtype)
+        R_n = jnp.asarray(nn3.structure_data.positions, dtype=dtype)
         Z_n = jnp.asarray(nn3.structure_data.atomic_numbers)
 
         def _compute_Jastrow_nn_only(r_up, r_dn):
@@ -2844,13 +2900,14 @@ def _compute_grads_and_laplacian_Jastrow_part_auto(
     Returns:
         the gradients(x,y,z) of J and the sum of laplacians of J at (r_up_carts, r_dn_carts).
     """
-    r_up_carts_jnp = jnp.array(r_up_carts)
-    r_dn_carts_jnp = jnp.array(r_dn_carts)
+    dtype = get_dtype("kinetic")
+    r_up_carts_jnp = jnp.array(r_up_carts, dtype=dtype)
+    r_dn_carts_jnp = jnp.array(r_dn_carts, dtype=dtype)
 
     grad_J_up = jnp.zeros_like(r_up_carts_jnp)
     grad_J_dn = jnp.zeros_like(r_dn_carts_jnp)
-    lap_J_up = jnp.zeros((r_up_carts_jnp.shape[0],))
-    lap_J_dn = jnp.zeros((r_dn_carts_jnp.shape[0],))
+    lap_J_up = jnp.zeros((r_up_carts_jnp.shape[0],), dtype=dtype)
+    lap_J_dn = jnp.zeros((r_dn_carts_jnp.shape[0],), dtype=dtype)
 
     # one-body
     if jastrow_data.jastrow_one_body_data is not None:
@@ -2904,7 +2961,7 @@ def _compute_grads_and_laplacian_Jastrow_part_auto(
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
-        R_n = jnp.asarray(nn3.structure_data.positions)
+        R_n = jnp.asarray(nn3.structure_data.positions, dtype=dtype)
         Z_n = jnp.asarray(nn3.structure_data.atomic_numbers)
 
         def _compute_Jastrow_nn_only(r_up, r_dn):
@@ -2942,10 +2999,12 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
     Uses central finite differences to approximate gradients and the
     sum of Laplacians of J at (r_up_carts, r_dn_carts).
     """
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     diff_h = 1.0e-5
 
-    r_up_carts = np.array(r_up_carts, dtype=float)
-    r_dn_carts = np.array(r_dn_carts, dtype=float)
+    r_up_carts = np.array(r_up_carts, dtype=dtype_np)
+    r_dn_carts = np.array(r_dn_carts, dtype=dtype_np)
 
     # grad up
     grad_x_up = []
@@ -3009,14 +3068,14 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
         grad_y_dn.append((J_p_y_dn - J_m_y_dn) / (2.0 * diff_h))
         grad_z_dn.append((J_p_z_dn - J_m_z_dn) / (2.0 * diff_h))
 
-    grad_J_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
-    grad_J_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+    grad_J_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
+    grad_J_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
     # laplacian
     diff_h2 = 1.0e-3
     J_ref = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    lap_J_up = np.zeros(len(r_up_carts), dtype=float)
+    lap_J_up = np.zeros(len(r_up_carts), dtype=dtype_np)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -3048,7 +3107,7 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
 
         lap_J_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
-    lap_J_dn = np.zeros(len(r_dn_carts), dtype=float)
+    lap_J_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -3112,8 +3171,9 @@ def _compute_grads_and_laplacian_Jastrow_two_body_auto(
     #        jastrow_two_body_data, r_up_carts, r_dn_carts
     #    )
     # )
-    r_up_carts = jnp.array(r_up_carts)
-    r_dn_carts = jnp.array(r_dn_carts)
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.array(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.array(r_dn_carts, dtype=dtype)
 
     # compute grad
     grad_J2_up = grad(compute_Jastrow_two_body, argnums=1)(jastrow_two_body_data, r_up_carts, r_dn_carts)
@@ -3151,19 +3211,20 @@ def compute_grads_and_laplacian_Jastrow_two_body(
             Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``,
             Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
+    dtype = get_dtype("kinetic")
     a = jastrow_two_body_data.jastrow_2b_param
     eps = EPS_safe_distance
 
-    r_up = jnp.asarray(r_up_carts)
-    r_dn = jnp.asarray(r_dn_carts)
+    r_up = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype)
 
     num_up = r_up.shape[0]
     num_dn = r_dn.shape[0]
 
     grad_up = jnp.zeros_like(r_up)
     grad_dn = jnp.zeros_like(r_dn)
-    lap_up = jnp.zeros((num_up,))
-    lap_dn = jnp.zeros((num_dn,))
+    lap_up = jnp.zeros((num_up,), dtype=dtype)
+    lap_dn = jnp.zeros((num_dn,), dtype=dtype)
 
     j2b_type = jastrow_two_body_data.jastrow_2b_type
 
@@ -3239,6 +3300,8 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
     np.ndarray,
 ]:
     """See _api method."""
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     diff_h = 1.0e-5
 
     # grad up
@@ -3351,8 +3414,8 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
         grad_y_dn.append((J2_p_y_dn - J2_m_y_dn) / (2.0 * diff_h))
         grad_z_dn.append((J2_p_z_dn - J2_m_z_dn) / (2.0 * diff_h))
 
-    grad_J2_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
-    grad_J2_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+    grad_J2_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
+    grad_J2_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
     # laplacian
     diff_h2 = 1.0e-3  # for laplacian
@@ -3363,7 +3426,7 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
         r_dn_carts=r_dn_carts,
     )
 
-    lap_J2_up = np.zeros(len(r_up_carts), dtype=float)
+    lap_J2_up = np.zeros(len(r_up_carts), dtype=dtype_np)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -3420,7 +3483,7 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
 
         lap_J2_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
-    lap_J2_dn = np.zeros(len(r_dn_carts), dtype=float)
+    lap_J2_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -3504,6 +3567,10 @@ def _compute_grads_and_laplacian_Jastrow_three_body_auto(
     Returns:
         the gradients(x,y,z) of J(threebody) and the sum of laplacians of J(threebody) at (r_up_carts, r_dn_carts).
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
+
     # compute grad
     grad_J3_up = grad(compute_Jastrow_three_body, argnums=1)(jastrow_three_body_data, r_up_carts, r_dn_carts)
 
@@ -3541,6 +3608,7 @@ def compute_grads_and_laplacian_Jastrow_three_body(
             Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``,
             Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
+    dtype = get_dtype("kinetic")
     orb_data = jastrow_three_body_data.orb_data
 
     if isinstance(orb_data, MOs_data):
@@ -3554,11 +3622,11 @@ def compute_grads_and_laplacian_Jastrow_three_body(
     else:
         raise NotImplementedError
 
-    r_up = jnp.asarray(r_up_carts)
-    r_dn = jnp.asarray(r_dn_carts)
+    r_up = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype)
 
-    aos_up = jnp.asarray(compute_orb(orb_data, r_up))  # (n_orb, n_up)
-    aos_dn = jnp.asarray(compute_orb(orb_data, r_dn))  # (n_orb, n_dn)
+    aos_up = jnp.asarray(compute_orb(orb_data, r_up), dtype=dtype)  # (n_orb, n_up)
+    aos_dn = jnp.asarray(compute_orb(orb_data, r_dn), dtype=dtype)  # (n_orb, n_dn)
 
     grad_up_x, grad_up_y, grad_up_z = compute_orb_grad(orb_data, r_up)
     grad_dn_x, grad_dn_y, grad_dn_z = compute_orb_grad(orb_data, r_dn)
@@ -3566,34 +3634,34 @@ def compute_grads_and_laplacian_Jastrow_three_body(
     grad_up = jnp.stack([grad_up_x, grad_up_y, grad_up_z], axis=-1)  # (n_orb, n_up, 3)
     grad_dn = jnp.stack([grad_dn_x, grad_dn_y, grad_dn_z], axis=-1)  # (n_orb, n_dn, 3)
 
-    lap_up = jnp.asarray(compute_orb_lapl(orb_data, r_up))  # (n_orb, n_up)
-    lap_dn = jnp.asarray(compute_orb_lapl(orb_data, r_dn))  # (n_orb, n_dn)
+    lap_up = jnp.asarray(compute_orb_lapl(orb_data, r_up), dtype=dtype)  # (n_orb, n_up)
+    lap_dn = jnp.asarray(compute_orb_lapl(orb_data, r_dn), dtype=dtype)  # (n_orb, n_dn)
 
-    j1_vec = jnp.asarray(jastrow_three_body_data.j_matrix[:, -1])  # (n_orb,)
-    j3_mat = jnp.asarray(jastrow_three_body_data.j_matrix[:, :-1])  # (n_orb, n_orb)
+    j1_vec = jnp.asarray(jastrow_three_body_data.j_matrix[:, -1], dtype=dtype)  # (n_orb,)
+    j3_mat = jnp.asarray(jastrow_three_body_data.j_matrix[:, :-1], dtype=dtype)  # (n_orb, n_orb)
 
     num_up = aos_up.shape[1]
     num_dn = aos_dn.shape[1]
 
     # Precompute pair-accumulation masks
-    upper_up = jnp.triu(jnp.ones((num_up, num_up)), k=1)
-    lower_up = jnp.tril(jnp.ones((num_up, num_up)), k=-1)
-    upper_dn = jnp.triu(jnp.ones((num_dn, num_dn)), k=1)
-    lower_dn = jnp.tril(jnp.ones((num_dn, num_dn)), k=-1)
+    upper_up = jnp.triu(jnp.ones((num_up, num_up), dtype=dtype), k=1)
+    lower_up = jnp.tril(jnp.ones((num_up, num_up), dtype=dtype), k=-1)
+    upper_dn = jnp.triu(jnp.ones((num_dn, num_dn), dtype=dtype), k=1)
+    lower_dn = jnp.tril(jnp.ones((num_dn, num_dn), dtype=dtype), k=-1)
 
     # dJ/dA for each electron (orbital-space coefficients)
     g_up = (
         j1_vec[:, None]
         + jnp.dot(j3_mat, aos_up) @ lower_up
         + jnp.dot(j3_mat.T, aos_up) @ upper_up
-        + jnp.dot(j3_mat, aos_dn) @ jnp.ones((num_dn, 1))
+        + jnp.dot(j3_mat, aos_dn) @ jnp.ones((num_dn, 1), dtype=dtype)
     )  # (n_orb, n_up)
 
     g_dn = (
         j1_vec[:, None]
         + jnp.dot(j3_mat, aos_dn) @ lower_dn
         + jnp.dot(j3_mat.T, aos_dn) @ upper_dn
-        + jnp.dot(j3_mat.T, aos_up) @ jnp.ones((num_up, 1))
+        + jnp.dot(j3_mat.T, aos_up) @ jnp.ones((num_up, 1), dtype=dtype)
     )  # (n_orb, n_dn)
 
     grad_J3_up = jnp.einsum("on,onj->nj", g_up, grad_up)
@@ -3616,6 +3684,8 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
     np.ndarray,
 ]:
     """See _api method."""
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     diff_h = 1.0e-5
 
     # grad up
@@ -3728,8 +3798,8 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
         grad_y_dn.append((J3_p_y_dn - J3_m_y_dn) / (2.0 * diff_h))
         grad_z_dn.append((J3_p_z_dn - J3_m_z_dn) / (2.0 * diff_h))
 
-    grad_J3_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
-    grad_J3_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+    grad_J3_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
+    grad_J3_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
     # laplacian
     diff_h2 = 1.0e-3  # for laplacian
@@ -3740,7 +3810,7 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
         r_dn_carts=r_dn_carts,
     )
 
-    lap_J3_up = np.zeros(len(r_up_carts), dtype=float)
+    lap_J3_up = np.zeros(len(r_up_carts), dtype=dtype_np)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -3797,7 +3867,7 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
 
         lap_J3_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
-    lap_J3_dn = np.zeros(len(r_dn_carts), dtype=float)
+    lap_J3_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):

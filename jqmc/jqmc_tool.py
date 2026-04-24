@@ -1,4 +1,10 @@
-"""jQMC tools."""
+"""jQMC tools.
+
+Precision Zones:
+    - ``io``: all functions in this module.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -58,6 +64,7 @@ from ._checkpoint import (
     load_hamiltonian_from_checkpoint,
     load_observables_from_checkpoint,
 )
+from ._precision import get_dtype
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -406,8 +413,9 @@ def trexio_convert_to(
 
             # 10) Reconstruct all common dataclass fields for the new AO object
             new_orbital_indices = [new_idx_map[aos_data.orbital_indices[p]] for p in new_prims]
-            new_exponents = jnp.array([float(aos_data.exponents[p]) for p in new_prims], dtype=jnp.float64)
-            new_coefficients = jnp.array([float(aos_data.coefficients[p]) for p in new_prims], dtype=jnp.float64)
+            dtype_io = get_dtype("io")
+            new_exponents = jnp.array([float(aos_data.exponents[p]) for p in new_prims], dtype=dtype_io)
+            new_coefficients = jnp.array([float(aos_data.coefficients[p]) for p in new_prims], dtype=dtype_io)
             new_nucleus_index = [aos_data.nucleus_index[i] for i in selected_ao_indices]
             new_angular_momentums = [aos_data.angular_momentums[i] for i in selected_ao_indices]
 

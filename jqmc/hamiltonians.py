@@ -1,4 +1,11 @@
-"""Hamiltonian module."""
+"""Hamiltonian module.
+
+Precision Zones:
+    Zone-boundary aggregation -- combines ``kinetic`` (T) and ``coulomb`` (V)
+    results, cast to ``kinetic`` zone dtype.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -49,6 +56,7 @@ from flax import struct
 from jax import jit
 from jax import typing as jnpt
 
+from ._precision import get_dtype
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential, compute_coulomb_potential_fast
 from .structure import Structure_data
 from .wavefunction import (
@@ -191,6 +199,10 @@ def compute_local_energy(
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
+
     T = compute_kinetic_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
@@ -205,7 +217,7 @@ def compute_local_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
-    return T + V
+    return jnp.asarray(T, dtype=dtype) + jnp.asarray(V, dtype=dtype)
 
 
 def compute_local_energy_fast(
@@ -251,6 +263,10 @@ def compute_local_energy_fast(
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
+
     T_up_elements, T_dn_elements = compute_kinetic_energy_all_elements_fast_update(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
@@ -268,7 +284,7 @@ def compute_local_energy_fast(
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
-    return T + V
+    return jnp.asarray(T, dtype=dtype) + jnp.asarray(V, dtype=dtype)
 
 
 @jit
@@ -295,6 +311,10 @@ def _compute_local_energy_auto(
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
+
     T = _compute_kinetic_energy_auto(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
@@ -309,7 +329,7 @@ def _compute_local_energy_auto(
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
-    return T + V
+    return jnp.asarray(T, dtype=dtype) + jnp.asarray(V, dtype=dtype)
 
 
 def _reconstruct_dataclass(cls, obj):
@@ -496,7 +516,7 @@ def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
                 and "list" not in str(field.type)
                 and "tuple" not in str(field.type)
             ):
-                val = jnp.asarray(val, dtype=jnp.float64)
+                val = jnp.asarray(val, dtype=get_dtype("io"))
 
             init_args[field.name] = val
         elif field.name in group.attrs:

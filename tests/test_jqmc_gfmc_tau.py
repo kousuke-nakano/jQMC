@@ -45,7 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -178,27 +178,29 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 
+    atol, rtol = get_tolerance("gfmc", "strict")
+
     if mpi_rank == 0:
         # w_L
         w_L_debug = gfmc_debug.w_L
         w_L_jax = gfmc_jax.w_L
         assert not np.any(np.isnan(np.asarray(w_L_debug))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(w_L_jax))), "NaN detected in second argument"
-        np.testing.assert_allclose(w_L_debug, w_L_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(w_L_debug, w_L_jax, atol=atol, rtol=rtol)
 
         # e_L
         e_L_debug = gfmc_debug.e_L
         e_L_jax = gfmc_jax.e_L
         assert not np.any(np.isnan(np.asarray(e_L_debug))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(e_L_jax))), "NaN detected in second argument"
-        np.testing.assert_allclose(e_L_debug, e_L_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(e_L_debug, e_L_jax, atol=atol, rtol=rtol)
 
         # e_L2
         e_L2_debug = gfmc_debug.e_L2
         e_L2_jax = gfmc_jax.e_L2
         assert not np.any(np.isnan(np.asarray(e_L2_debug))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(e_L2_jax))), "NaN detected in second argument"
-        np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol, rtol=rtol)
 
     # average_projection_counter
     # Both GFMC_t and _GFMC_t_debug now store local averages per rank.
@@ -206,7 +208,7 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     apc_jax = gfmc_jax.average_projection_counter
     assert not np.any(np.isnan(np.asarray(apc_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(apc_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(apc_debug, apc_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(apc_debug, apc_jax, atol=atol, rtol=rtol)
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(
@@ -219,16 +221,16 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     )
     assert not np.any(np.isnan(np.asarray(E_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(E_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(E_debug, E_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(E_debug, E_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(E_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(E_err_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(E_err_debug, E_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(E_err_debug, E_err_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(Var_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(Var_debug, Var_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(Var_debug, Var_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(Var_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_err_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(Var_err_debug, Var_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(Var_err_debug, Var_err_jax, atol=atol, rtol=rtol)
 
     # aF
     force_mean_debug, force_std_debug = gfmc_debug.get_aF(
@@ -241,10 +243,10 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     )
     assert not np.any(np.isnan(np.asarray(force_mean_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(force_mean_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(force_mean_debug, force_mean_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(force_mean_debug, force_mean_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(force_std_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(force_std_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(force_std_debug, force_std_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(force_std_debug, force_std_jax, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 

@@ -1,4 +1,12 @@
-"""Determinant module."""
+"""Determinant module.
+
+Precision Zones:
+    - ``geminal``: matrix elements (compute_geminal_*).
+    - ``determinant``: log-det, SVD, antisymmetrisation (compute_ln_det_*, compute_AS_*).
+    - ``kinetic``: determinant derivatives (compute_grads_and_laplacian_ln_Det*).
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -49,7 +57,8 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit, vmap
 
-from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
+from ._precision import get_dtype
+from ._setting import EPS_rcond_SVD, atol_consistency, get_eps, rtol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -998,13 +1007,10 @@ def compute_ln_det_geminal_all_elements(
     Returns:
         float: Scalar log-determinant of the geminal matrix.
     """
-    return jnp.log(
-        jnp.abs(
-            jnp.linalg.det(
-                compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-            )
-        )
-    )
+    dtype = get_dtype("determinant")
+    G = compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
+    return jnp.log(jnp.abs(jnp.linalg.det(G)))
 
 
 # Forward pass for custom VJP.
@@ -1020,7 +1026,9 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
         - primal output: ln|det(G)|
         - residuals: (inputs and SVD factors) for use in backward pass
     """
+    dtype = get_dtype("determinant")
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
     ln_det = jnp.log(jnp.abs(jnp.linalg.det(G)))
     # Compute SVD: G = U_svd @ diag(s) @ Vt
     U_svd, s, Vt = jnp.linalg.svd(G, full_matrices=False)
@@ -1051,8 +1059,10 @@ def _ln_det_bwd(res, g):
     geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt = res
 
     # Compute G^{-1} via SVD pseudoinverse with thresholding.
-    # Singular values below EPS_rcond_SVD * s_max are zeroed to avoid NaN from 1/~0.
-    s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+    # Singular values below eps_rcond * s_max are zeroed to avoid NaN from 1/~0.
+    dtype = get_dtype("determinant")
+    eps_rcond = get_eps("rcond_svd", dtype)
+    s_inv = jnp.where(s > eps_rcond * s[0], jnp.asarray(1.0, dtype=dtype) / s, jnp.asarray(0.0, dtype=dtype))
     X = (Vt.T * s_inv[jnp.newaxis, :]) @ U_svd.T  # G^{-1}, shape (n, n)
 
     # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
@@ -1101,7 +1111,9 @@ def compute_ln_det_geminal_all_elements_fast(
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect gradients.
     """
+    dtype = get_dtype("determinant")
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
     return jnp.log(jnp.abs(jnp.linalg.det(G)))
 
 
@@ -1111,14 +1123,18 @@ def _ln_det_fast_fwd(
     r_dn_carts: jax.Array,
     geminal_inv: jax.Array,
 ):
+    dtype = get_dtype("determinant")
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
     val = jnp.log(jnp.abs(jnp.linalg.det(G)))
     # Save inputs for backward (geminal_inv replaces G^{-1} in bwd)
     return val, (geminal_data, r_up_carts, r_dn_carts, geminal_inv)
 
 
 def _ln_det_fast_bwd(res, g):
+    dtype = get_dtype("determinant")
     geminal_data, r_up_carts, r_dn_carts, geminal_inv = res
+    geminal_inv = jnp.asarray(geminal_inv, dtype=dtype)
     # d(ln|det G|)/d(G_{ij}) = (G^{-T})_{ij}
     # Use the pre-computed inverse instead of re-solving.
     G_bar = g * geminal_inv.T  # cotangent w.r.t. G, shape (N_up, N_up)
@@ -1149,7 +1165,10 @@ def compute_det_geminal_all_elements(
     Returns:
         float: Scalar determinant of the geminal matrix.
     """
-    return jnp.linalg.det(compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts))
+    dtype = get_dtype("determinant")
+    G = compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
+    return jnp.linalg.det(G)
 
 
 def _compute_det_geminal_all_elements_debug(
@@ -1158,13 +1177,15 @@ def _compute_det_geminal_all_elements_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> np.float64:
     """See compute_det_geminal_all_elements_api."""
-    return np.linalg.det(
-        _compute_geminal_all_elements_debug(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    dtype = get_dtype("determinant")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    G = _compute_geminal_all_elements_debug(
+        geminal_data=geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
+    G = np.asarray(G, dtype=dtype_np)
+    return np.linalg.det(G)
 
 
 def compute_AS_regularization_factor_fast_update(
@@ -1179,6 +1200,9 @@ def compute_AS_regularization_factor_fast_update(
     Returns:
         jax.Array: Scalar AS regularization factor.
     """
+    dtype = get_dtype("determinant")
+    geminal = jnp.asarray(geminal, dtype=dtype)
+    geminal_inv = jnp.asarray(geminal_inv, dtype=dtype)
     # compute the AS factor
     theta = 3.0 / 8.0
 
@@ -1208,7 +1232,10 @@ def _compute_AS_regularization_factor_debug(
     geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     """See compute_AS_regularization_factor_jax."""
+    dtype = get_dtype("determinant")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    geminal = np.asarray(geminal, dtype=dtype_np)
 
     # compute the AS factor
     theta = 3.0 / 8.0
@@ -1241,15 +1268,20 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     Returns:
         jax.Array: Scalar AS regularization factor.
     """
+    dtype = get_dtype("determinant")
     geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    geminal = jnp.asarray(geminal, dtype=dtype)
 
     # compute the AS factor
     theta = 3.0 / 8.0
 
     # compute F \equiv the square of Frobenius norm of geminal_inv
     # Use SVD with conservative threshold to avoid Inf from 1/sigma^2 for tiny sigma
+    eps_rcond = get_eps("rcond_svd", dtype)
     sigma = jnp.linalg.svd(geminal, compute_uv=False)
-    sigma_sq_inv = jnp.where(sigma > EPS_rcond_SVD * sigma[0], 1.0 / (sigma**2), 0.0)
+    sigma_sq_inv = jnp.where(
+        sigma > eps_rcond * sigma[0], jnp.asarray(1.0, dtype=dtype) / (sigma**2), jnp.asarray(0.0, dtype=dtype)
+    )
     F = jnp.sum(sigma_sq_inv)
 
     # compute the scaling factor
@@ -1281,6 +1313,9 @@ def compute_geminal_all_elements(geminal_data: Geminal_data, r_up_carts: jax.Arr
     Returns:
         jax.Array: Geminal matrix with shape ``(N_up, N_up)`` combining paired and unpaired blocks.
     """
+    dtype = get_dtype("geminal")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
     if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
         logger.info(
             f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
@@ -1313,7 +1348,10 @@ def _compute_geminal_all_elements(
     r_dn_carts: jax.Array,
 ) -> jax.Array:
     """See compute_geminal_all_elements_api."""
+    dtype = get_dtype("geminal")
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -1332,7 +1370,13 @@ def _compute_geminal_all_elements_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """See compute_geminal_all_elements_api."""
+    dtype = get_dtype("geminal")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    r_up_carts = np.asarray(r_up_carts, dtype=dtype_np)
+    r_dn_carts = np.asarray(r_dn_carts, dtype=dtype_np)
     lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = np.asarray(lambda_matrix_paired, dtype=dtype_np)
+    lambda_matrix_unpaired = np.asarray(lambda_matrix_unpaired, dtype=dtype_np)
 
     orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -1361,10 +1405,15 @@ def compute_geminal_up_one_row_elements(
     Returns:
         jax.Array: Row vector with shape ``(N_dn + N_unpaired,)``.
     """
+    dtype = get_dtype("geminal")
+    r_up_cart = jnp.asarray(r_up_cart, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
     # Split lambda into paired/unpaired blocks along columns
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )  # shapes: (n_orb_up, n_orb_dn), (n_orb_up, num_unpaired)
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     # Orbital values:
     # - up: single position -> 1D vector (n_orb_up,)
@@ -1403,10 +1452,14 @@ def compute_geminal_dn_one_column_elements(
     Returns:
         jax.Array: Column vector for the paired block with shape ``(N_up,)``.
     """
+    dtype = get_dtype("geminal")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_cart = jnp.asarray(r_dn_cart, dtype=dtype)
     # Split lambda into paired/unpaired blocks along columns
     lambda_matrix_paired, _lambda_matrix_unpaired = jnp.hsplit(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )  # lambda_matrix_paired: (n_orb_up, n_orb_dn)
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
 
     # Orbital values:
     # - up: batched positions -> (n_orb_up, N_up)
@@ -1463,6 +1516,12 @@ def _compute_ratio_determinant_part_rank1_update(
         grid generated by the MCMC loop, where exactly one electron is displaced
         per grid point by construction.
     """
+    dtype = get_dtype("geminal")
+    A_old_inv = jnp.asarray(A_old_inv, dtype=dtype)
+    old_r_up_carts = jnp.asarray(old_r_up_carts, dtype=dtype)
+    old_r_dn_carts = jnp.asarray(old_r_dn_carts, dtype=dtype)
+    new_r_up_carts_arr = jnp.asarray(new_r_up_carts_arr, dtype=dtype)
+    new_r_dn_carts_arr = jnp.asarray(new_r_dn_carts_arr, dtype=dtype)
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
 
@@ -1497,6 +1556,8 @@ def _compute_ratio_determinant_part_rank1_update(
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
         geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
     )
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     # Precompute old AO matrices once.
     orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts)
@@ -1567,6 +1628,12 @@ def _compute_ratio_determinant_part_split_spin(
         exclusively for the block-structured non-local ECP grids produced by
         the MCMC loop.
     """
+    dtype = get_dtype("geminal")
+    A_old_inv = jnp.asarray(A_old_inv, dtype=dtype)
+    old_r_up_carts = jnp.asarray(old_r_up_carts, dtype=dtype)
+    old_r_dn_carts = jnp.asarray(old_r_dn_carts, dtype=dtype)
+    new_r_up_shifted = jnp.asarray(new_r_up_shifted, dtype=dtype)
+    new_r_dn_shifted = jnp.asarray(new_r_dn_shifted, dtype=dtype)
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
 
@@ -1587,6 +1654,8 @@ def _compute_ratio_determinant_part_split_spin(
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
         geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
     )
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     # Precompute old AO matrices once.
     orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts)
@@ -1634,6 +1703,12 @@ def _compute_ratio_determinant_part_debug(
     new_r_dn_carts_arr: npt.NDArray[np.float64],
 ) -> npt.NDArray:
     """See _api method."""
+    dtype = get_dtype("determinant")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    old_r_up_carts = np.asarray(old_r_up_carts, dtype=dtype_np)
+    old_r_dn_carts = np.asarray(old_r_dn_carts, dtype=dtype_np)
+    new_r_up_carts_arr = np.asarray(new_r_up_carts_arr, dtype=dtype_np)
+    new_r_dn_carts_arr = np.asarray(new_r_dn_carts_arr, dtype=dtype_np)
     return np.array(
         [
             compute_det_geminal_all_elements(geminal_data, new_r_up_carts, new_r_dn_carts)
@@ -1710,18 +1785,25 @@ def compute_grads_and_laplacian_ln_Det(
             - Laplacians for spin-up electrons with shape ``(N_up,)``.
             - Laplacians for spin-down electrons with shape ``(N_dn,)``.
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
     # Compute G_inv via SVD pseudoinverse (numerically stable, avoids LU NaN).
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
     _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
     # Use conservative threshold to prevent G^{-2} and G^{-3} terms in the
     # backward pass from diverging. Standard numpy.linalg.pinv uses max(M,N)*eps,
     # but for de_L/dc (which involves G_inv^2 in the chain rule) we need a larger
     # safety margin to avoid Inf/NaN in the gradient. EPS_rcond_SVD is set in setting.py
     # to handle near-singular G while preserving well-conditioned singular values.
-    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+    eps_rcond = get_eps("rcond_svd", dtype)
+    _s_inv = jnp.where(_s > eps_rcond * _s[0], jnp.asarray(1.0, dtype=dtype) / _s, jnp.asarray(0.0, dtype=dtype))
     geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -1801,7 +1883,13 @@ def _grads_lap_body(
     passed to ``jax.vjp`` inside the custom VJP backward pass without creating
     a dependency on the public fast function.
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
+    geminal_inverse = jnp.asarray(geminal_inverse, dtype=dtype)
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -1874,10 +1962,15 @@ def _grads_lap_fwd(
     r_dn_carts: jax.Array,
 ):
     """Forward pass: compute stable G_inv and primal outputs."""
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype)
     _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
     # Use same conservative threshold as in compute_grads_and_laplacian_ln_Det
-    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+    eps_rcond = get_eps("rcond_svd", dtype)
+    _s_inv = jnp.where(_s > eps_rcond * _s[0], jnp.asarray(1.0, dtype=dtype) / _s, jnp.asarray(0.0, dtype=dtype))
     G_inv_stable = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
     primals = _grads_lap_body(geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
     return primals, (geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
@@ -1909,7 +2002,9 @@ def _grads_lap_bwd(res, g):
         :func:`compute_grads_and_laplacian_ln_Det` for details).  Keep
         ``EPS_rcond_SVD`` very small (e.g. ``1e-20``) to avoid this.
     """
+    dtype = get_dtype("kinetic")
     geminal_data, r_up_carts, r_dn_carts, G_inv_stable = res
+    G_inv_stable = jnp.asarray(G_inv_stable, dtype=dtype)
 
     # Step 1: differentiate _grads_lap_body w.r.t. all args.
     # This gives direct gradients (AO path) and G_inv_bar (cotangent for G_inv).
@@ -1973,7 +2068,14 @@ def compute_grads_and_laplacian_ln_Det_fast(
     if geminal_inverse is None:
         raise ValueError("geminal_inverse must be provided for fast evaluation")
 
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
+    geminal_inverse = jnp.asarray(geminal_inverse, dtype=dtype)
+
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype)
 
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -2046,6 +2148,9 @@ def _compute_grads_and_laplacian_ln_Det_fast_debug(
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     """Debug helper that uses auto-diff to validate the fast path."""
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
     # Use auto-diff as the reference (independent implementation).
     grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_data,
@@ -2072,6 +2177,9 @@ def _compute_grads_and_laplacian_ln_Det_auto(
     Uses autodiff on ln|det(G)| to compute gradients w.r.t. electron positions
     and per-electron Laplacians.
     """
+    dtype = get_dtype("kinetic")
+    r_up_carts = jnp.asarray(r_up_carts, dtype=dtype)
+    r_dn_carts = jnp.asarray(r_dn_carts, dtype=dtype)
 
     def ln_det_fn(r_up, r_dn):
         return compute_ln_det_geminal_all_elements(geminal_data, r_up, r_dn)
@@ -2105,6 +2213,10 @@ def _compute_grads_and_laplacian_ln_Det_debug(
     np.ndarray,
 ]:
     """See compute_grads_and_laplacian_ln_Det_api."""
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    r_up_carts = np.asarray(r_up_carts, dtype=dtype_np)
+    r_dn_carts = np.asarray(r_dn_carts, dtype=dtype_np)
     det_geminal = compute_det_geminal_all_elements(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,

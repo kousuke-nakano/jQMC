@@ -44,7 +44,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -204,21 +204,22 @@ def test_lrdmc_force_with_SWCT_n(trexio_file: str, jastrow_parameters: dict, loc
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    atol, rtol = get_tolerance("gfmc", "strict")
     assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.array(force_std[0]),
         np.array(force_std[1]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
 
@@ -315,21 +316,22 @@ def test_lrdmc_force_with_SWCT_t(trexio_file: str, jastrow_parameters: dict, loc
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    atol, rtol = get_tolerance("gfmc", "strict")
     assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.array(force_std[0]),
         np.array(force_std[1]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
 

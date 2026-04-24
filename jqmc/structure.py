@@ -1,4 +1,10 @@
-"""Structure module."""
+"""Structure module.
+
+Precision Zones:
+    - ``io``: all functions in this module.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -46,6 +52,8 @@ from jax import jit
 from jax import numpy as jnp
 from jax import typing as jnpt
 from numpy import linalg as LA
+
+from ._precision import get_dtype
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -179,13 +187,14 @@ class Structure_data:
             logger.info(line)
 
     @property
-    def cell(self) -> npt.NDArray[np.float64]:
+    def cell(self) -> npt.NDArray:
         """Lattice vectors as a ``(3, 3)`` matrix in Bohr (``[a, b, c]``)."""
-        cell = np.array([self.vec_a, self.vec_b, self.vec_c])
+        dtype = get_dtype("io")
+        cell = np.array([self.vec_a, self.vec_b, self.vec_c], dtype=dtype)
         return cell
 
     @property
-    def recip_cell(self) -> npt.NDArray[np.float64]:
+    def recip_cell(self) -> npt.NDArray:
         r"""Reciprocal lattice vectors ``(3, 3)`` in Bohr^{-1}.
 
         Uses the standard definition
@@ -197,12 +206,16 @@ class Structure_data:
 
         and asserts the orthonormality condition :math:`T_i \cdot G_j = 2\pi\,\delta_{ij}`.
         """
-        recip_a = 2 * np.pi * (np.cross(self.vec_b, self.vec_c)) / (np.dot(self.vec_a, np.cross(self.vec_b, self.vec_c)))
-        recip_b = 2 * np.pi * (np.cross(self.vec_c, self.vec_a)) / (np.dot(self.vec_b, np.cross(self.vec_c, self.vec_a)))
-        recip_c = 2 * np.pi * (np.cross(self.vec_a, self.vec_b)) / (np.dot(self.vec_c, np.cross(self.vec_a, self.vec_b)))
+        dtype = get_dtype("io")
+        va = np.asarray(self.vec_a, dtype=dtype)
+        vb = np.asarray(self.vec_b, dtype=dtype)
+        vc = np.asarray(self.vec_c, dtype=dtype)
+        recip_a = 2 * np.pi * (np.cross(vb, vc)) / (np.dot(va, np.cross(vb, vc)))
+        recip_b = 2 * np.pi * (np.cross(vc, va)) / (np.dot(vb, np.cross(vc, va)))
+        recip_c = 2 * np.pi * (np.cross(va, vb)) / (np.dot(vc, np.cross(va, vb)))
 
         # check if the implementations are correct
-        lattice_vec_list = [self.vec_a, self.vec_b, self.vec_c]
+        lattice_vec_list = [va, vb, vc]
         recip_vec_list = [recip_a, recip_b, recip_c]
         for (lattice_vec_i, lattice_vec), (recip_vec_j, recip_vec) in itertools.product(
             enumerate(lattice_vec_list), enumerate(recip_vec_list)
@@ -212,7 +225,7 @@ class Structure_data:
             else:
                 np.testing.assert_almost_equal(np.dot(lattice_vec, recip_vec), 0.0, decimal=15)
 
-        recip_cell = np.array([recip_a, recip_b, recip_c])
+        recip_cell = np.array([recip_a, recip_b, recip_c], dtype=dtype)
         return recip_cell
 
     @property
@@ -306,20 +319,26 @@ class Structure_data:
         return LA.norm(self.vec_c)
 
     @property
-    def _positions_cart_np(self) -> npt.NDArray[np.float64]:
+    def _positions_cart_np(self) -> npt.NDArray:
         """Atomic positions as ``numpy.ndarray`` with shape ``(N, 3)`` in Bohr."""
-        return np.array(self.positions)
+        dtype = get_dtype("io")
+        return np.array(self.positions, dtype=dtype)
 
     @property
     def _positions_cart_jnp(self) -> jax.Array:
         """Atomic positions as ``jax.Array`` with shape ``(N, 3)`` in Bohr."""
-        return jnp.array(self.positions)
+        dtype = get_dtype("io")
+        return jnp.array(self.positions, dtype=dtype)
 
     @property
-    def _positions_frac_np(self) -> npt.NDArray[np.float64]:
+    def _positions_frac_np(self) -> npt.NDArray:
         """Fractional (crystal) coordinates as ``numpy.ndarray`` with shape ``(N, 3)``."""
-        h = np.array([self.vec_a, self.vec_b, self.vec_c])
-        positions_frac = np.array([np.dot(np.array(pos), np.linalg.inv(h)) for pos in self._positions_cart_np])
+        dtype = get_dtype("io")
+        h = np.array([self.vec_a, self.vec_b, self.vec_c], dtype=dtype)
+        positions_frac = np.array(
+            [np.dot(np.asarray(pos, dtype=dtype), np.linalg.inv(h)) for pos in self._positions_cart_np],
+            dtype=dtype,
+        )
         return positions_frac
 
     @property
@@ -375,8 +394,9 @@ def _find_nearest_index_jnp(structure: Structure_data, r_cart: list[float]) -> i
 
 def _find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
+    dtype = get_dtype("io")
     positions = structure_data._positions_cart_np
-    r_cart = np.array(r_cart)
+    r_cart = np.array(r_cart, dtype=dtype)
     diffs = positions - r_cart
     if structure_data.pbc_flag:
         cell = structure_data.cell
@@ -393,11 +413,12 @@ def _find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
 @partial(jit, static_argnums=2)
 def _find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
+    dtype = get_dtype("io")
     positions = structure_data._positions_cart_jnp
-    r_cart = jnp.array(r_cart)
+    r_cart = jnp.array(r_cart, dtype=dtype)
     diffs = positions - r_cart
     if structure_data.pbc_flag:
-        cell = jnp.array(structure_data.cell)
+        cell = jnp.array(structure_data.cell, dtype=dtype)
         inv_cell = jnp.linalg.inv(cell)
         diffs_frac = diffs @ inv_cell
         diffs_frac = diffs_frac - jnp.round(diffs_frac)
@@ -421,7 +442,8 @@ def _get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[flo
         with respect to the given r_cart in cartesian. The unit is Bohr
 
     """
-    r_cart = np.array(r_cart)
+    dtype = get_dtype("io")
+    r_cart = np.array(r_cart, dtype=dtype)
     R_cart = structure_data._positions_cart_np[i_atom]
     diff = R_cart - r_cart
     if structure_data.pbc_flag:
@@ -436,11 +458,12 @@ def _get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[flo
 @jit
 def _get_min_dist_rel_R_cart_jnp(structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int) -> float:
     """See get_min_dist_rel_R_cart_np."""
-    r_cart = jnp.array(r_cart)
-    R_cart = jnp.array(structure_data._positions_cart_jnp[i_atom])
+    dtype = get_dtype("io")
+    r_cart = jnp.array(r_cart, dtype=dtype)
+    R_cart = jnp.array(structure_data._positions_cart_jnp[i_atom], dtype=dtype)
     diff = R_cart - r_cart
     if structure_data.pbc_flag:
-        cell = jnp.array(structure_data.cell)
+        cell = jnp.array(structure_data.cell, dtype=dtype)
         inv_cell = jnp.linalg.inv(cell)
         diff_frac = diff @ inv_cell
         diff_frac = diff_frac - jnp.round(diff_frac)

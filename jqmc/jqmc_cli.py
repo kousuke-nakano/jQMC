@@ -48,6 +48,7 @@ from ._checkpoint import merge_rank_checkpoints
 
 # jQMC
 from ._header_footer import _print_footer, _print_header
+from ._precision import configure as configure_precision
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -241,6 +242,13 @@ def _cli():
         for key, item in dict_item.items():
             logger.info(f"  {key}={item}")
         logger.info("")
+
+    # --- precision configuration ---
+    precision_config = dict_toml.get("precision", {})
+    if not isinstance(precision_config, dict):
+        raise ValueError("The [precision] section must be a TOML table.")
+    configure_precision(precision_config)
+    logger.info("")
 
     # default parameters
     parameters = cli_parameters.copy()

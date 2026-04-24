@@ -1,4 +1,10 @@
-"""SWCT module."""
+"""SWCT module.
+
+Precision Zones:
+    - ``kinetic``: all functions in this module.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -45,6 +51,7 @@ from jax import numpy as jnp
 from jax import typing as jnpt
 
 # jQMC modules
+from ._precision import get_dtype
 from .structure import Structure_data
 
 # set logger
@@ -68,7 +75,9 @@ def evaluate_swct_omega(
     Returns:
         jax.Array: Normalized weights with shape ``(N_a, N_e)``, summing to 1 over atoms for each electron.
     """
-    R_carts = structure_data._positions_cart_jnp
+    dtype = get_dtype("kinetic")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    R_carts = jnp.asarray(structure_data._positions_cart_jnp, dtype=dtype)
 
     def compute_omega(R_cart, r_cart):
         kappa = 1.0 / jnp.linalg.norm(r_cart - R_cart) ** 4
@@ -93,8 +102,11 @@ def _evaluate_swct_omega_debug(
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """NumPy fallback for ``evaluate_swct_omega`` used in debug paths."""
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    r_carts = np.asarray(r_carts, dtype=dtype_np)
     R_carts = structure_data._positions_cart_np
-    omega = np.zeros((len(R_carts), len(r_carts)))
+    omega = np.zeros((len(R_carts), len(r_carts)), dtype=dtype_np)
 
     for alpha in range(len(R_carts)):
         for i in range(len(r_carts)):
@@ -119,6 +131,8 @@ def evaluate_swct_domega(
     Returns:
         jax.Array: Sum of gradients per atom with shape ``(N_a, 3)``.
     """
+    dtype = get_dtype("kinetic")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
     domega = jnp.sum(jacrev(evaluate_swct_omega, argnums=1)(structure_data, r_carts), axis=(1, 2))
 
     return domega
@@ -129,8 +143,11 @@ def _evaluate_swct_domega_debug(
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """NumPy fallback for ``evaluate_swct_domega`` used in debug paths."""
+    dtype = get_dtype("kinetic")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    r_carts = np.asarray(r_carts, dtype=dtype_np)
     R_carts = structure_data._positions_cart_np
-    domega = np.zeros((len(R_carts), 3))
+    domega = np.zeros((len(R_carts), 3), dtype=dtype_np)
 
     def compute_omega(R_cart, r_cart, R_carts):
         kappa = 1.0 / np.linalg.norm(r_cart - R_cart) ** 4

@@ -62,14 +62,7 @@ from jqmc.molecular_orbital import (  # noqa: E402
     compute_MOs_grad,
     compute_MOs_laplacian,
 )
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    rtol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    rtol_auto_vs_numerical_deriv,
-    atol_debug_vs_production,
-    rtol_debug_vs_production,
-)
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
@@ -132,9 +125,10 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
     assert not np.any(np.isnan(np.asarray(mo_ans_all_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_ans_all_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol, rtol=rtol)
 
     num_el = 10
     num_mo = 5
@@ -190,12 +184,13 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     assert not np.any(np.isnan(np.asarray(mo_ans_all_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_ans_all_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_MOs_comparing_auto_and_numerical_grads():
     """Test the MO gradient computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -254,22 +249,17 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol, rtol=rtol)
 
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol, rtol=rtol)
 
     num_el = 10
     num_mo = 5
@@ -329,24 +319,19 @@ def test_MOs_comparing_auto_and_numerical_grads():
 
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_MOs_comparing_auto_and_numerical_laplacians():
     """Test the MO Laplacian computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -401,13 +386,14 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mo_matrix_laplacian_auto,
         mo_matrix_laplacian_numerical,
-        atol=atol_auto_vs_numerical_deriv,
-        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol,
+        rtol=rtol,
     )
 
     jax.clear_caches()
@@ -466,15 +452,16 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(grad_x_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_x_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(grad_y_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_y_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_y_an, grad_y_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(grad_y_an, grad_y_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(grad_z_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_z_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_z_an, grad_z_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(grad_z_an, grad_z_auto, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -532,9 +519,10 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(mo_lap_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_lap_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -602,9 +590,10 @@ def test_MOs_sphe_to_cart():
     mo_sphe = compute_MOs(mos_data=mos_sphe, r_carts=r_carts)
     mo_cart = compute_MOs(mos_data=mos_cart, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
     assert not np.any(np.isnan(np.asarray(mo_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_cart, mo_sphe, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_cart, mo_sphe, atol=atol, rtol=rtol)
 
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
@@ -612,14 +601,14 @@ def test_MOs_sphe_to_cart():
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in second argument"
-        np.testing.assert_allclose(g_cart, g_sphe, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(g_cart, g_sphe, atol=atol, rtol=rtol)
 
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
 
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -703,9 +692,10 @@ def test_MOs_cart_to_sphe():
     mo_cart = compute_MOs(mos_data=mos_cart, r_carts=r_carts)
     mo_sphe = compute_MOs(mos_data=mos_sphe, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("orb_eval", "strict")
     assert not np.any(np.isnan(np.asarray(mo_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_sphe, mo_cart, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_sphe, mo_cart, atol=atol, rtol=rtol)
 
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
@@ -713,14 +703,14 @@ def test_MOs_cart_to_sphe():
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in second argument"
-        np.testing.assert_allclose(g_sphe, g_cart, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(g_sphe, g_cart, atol=atol, rtol=rtol)
 
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
 
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 

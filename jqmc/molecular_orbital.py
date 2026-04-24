@@ -1,4 +1,11 @@
-"""Molecular Orbital module."""
+"""Molecular Orbital module.
+
+Precision Zones:
+    - ``orb_eval``: forward MO evaluation (compute_MOs).
+    - ``kinetic``: MO gradient and Laplacian (compute_MOs_grad, compute_MOs_laplacian).
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -46,6 +53,7 @@ from jax import jit
 from jax import typing as jnpt
 
 # myqmc module
+from ._precision import get_dtype
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -180,8 +188,9 @@ class MOs_data:
             return self
         if not isinstance(self.aos_data, AOs_sphe_data):
             raise ValueError("Cartesian conversion is only available from spherical AOs.")
+        dtype = get_dtype("orb_eval")
         aos_cart, transform_matrix = _aos_sphe_to_cart(self.aos_data)
-        cart_coeffs = np.asarray(self.mo_coefficients, dtype=np.float64) @ transform_matrix
+        cart_coeffs = np.asarray(self.mo_coefficients, dtype=dtype) @ transform_matrix
         cart_coeffs = cart_coeffs.astype(np.asarray(self.mo_coefficients).dtype, copy=False)
 
         return MOs_data(num_mo=self.num_mo, aos_data=aos_cart, mo_coefficients=cart_coeffs)
@@ -203,8 +212,9 @@ class MOs_data:
             return self
         if not isinstance(self.aos_data, AOs_cart_data):
             raise ValueError("Spherical conversion is only available from Cartesian AOs.")
+        dtype = get_dtype("orb_eval")
         aos_sphe, transform_pinv = _aos_cart_to_sphe(self.aos_data)
-        sph_coeffs = np.asarray(self.mo_coefficients, dtype=np.float64) @ transform_pinv
+        sph_coeffs = np.asarray(self.mo_coefficients, dtype=dtype) @ transform_pinv
         sph_coeffs = sph_coeffs.astype(np.asarray(self.mo_coefficients).dtype, copy=False)
 
         return MOs_data(num_mo=self.num_mo, aos_data=aos_sphe, mo_coefficients=sph_coeffs)

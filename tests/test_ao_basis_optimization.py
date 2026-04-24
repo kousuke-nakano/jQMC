@@ -21,6 +21,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_three_body_data,
     compute_Jastrow_three_body,
 )
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -128,9 +129,19 @@ def test_j3_with_updated_ao_exponents():
 
     new_exp = j3.ao_exponents * 1.1
     j3_new = j3.with_updated_ao_exponents(new_exp)
-    npt.assert_allclose(np.array(j3_new.ao_exponents), np.array(new_exp), rtol=1e-14)
+    npt.assert_allclose(
+        np.array(j3_new.ao_exponents),
+        np.array(new_exp),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
     # Original should be unchanged
-    npt.assert_allclose(np.array(j3.ao_exponents), np.array(aos_data.exponents), rtol=1e-14)
+    npt.assert_allclose(
+        np.array(j3.ao_exponents),
+        np.array(aos_data.exponents),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
 
 
 # ============================================================
@@ -152,8 +163,18 @@ def test_geminal_ao_properties():
     geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     exp_up_ao = geminal_ao.ao_exponents_up
     exp_dn_ao = geminal_ao.ao_exponents_dn
-    npt.assert_allclose(np.array(exp_up), np.array(exp_up_ao), rtol=1e-14)
-    npt.assert_allclose(np.array(exp_dn), np.array(exp_dn_ao), rtol=1e-14)
+    npt.assert_allclose(
+        np.array(exp_up),
+        np.array(exp_up_ao),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
+    npt.assert_allclose(
+        np.array(exp_dn),
+        np.array(exp_dn_ao),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
 
 
 # ============================================================
@@ -170,8 +191,18 @@ def test_geminal_with_updated_ao_exponents():
     new_exp_dn = geminal_ao.ao_exponents_dn * 1.1
     geminal_new = geminal_ao.with_updated_ao_exponents(new_exp_up, new_exp_dn)
 
-    npt.assert_allclose(np.array(geminal_new.ao_exponents_up), np.array(new_exp_up), rtol=1e-14)
-    npt.assert_allclose(np.array(geminal_new.ao_exponents_dn), np.array(new_exp_dn), rtol=1e-14)
+    npt.assert_allclose(
+        np.array(geminal_new.ao_exponents_up),
+        np.array(new_exp_up),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
+    npt.assert_allclose(
+        np.array(geminal_new.ao_exponents_dn),
+        np.array(new_exp_dn),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
     # Lambda matrix should be unchanged
     npt.assert_array_equal(np.array(geminal_new.lambda_matrix), np.array(geminal_ao.lambda_matrix))
 
@@ -182,6 +213,7 @@ def test_geminal_with_updated_ao_exponents():
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ae_ccpvdz_sphe.h5"])
 def test_j3_exponent_gradient_finite_diff(trexio_file):
     """Verify that jax.grad of J3 w.r.t. exponents matches finite differences."""
@@ -220,6 +252,7 @@ def test_j3_exponent_gradient_finite_diff(trexio_file):
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ae_ccpvdz_sphe.h5"])
 def test_j3_coefficient_gradient_finite_diff(trexio_file):
     """Verify that jax.grad of J3 w.r.t. coefficients matches finite differences."""
@@ -256,6 +289,7 @@ def test_j3_coefficient_gradient_finite_diff(trexio_file):
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_geminal_exponent_gradient_finite_diff():
     """Verify that jax.grad of Geminal det w.r.t. exponents matches finite differences."""
     structure_data, _, _, _, geminal_mo_data, coulomb_potential_data = _load_trexio("H2_ae_ccpvdz_cart.h5")
@@ -333,7 +367,12 @@ def test_get_variational_blocks_basis_flags():
     # symmetrize_metric should be set and be idempotent on the current values
     assert j3_exp_block.symmetrize_metric is not None
     symmetrized = j3_exp_block.symmetrize_metric(np.asarray(j3_exp_block.values))
-    npt.assert_allclose(symmetrized, np.asarray(aos_data.exponents), rtol=1e-14)
+    npt.assert_allclose(
+        symmetrized,
+        np.asarray(aos_data.exponents),
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
 
 
 # ============================================================
@@ -363,7 +402,8 @@ def test_apply_block_update_j3_basis():
     npt.assert_allclose(
         np.array(jastrow_new.jastrow_three_body_data.ao_exponents),
         new_exp,
-        rtol=1e-14,
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
     )
 
 
@@ -387,8 +427,18 @@ def test_apply_block_update_geminal_basis():
         size=int(new_exp.size),
     )
     geminal_new = geminal_ao.apply_block_update(block)
-    npt.assert_allclose(np.array(geminal_new.ao_exponents_up), new_exp_up, rtol=1e-14)
-    npt.assert_allclose(np.array(geminal_new.ao_exponents_dn), new_exp_dn, rtol=1e-14)
+    npt.assert_allclose(
+        np.array(geminal_new.ao_exponents_up),
+        new_exp_up,
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
+    npt.assert_allclose(
+        np.array(geminal_new.ao_exponents_dn),
+        new_exp_dn,
+        atol=get_tolerance("orb_eval", "strict")[0],
+        rtol=get_tolerance("orb_eval", "strict")[1],
+    )
 
 
 # ============================================================
@@ -560,7 +610,9 @@ def test_shell_symmetrize_j3_basis():
     # apply_block_update shell-averages the perturbed values
     spm = ShellPrimMap.from_aos_data(aos_data)
     expected = spm.symmetrize(perturbed)
-    npt.assert_allclose(result, expected, rtol=1e-14)
+    npt.assert_allclose(
+        result, expected, atol=get_tolerance("orb_eval", "strict")[0], rtol=get_tolerance("orb_eval", "strict")[1]
+    )
 
 
 def test_shell_symmetrize_geminal_basis():
@@ -603,7 +655,9 @@ def test_shell_symmetrize_geminal_basis():
         ShellPrimMap.from_aos_data(_get_aos_data(geminal_ao.orb_data_dn_spin)),
     )
     expected = spm.symmetrize(perturbed)
-    npt.assert_allclose(result, expected, rtol=1e-14)
+    npt.assert_allclose(
+        result, expected, atol=get_tolerance("orb_eval", "strict")[0], rtol=get_tolerance("orb_eval", "strict")[1]
+    )
 
 
 def test_shell_symmetrize_metric_averages_sn():
