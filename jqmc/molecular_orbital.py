@@ -232,12 +232,15 @@ def compute_MOs(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: MO values with shape ``(num_mo, N_e)``.
     """
-    dtype = get_dtype("orb_eval")
-    mo_coefficients = mos_data.mo_coefficients.astype(dtype)
-    answer = jnp.dot(
-        mo_coefficients,
-        compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts),
-    )
+    # Heavy AO evaluation runs in ``orb_eval`` precision (e.g. fp32 in mixed mode),
+    # but the (small) MO matmul and the returned MO matrix are kept in the
+    # ``determinant`` precision (fp64 by default).  This avoids amplifying fp32
+    # round-off through downstream determinant / kinetic / energy paths while
+    # preserving the speed of the AO kernels (see bug/fp32 diagnostics).
+    out_dtype = get_dtype("determinant")
+    aos = compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts).astype(out_dtype)
+    mo_coefficients = mos_data.mo_coefficients.astype(out_dtype)
+    answer = jnp.dot(mo_coefficients, aos)
 
     return answer
 

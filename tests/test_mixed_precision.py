@@ -206,18 +206,23 @@ class TestAODtype:
 
 
 class TestMODtype:
-    """Verify MO evaluation outputs are float32 in mixed mode."""
+    """Verify MO evaluation outputs use the determinant-zone dtype.
+
+    Note: AO evaluation itself runs in ``orb_eval`` precision (e.g. fp32 in mixed
+    mode), but the (small) MO matmul is upcast to the ``determinant`` zone dtype
+    (fp64 by default).  This avoids amplifying fp32 round-off through the
+    32x32 determinant / kinetic / energy paths while keeping the heavy AO
+    kernels in fp32 (see bug/fp32 diagnostics).
+    """
 
     def test_compute_MOs_output_dtype(self, h2_data):
-        """compute_MOs must return float32 (orb_eval zone).
-
-        Catches: mo_coefficients (fp64) × AOs (fp32) promotion.
-        """
+        """compute_MOs must return determinant-zone dtype (fp64 in mixed)."""
         MOs = compute_MOs(h2_data["mos_data_up"], h2_data["r_up"])
-        expected = get_dtype("orb_eval")
+        expected = get_dtype("determinant")
         assert MOs.dtype == expected, (
             f"compute_MOs output dtype is {MOs.dtype}, expected {expected}. "
-            "Likely cause: mo_coefficients not cast to orb_eval dtype."
+            "compute_MOs should upcast its small matmul to the determinant zone "
+            "to avoid fp32 amplification downstream."
         )
 
 

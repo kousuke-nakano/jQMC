@@ -111,9 +111,14 @@ _DEFAULTS_FULL: dict[str, str] = {
 
 # --- mode="mixed" defaults (recommended mixed precision) ---
 # float32 risk:
-#   orb_eval    - low: smooth Gaussian basis + linear combination
+#   orb_eval    - low: smooth Gaussian basis + linear combination.
+#                 (Heavy AO eval stays in fp32; compute_MOs upcasts the small
+#                  matmul to the determinant zone, see molecular_orbital.py.)
 #   jastrow     - low: smooth correlation function, pre-exp value
-#   geminal     - low: building matrix elements only (pre-det)
+#   geminal     - HIGH: this matrix is the input to LU/det; even ε≈1e-7 on
+#                 entries amplifies into log|det| errors of O(1) for ~32x32
+#                 systems with non-trivial condition numbers
+#                 (see bug/fp32 diagnostics).  Kept in fp64.
 #   coulomb     - low-medium: sum of 1/r + ECP spherical quadrature
 #   determinant - high: log(det) cancellation, SVD 1/s, eigenvalue ops
 #   kinetic     - high: second derivative of ln|Psi|, cancellation-sensitive
@@ -122,9 +127,9 @@ _DEFAULTS_FULL: dict[str, str] = {
 #   optimization- high: S^{-1}F linear system, ill-conditioned matrix
 #   io          - low-medium: file I/O + nuclear coordinates
 _DEFAULTS_MIXED: dict[str, str] = {
-    "orb_eval": "float32",  # low risk
+    "orb_eval": "float32",  # low risk (heavy kernel only)
     "jastrow": "float32",  # low risk
-    "geminal": "float32",  # low risk
+    "geminal": "float64",  # high risk: feeds LU/det
     "determinant": "float64",  # high risk
     "coulomb": "float32",  # low-medium risk
     "kinetic": "float64",  # high risk
