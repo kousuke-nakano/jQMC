@@ -358,6 +358,7 @@
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pre-launch-validation">Pre-launch validation</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#post-completion-cleanup-cleanup-patterns">Post-completion cleanup (<code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code>)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#restart-behavior">Restart behavior</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#phase-management">Phase management</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#status-enums">Status enums</a></li>
@@ -1008,6 +1009,43 @@ compute resources.</p>
 previous interrupted run, any input files that are missing (but
 available from the source) are automatically copied in.  Existing
 files are not overwritten.</p>
+</section>
+<section id="post-completion-cleanup-cleanup-patterns">
+<h3>Post-completion cleanup (<code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code>)<a class="headerlink" href="#post-completion-cleanup-cleanup-patterns" title="Link to this heading">#</a></h3>
+<p>When large checkpoint files (e.g. <code class="docutils literal notranslate"><span class="pre">restart.h5</span></code>, <code class="docutils literal notranslate"><span class="pre">hamiltonian_opt*.h5</span></code>)
+are no longer needed after a successful run, the <code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code>
+parameter can be used to automatically delete them.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">MCMC_Workflow</span><span class="p">(</span>
+    <span class="n">server_machine_name</span><span class="o">=</span><span class="s2">&quot;cluster&quot;</span><span class="p">,</span>
+    <span class="n">target_error</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>
+    <span class="n">cleanup_patterns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;restart.h5&quot;</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_opt*.h5&quot;</span><span class="p">],</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Behaviour:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code> accepts a list of glob patterns (e.g.
+<code class="docutils literal notranslate"><span class="pre">[&quot;restart.h5&quot;,</span> <span class="pre">&quot;hamiltonian_opt*.h5&quot;]</span></code>).</p></li>
+<li><p>Matching is <strong>recursive</strong> — patterns are applied to the workflow
+directory <strong>and</strong> all subdirectories (e.g. <code class="docutils literal notranslate"><span class="pre">_pilot/</span></code>, <code class="docutils literal notranslate"><span class="pre">_pilot_a/</span></code>,
+<code class="docutils literal notranslate"><span class="pre">_pilot_b/</span></code>).</p></li>
+<li><p><strong>Local files</strong> matching the patterns are always deleted.</p></li>
+<li><p><strong>Remote files</strong> are deleted only when the workflow targets a remote
+machine (<code class="docutils literal notranslate"><span class="pre">server_machine_name</span></code> is not <code class="docutils literal notranslate"><span class="pre">&quot;localhost&quot;</span></code>).</p></li>
+<li><p>Cleanup runs <strong>after</strong> <code class="docutils literal notranslate"><span class="pre">CompletionStatus.OK</span></code> is confirmed — it never
+touches files while the workflow might still need them for
+continuation.</p></li>
+<li><p>Cleanup failures are logged as warnings and never cause a completed
+workflow to fail.</p></li>
+<li><p>Default is an empty list (no cleanup), preserving backward
+compatibility.</p></li>
+</ul>
+<p>This is especially useful for massively-parallel MCMC runs where
+<code class="docutils literal notranslate"><span class="pre">restart.h5</span></code> can grow to tens of gigabytes.</p>
+<p>All workflow classes (<code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code>, <code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code>,
+<code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code>, <code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code>) support this parameter.
+For <code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code>, the patterns are passed through to each
+child <code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code>.</p>
 </section>
 <section id="restart-behavior">
 <h3>Restart behavior<a class="headerlink" href="#restart-behavior" title="Link to this heading">#</a></h3>
@@ -1700,6 +1738,7 @@ jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</sp
         <span class="n">pilot_queue_label</span><span class="o">=</span><span class="s2">&quot;small&quot;</span><span class="p">,</span>
         <span class="n">jobname</span><span class="o">=</span><span class="s2">&quot;mcmc&quot;</span><span class="p">,</span>
         <span class="n">target_error</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>
+        <span class="n">cleanup_patterns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;restart.h5&quot;</span><span class="p">],</span>  <span class="c1"># delete large checkpoint on success</span>
     <span class="p">),</span>
 <span class="p">)</span>
 
@@ -1910,6 +1949,7 @@ the current directory and displays a summary tree.</p>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pre-launch-validation">Pre-launch validation</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#post-completion-cleanup-cleanup-patterns">Post-completion cleanup (<code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code>)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#restart-behavior">Restart behavior</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#phase-management">Phase management</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#status-enums">Status enums</a></li>
