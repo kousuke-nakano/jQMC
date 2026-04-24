@@ -47,7 +47,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.determinant import Geminal_data  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
@@ -80,7 +80,12 @@ param_grid = [
 @pytest.mark.parametrize("trexio_file,with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", param_grid)
 def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow):
     """Test comparison with MCMC debug and MCMC production implementations."""
-    atol, rtol = get_tolerance("mcmc", "strict")
+    # e_L / w_L cross orb_eval/jastrow/geminal/coulomb/kinetic/mcmc zones; the
+    # achievable debug-vs-jax agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "mcmc"),
+        "strict",
+    )
     (
         structure_data,
         _,
@@ -1029,7 +1034,11 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     ln_psi_mo = float(evaluate_ln_wavefunction(final_wf, r_up, r_dn))
     ln_psi_ao = float(evaluate_ln_wavefunction(wf_ao, r_up, r_dn))
 
-    atol, rtol = get_tolerance("mcmc", "strict")
+    # ln|Psi| crosses orb_eval/jastrow/geminal/determinant; bound by weakest zone.
+    atol, rtol = get_tolerance_min(
+        ("orb_eval", "jastrow", "geminal", "determinant", "mcmc"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(ln_psi_mo))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ln_psi_ao))), "NaN detected in second argument"
     np.testing.assert_allclose(ln_psi_mo, ln_psi_ao, atol=atol, rtol=rtol)
@@ -1211,7 +1220,9 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
     lam_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix)
 
     # ── Assertions ───────────────────────────────────────────────────────────
-    atol, rtol = get_tolerance("mcmc", "strict")
+    # j3 / lambda_matrix live in jastrow / geminal zones; symmetry is a structural
+    # property of the matrix itself, so use those zones' tolerances.
+    atol, rtol = get_tolerance_min(("jastrow", "geminal"), "strict")
     if j3_type == "sym":
         np.testing.assert_allclose(
             j3_after[:, :-1],
@@ -1598,7 +1609,11 @@ def test_get_aH_and_solve_lm_debug_vs_production():
     # Get variational blocks
     blocks = hamiltonian_data.wavefunction_data.get_variational_blocks()
 
-    atol, rtol = get_tolerance("mcmc", "strict")
+    # H_0/f/S/K/B cross the full e_L path + optimization assembly; bound by weakest zone.
+    atol, rtol = get_tolerance_min(
+        ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "mcmc", "optimization"),
+        "strict",
+    )
 
     # --- Test 1: get_aH in LM mode (return_matrices=True) ---
     H_0_d, f_d, S_d, K_d, B_d = mcmc_debug.get_aH(

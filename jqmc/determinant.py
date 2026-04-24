@@ -2026,7 +2026,12 @@ def _grads_lap_bwd(res, g):
     G_bar_from_inv = -(G_inv_stable.T @ G_inv_bar @ G_inv_stable.T)
 
     # Step 3: propagate G_bar back through G = compute_geminal_all_elements(...).
-    _, vjp_fn2 = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
+    # ``vjp_fn2`` is built around the un-cast call, whose primal output dtype is
+    # determined by (r_up_carts, r_dn_carts) (kinetic zone). In mixed precision the
+    # G_inv_bar / G_inv_stable arithmetic can promote ``G_bar_from_inv`` to a wider
+    # dtype, so cast back to the primal output dtype before invoking ``vjp_fn2``.
+    geminal_primal_out, vjp_fn2 = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
+    G_bar_from_inv = jnp.asarray(G_bar_from_inv, dtype=geminal_primal_out.dtype)
     d_geminal_inv, d_r_up_inv, d_r_dn_inv = vjp_fn2(G_bar_from_inv)
 
     # Total: sum both contributions.

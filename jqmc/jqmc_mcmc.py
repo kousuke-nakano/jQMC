@@ -4406,40 +4406,56 @@ def _update_electron_positions(
         )[0]
 
         # Determinant part, fast update using the matrix determinant lemma
+        # Cast both lax.cond branches to geminal_inv.dtype: the geminal-diff branch
+        # lives in the geminal zone (fp64) while jax.nn.one_hot defaults to fp32,
+        # so without an explicit cast the cond branches disagree in mixed precision.
+        _gem_dtype = geminal_inv.dtype
         v = lax.cond(
             is_up,
-            lambda _: (
-                compute_geminal_up_one_row_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    # inline "as_row3": force (1,3) even if source is (3,)
-                    r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
-                    r_dn_carts=r_dn_carts,
-                )
-                - compute_geminal_up_one_row_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
-                    r_dn_carts=r_dn_carts,
-                )
-            )[:, None],
-            lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+            lambda _: jnp.asarray(
+                (
+                    compute_geminal_up_one_row_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        # inline "as_row3": force (1,3) even if source is (3,)
+                        r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                    - compute_geminal_up_one_row_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                )[:, None],
+                dtype=_gem_dtype,
+            ),
+            lambda _: jnp.asarray(
+                jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+                dtype=_gem_dtype,
+            ),
             operand=None,
         )
 
         u = lax.cond(
             is_up,
-            lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
-            lambda _: (
-                compute_geminal_dn_one_column_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
-                )
-                - compute_geminal_dn_one_column_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
-                )
-            )[:, None],  # -> (N_up, 1)
+            lambda _: jnp.asarray(
+                jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
+                dtype=_gem_dtype,
+            ),
+            lambda _: jnp.asarray(
+                (
+                    compute_geminal_dn_one_column_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
+                    )
+                    - compute_geminal_dn_one_column_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
+                    )
+                )[:, None],  # -> (N_up, 1)
+                dtype=_gem_dtype,
+            ),
             operand=None,
         )
 
@@ -4639,7 +4655,11 @@ def _update_electron_positions_only_up_electron(
         Det_T_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]  # scalar
 
         # (A+uv^T)^{-1} = A^{-1} - (A^{-1} u v^T A^{-1}) / (1 + v^T A^{-1} u)
-        geminal_inv_new = geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio
+        # Cast back to geminal_inv.dtype: ``v`` originates in the geminal zone (fp64)
+        # while geminal_inv lives in its own zone (e.g. fp32 in mixed precision), so
+        # the rank-1 update would otherwise promote and break the lax.cond dtype
+        # agreement with the rejected branch.
+        geminal_inv_new = jnp.asarray(geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio, dtype=geminal_inv.dtype)
 
         geminal_new = geminal.at[selected_electron_index, :].add(v.squeeze(-1))
 

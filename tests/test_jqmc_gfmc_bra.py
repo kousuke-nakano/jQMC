@@ -45,7 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -181,7 +181,12 @@ def test_jqmc_gfmc_n(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 
-    atol, rtol = get_tolerance("gfmc", "strict")
+    # e_L / w_L cross orb_eval/jastrow/geminal/coulomb/kinetic/gfmc zones; the
+    # achievable debug-vs-jax agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "gfmc"),
+        "strict",
+    )
 
     if mpi_rank == 0:
         # w_L

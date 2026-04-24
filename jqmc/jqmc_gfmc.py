@@ -57,7 +57,7 @@ from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
 from ._jqmc_utility import _generate_init_electron_configurations
-from ._precision import get_dtype
+from ._precision import get_dtype, get_tolerance_min
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -66,7 +66,6 @@ from ._setting import (
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
     get_eps,
-    rtol_debug_vs_production,
 )
 from .coulomb_potential import (
     compute_bare_coulomb_potential_el_el,
@@ -1051,7 +1050,10 @@ class GFMC_t:
                 Ainv_u = A_old_inv @ u
                 vT_Ainv = v.T @ A_old_inv
                 det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                # Cast back to A_old_inv.dtype: geminal elements live in the fp64
+                # geminal zone, so the update would otherwise promote A_new_inv to
+                # fp64 and break the lax.cond dtype agreement with _no_update_t.
+                return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=A_old_inv.dtype)
 
             def _no_update_t(_):
                 return A_old_inv
@@ -1077,7 +1079,8 @@ class GFMC_t:
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                    # See note in _update_inv_up_t: cast back to A_old_inv.dtype.
+                    return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=A_old_inv.dtype)
 
             if num_up_electrons == 0:
                 A_new_inv = A_old_inv
@@ -4759,7 +4762,10 @@ class GFMC_n:
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                    # Cast back to A_old_inv.dtype: geminal elements live in the fp64
+                    # geminal zone, so the update would otherwise promote A_new_inv to
+                    # fp64 and break the lax.cond dtype agreement with _no_update_n.
+                    return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=A_old_inv.dtype)
 
                 def _no_update_n(_):
                     return A_old_inv
@@ -4785,7 +4791,8 @@ class GFMC_n:
                         Ainv_u = A_old_inv @ u
                         vT_Ainv = v.T @ A_old_inv
                         det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                        return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                        # See note in _update_inv_up_n: cast back to A_old_inv.dtype.
+                        return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=A_old_inv.dtype)
 
                 if num_up_electrons == 0:
                     A_new_inv = A_old_inv
@@ -7350,12 +7357,18 @@ class _GFMC_n_debug:
                         for i in range(self.__num_walkers)
                     ]
                 )
-                if np.max(np.abs(e_L_list - e_list_debug)) > rtol_debug_vs_production:
+                # e_L crosses orb_eval/jastrow/geminal/coulomb/kinetic/gfmc; bound
+                # the agreement by the weakest zone (fp32 in mixed precision).
+                _atol_eL, _rtol_eL = get_tolerance_min(
+                    ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "gfmc"),
+                    "strict",
+                )
+                if np.max(np.abs(e_L_list - e_list_debug)) > _rtol_eL:
                     logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
                     logger.info(f"w_L_list = {w_L_list}.")
                     logger.info(f"e_L_list = {e_L_list}.")
                     logger.info(f"e_list_debug = {e_list_debug}.")
-                np.testing.assert_almost_equal(np.array(e_L_list), np.array(e_list_debug), decimal=6)
+                np.testing.assert_allclose(np.array(e_L_list), np.array(e_list_debug), atol=_atol_eL, rtol=_rtol_eL)
 
             # atomic force related
             if self.__comput_position_deriv:
