@@ -436,7 +436,9 @@ class NNJastrow(nn.Module):
         dtype_j = get_dtype("jastrow")
         if A.shape[0] == 0 or B.shape[0] == 0:
             return jnp.zeros((A.shape[0], B.shape[0]), dtype=dtype_j)
-        diff = A[:, None, :] - B[None, :, :]
+        # Compute differences in float64 to avoid catastrophic cancellation
+        # under float32 jastrow zone, then downcast.
+        diff = (A.astype(jnp.float64)[:, None, :] - B.astype(jnp.float64)[None, :, :]).astype(dtype_j)
         return jnp.sqrt(jnp.sum(diff**2, axis=-1) + EPS_safe_distance)
 
     def _nuclear_embeddings(self, Z_n: jnp.ndarray) -> jnp.ndarray:
@@ -676,7 +678,9 @@ def compute_Jastrow_one_body(
             R_cart: jnpt.ArrayLike,
         ) -> float:
             """Exponential form of J1."""
-            return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * coeff * jnp.linalg.norm(r_cart - R_cart)))
+            # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+            diff = (r_cart.astype(jnp.float64) - R_cart.astype(jnp.float64)).astype(r_cart.dtype)
+            return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * coeff * jnp.linalg.norm(diff)))
 
         def atom_contrib(r_cart, R_cart, Z_eff):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
@@ -686,7 +690,9 @@ def compute_Jastrow_one_body(
 
         def atom_contrib(r_cart, R_cart, Z_eff):
             """Pade form of J1: -Z_eff^{3/4} * r_eN / (2*(1 + a * Z_eff^{1/4} * r_eN))."""
-            r_eN = jnp.linalg.norm(r_cart - R_cart)
+            # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+            diff = (r_cart.astype(jnp.float64) - R_cart.astype(jnp.float64)).astype(r_cart.dtype)
+            r_eN = jnp.linalg.norm(diff)
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
             return -((2.0 * Z_eff) ** (3.0 / 4.0)) * r_eN / (2.0 * (1.0 + j1b * coeff * r_eN))
 
@@ -1114,11 +1120,16 @@ def compute_Jastrow_two_body(
 
     def two_body_jastrow_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
         """Exponential form of J2."""
-        return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
+        # Compute r_i - r_j in float64 to avoid catastrophic cancellation under float32 zones.
+        diff = (r_cart_i.astype(jnp.float64) - r_cart_j.astype(jnp.float64)).astype(r_cart_i.dtype)
+        return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(diff)))
 
     def two_body_jastrow_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
         """Pade form of J2."""
-        return jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
+        # Compute r_i - r_j in float64 to avoid catastrophic cancellation under float32 zones.
+        diff = (r_cart_i.astype(jnp.float64) - r_cart_j.astype(jnp.float64)).astype(r_cart_i.dtype)
+        r_ij = jnp.linalg.norm(diff)
+        return r_ij / 2.0 * (1.0 + param * r_ij) ** (-1.0)
 
     if j2b_type == "pade":
         two_body_jastrow_anti_parallel = two_body_jastrow_pade

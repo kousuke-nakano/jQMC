@@ -102,9 +102,9 @@ _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
 #   stabilizing_ao    — small epsilon for AO Cartesian derivative stabilization.
 #   rcond_svd         — threshold for SVD pseudoinverse of the geminal matrix.
 _EPS_DTYPE_AWARE: dict[str, dict[str, float]] = {
-    "machine_precision": {"float64": 1e-300, "float32": 1e-38},
-    "stabilizing_ao": {"float64": 1e-16, "float32": 1e-7},
-    "rcond_svd": {"float64": 1e-20, "float32": 1e-6},
+    "machine_precision": {"float64": 1e-38, "float32": 1e-38},
+    "stabilizing_ao": {"float64": 1e-16, "float32": 1e-12},
+    "rcond_svd": {"float64": 1e-20, "float32": 1e-16},
 }
 
 

@@ -2263,7 +2263,9 @@ def compute_bare_coulomb_potential_el_ion_element_wise(
 
     # Define a function to compute interaction for a pair
     def el_ion_interaction(Z_i, Z_j, r_i, r_j):
-        distance = jnp.linalg.norm(r_i - r_j, axis=1)
+        # Compute r_i - r_j in float64 to avoid catastrophic cancellation under float32 zones.
+        diff = (r_i.astype(jnp.float64) - r_j.astype(jnp.float64)).astype(r_i.dtype)
+        distance = jnp.linalg.norm(diff, axis=1)
         interaction = (Z_i * Z_j) / distance
         return interaction
 
@@ -2308,7 +2310,9 @@ def compute_discretized_bare_coulomb_potential_el_ion_element_wise(
 
     # Define a function to compute interaction for a pair
     def el_ion_interaction(Z_i, Z_j, r_i, r_j, alat):
-        distance = jnp.maximum(jnp.linalg.norm(r_i - r_j, axis=1), alat)
+        # Compute r_i - r_j in float64 to avoid catastrophic cancellation under float32 zones.
+        diff = (r_i.astype(jnp.float64) - r_j.astype(jnp.float64)).astype(r_i.dtype)
+        distance = jnp.maximum(jnp.linalg.norm(diff, axis=1), alat)
         interaction = (Z_i * Z_j) / distance
         return interaction
 
@@ -2443,7 +2447,9 @@ def compute_bare_coulomb_potential_el_el(
 
     # Define a function to compute interaction for a pair
     def el_el_interaction(Z_i, Z_j, r_i, r_j):
-        distance = jnp.linalg.norm(r_i - r_j)
+        # Compute r_i - r_j in float64 to avoid catastrophic cancellation under float32 zones.
+        diff = (r_i.astype(jnp.float64) - r_j.astype(jnp.float64)).astype(r_i.dtype)
+        distance = jnp.linalg.norm(diff)
         interaction = (Z_i * Z_j) / distance
         return interaction
 
@@ -2492,7 +2498,9 @@ def compute_bare_coulomb_potential_ion_ion(
 
     # Define a function to compute interaction for a pair
     def ion_ion_interaction(Z_i, Z_j, r_i, r_j):
-        distance = jnp.linalg.norm(r_i - r_j)
+        # Compute r_i - r_j in float64 to avoid catastrophic cancellation under float32 zones.
+        diff = (r_i.astype(jnp.float64) - r_j.astype(jnp.float64)).astype(r_i.dtype)
+        distance = jnp.linalg.norm(diff)
         interaction = (Z_i * Z_j) / distance
         return interaction
 

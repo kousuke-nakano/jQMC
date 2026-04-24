@@ -1988,8 +1988,13 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     """
     # Downcast all float inputs to orb_eval zone dtype (P0-1, P0-2)
     dtype = get_dtype("orb_eval")
-    r_carts = r_carts.astype(dtype)
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    # Compute r-R in float64 to avoid catastrophic cancellation when zone dtype is float32
+    # (positions can be ~50 Bohr; float32 difference loses ~6 digits of precision).
+    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
+    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
+    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
+    r_carts = _r_carts_f64.astype(dtype)
+    R_carts_jnp = _R_carts_f64.astype(dtype)
     c_jnp = aos_data._coefficients_jnp.astype(dtype)
     Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
@@ -2000,7 +2005,6 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
     N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
-    r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
@@ -2037,16 +2041,22 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
     """
     # Downcast all float inputs to orb_eval zone dtype (P0-1)
     dtype = get_dtype("orb_eval")
-    r_carts = r_carts.astype(dtype)
+    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
+    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
+    _R_carts_unique_f64 = jnp.asarray(aos_data._atomic_center_carts_unique_jnp, dtype=jnp.float64)
+    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
+    r_R_diffs_uq = (_r_carts_f64[None, :, :] - _R_carts_unique_f64[:, None, :]).astype(dtype)
+    r_carts = _r_carts_f64.astype(dtype)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
-    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp.astype(dtype)
+    R_carts_jnp = _R_carts_f64.astype(dtype)
+    R_carts_unique_jnp = _R_carts_unique_f64.astype(dtype)
     c_jnp = aos_data._coefficients_jnp.astype(dtype)
     Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
-    # Normalization constants computed in zone dtype (P0-1: replaces .astype(jnp.float64))
+    # Normalization constants computed in zone dtype.
     l_typed = l_jnp.astype(dtype)
     factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_typed + 2.0))
     factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_typed + 3.0))
@@ -2056,10 +2066,8 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
         / (factorial_2l_plus_2 * jnp.sqrt(jnp.asarray(jnp.pi, dtype=dtype)))
     )
     N_l_m_dup = jnp.sqrt((2 * l_typed + 1) / (4 * jnp.asarray(jnp.pi, dtype=dtype)))
-    r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
-    r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
 
     max_ml, S_l_m_dup_all_l_m = _compute_S_l_m(r_R_diffs_uq)
     S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
@@ -2568,8 +2576,12 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for Cartesian AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
-    R_carts = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
+    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
+    diff = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
+    r_carts = _r_carts_f64.astype(dtype)
+    R_carts = _R_carts_f64.astype(dtype)
     c = aos_data._coefficients_jnp.astype(dtype)
     Z = aos_data._exponents_jnp.astype(dtype)
     l = aos_data._angular_momentums_prim_jnp
@@ -2581,7 +2593,6 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
-    diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
     eps = get_eps("stabilizing_ao", dtype)
     x = x + eps
@@ -2614,10 +2625,16 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for spherical AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
+    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
+    _R_carts_unique_f64 = jnp.asarray(aos_data._atomic_center_carts_unique_jnp, dtype=jnp.float64)
+    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
+    r_R_diffs_uq = (_r_carts_f64[None, :, :] - _R_carts_unique_f64[:, None, :]).astype(dtype)
+    r_carts = _r_carts_f64.astype(dtype)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
-    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp.astype(dtype)
+    R_carts_jnp = _R_carts_f64.astype(dtype)
+    R_carts_unique_jnp = _R_carts_unique_f64.astype(dtype)
     c_jnp = aos_data._coefficients_jnp.astype(dtype)
     Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
@@ -2633,11 +2650,9 @@ def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.n
     )
     N_l_m_dup = jnp.sqrt((2 * l_f64 + 1) / (4 * jnp.pi))
 
-    r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
-    r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
     S_l_m_vals_all, S_l_m_grads_all, S_l_m_laps_all = _compute_S_l_m_and_grad_lap(r_R_diffs_uq)
     max_ml = S_l_m_vals_all.shape[0]
 
@@ -2876,8 +2891,12 @@ def _compute_AOs_laplacian_debug(
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for Cartesian AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
-    R_carts = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
+    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
+    diff = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
+    r_carts = _r_carts_f64.astype(dtype)
+    R_carts = _R_carts_f64.astype(dtype)
     c = aos_data._coefficients_jnp.astype(dtype)
     Z = aos_data._exponents_jnp.astype(dtype)
     l = aos_data._angular_momentums_prim_jnp
@@ -2889,7 +2908,6 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
-    diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
     eps = get_eps("stabilizing_ao", dtype)
     x = x + eps
@@ -2925,10 +2943,16 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for spherical AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
+    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
+    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
+    _R_carts_unique_f64 = jnp.asarray(aos_data._atomic_center_carts_unique_jnp, dtype=jnp.float64)
+    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
+    r_R_diffs_uq = (_r_carts_f64[None, :, :] - _R_carts_unique_f64[:, None, :]).astype(dtype)
+    r_carts = _r_carts_f64.astype(dtype)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
-    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp.astype(dtype)
+    R_carts_jnp = _R_carts_f64.astype(dtype)
+    R_carts_unique_jnp = _R_carts_unique_f64.astype(dtype)
     c_jnp = aos_data._coefficients_jnp.astype(dtype)
     Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
@@ -2944,11 +2968,9 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     )
     N_l_m_dup = jnp.sqrt((2 * l_f64 + 1) / (4 * jnp.pi))
 
-    r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
-    r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
     max_ml, S_l_m_dup_all_l_m = _compute_S_l_m(r_R_diffs_uq)
     _, S_l_m_grad_all_l_m, _ = _compute_S_l_m_and_grad_lap(r_R_diffs_uq)
 

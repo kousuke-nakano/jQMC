@@ -466,9 +466,11 @@ def _get_min_dist_rel_R_cart_jnp(
     """
     if dtype is None:
         dtype = get_dtype("io")
-    r_cart = jnp.array(r_cart, dtype=dtype)
-    R_cart = jnp.array(structure_data._positions_cart_jnp[i_atom], dtype=dtype)
-    diff = R_cart - r_cart
+    # Compute R - r in float64 to avoid catastrophic cancellation under float32 zones,
+    # then downcast.
+    _r_f64 = jnp.asarray(r_cart, dtype=jnp.float64)
+    _R_f64 = jnp.asarray(structure_data._positions_cart_jnp[i_atom], dtype=jnp.float64)
+    diff = (_R_f64 - _r_f64).astype(dtype)
     if structure_data.pbc_flag:
         cell = jnp.array(structure_data.cell, dtype=dtype)
         inv_cell = jnp.linalg.inv(cell)
