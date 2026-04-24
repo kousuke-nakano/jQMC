@@ -704,7 +704,8 @@ class GFMC_t:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=get_dtype("gfmc"),
             )
             return R
 
@@ -1547,10 +1548,10 @@ class GFMC_t:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=get_dtype("gfmc"))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
 
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
@@ -1942,8 +1943,8 @@ class GFMC_t:
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
             self.__stored_average_projection_counter[self.__mcmc_counter + num_mcmc_done] = ave_projection_counter
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=get_dtype("gfmc"))
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=get_dtype("gfmc"))
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
                 self.__latest_r_up_carts, self.__latest_r_dn_carts
             )
@@ -3019,7 +3020,7 @@ class _GFMC_t_debug:
 
             # Always set the initial weight list to 1.0
             projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-            e_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            e_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=get_dtype("gfmc"))
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=get_dtype("gfmc"))
 
             logger.devel("  Projection is on going....")
@@ -3327,10 +3328,10 @@ class _GFMC_t_debug:
 
             # projection ends
             projection_counter_list = jnp.array(projection_counter_list)
-            e_L_list = jnp.array(e_L_list)
-            w_L_list = jnp.array(w_L_list)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
+            e_L_list = jnp.asarray(e_L_list, dtype=get_dtype("gfmc"))
+            w_L_list = jnp.asarray(w_L_list, dtype=get_dtype("gfmc"))
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts, dtype=get_dtype("gfmc"))
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts, dtype=get_dtype("gfmc"))
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)
 
             logger.debug("  Projection ends.")
@@ -3429,10 +3430,10 @@ class _GFMC_t_debug:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=get_dtype("gfmc"))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -3627,8 +3628,8 @@ class _GFMC_t_debug:
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
             self.__stored_average_projection_counter.append(ave_projection_counter)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=get_dtype("gfmc"))
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=get_dtype("gfmc"))
 
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
@@ -4402,7 +4403,8 @@ class GFMC_n:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=get_dtype("gfmc"),
             )
             return R
 
@@ -5416,10 +5418,10 @@ class GFMC_n:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=get_dtype("gfmc"))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
 
             # Barrier before MPI operation
             start_mpi_barrier = time.perf_counter()
@@ -5804,8 +5806,8 @@ class GFMC_n:
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=get_dtype("gfmc"))
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=get_dtype("gfmc"))
             self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
 
             mpi_comm.Barrier()
@@ -6732,7 +6734,8 @@ class _GFMC_n_debug:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=get_dtype("gfmc"),
             )
             return R
 
@@ -7445,10 +7448,10 @@ class _GFMC_n_debug:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=get_dtype("gfmc"))
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=get_dtype("gfmc"))
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -7653,8 +7656,8 @@ class _GFMC_n_debug:
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=get_dtype("gfmc"))
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=get_dtype("gfmc"))
 
             # update E_scf
             eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
@@ -7691,8 +7694,8 @@ class _GFMC_n_debug:
             # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
             logger.devel("  Progress: Computing G_eq and G_e_L_eq.")
 
-            w_L_eq = jnp.array(w_L_eq)
-            e_L_eq = jnp.array(e_L_eq)
+            w_L_eq = jnp.asarray(w_L_eq, dtype=get_dtype("gfmc"))
+            e_L_eq = jnp.asarray(e_L_eq, dtype=get_dtype("gfmc"))
             G_eq = _compute_G_L_debug(w_L_eq, num_gfmc_collect_steps)
             G_e_L_eq = e_L_eq * G_eq
             G_eq = np.array(G_eq)
