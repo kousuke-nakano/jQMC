@@ -1392,14 +1392,16 @@ def _compute_geminal_all_elements_debug(
 @jax.jit
 def compute_geminal_up_one_row_elements(
     geminal_data,
-    r_up_cart: jax.Array,  # shape: (3,) or (1,3)
+    r_up_cart: jax.Array,  # shape: (1, 3)
     r_dn_carts: jax.Array,  # shape: (N_dn, 3)
 ) -> jax.Array:
     """Single row of the geminal matrix for one spin-up electron.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
-        r_up_cart: Cartesian coordinate for one spin-up electron with shape ``(3,)`` or ``(1, 3)``.
+        r_up_cart: Cartesian coordinate for one spin-up electron with shape ``(1, 3)``.
+            ``compute_orb_api`` requires a 2D ``(N, 3)`` batch; pass a single
+            electron as ``(1, 3)``, not ``(3,)``.
         r_dn_carts: Cartesian coordinates for all spin-down electrons with shape ``(N_dn, 3)``.
 
     Returns:
@@ -1440,14 +1442,16 @@ def compute_geminal_up_one_row_elements(
 def compute_geminal_dn_one_column_elements(
     geminal_data,
     r_up_carts: jax.Array,  # shape: (N_up, 3)
-    r_dn_cart: jax.Array,  # shape: (3,) or (1,3)
+    r_dn_cart: jax.Array,  # shape: (1, 3)
 ) -> jax.Array:
     """Single column of the geminal matrix for one spin-down electron.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
         r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
-        r_dn_cart: Cartesian coordinate for one spin-down electron with shape ``(3,)`` or ``(1, 3)``.
+        r_dn_cart: Cartesian coordinate for one spin-down electron with shape ``(1, 3)``.
+            ``compute_orb_api`` requires a 2D ``(N, 3)`` batch; pass a single
+            electron as ``(1, 3)``, not ``(3,)``.
 
     Returns:
         jax.Array: Column vector for the paired block with shape ``(N_up,)``.

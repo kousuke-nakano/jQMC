@@ -232,8 +232,10 @@ def compute_MOs(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: MO values with shape ``(num_mo, N_e)``.
     """
+    dtype = get_dtype("orb_eval")
+    mo_coefficients = mos_data.mo_coefficients.astype(dtype)
     answer = jnp.dot(
-        mos_data.mo_coefficients,
+        mo_coefficients,
         compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
 
@@ -271,8 +273,10 @@ def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: Laplacians of each MO, shape ``(num_mo, N_e)``.
     """
+    dtype = get_dtype("kinetic")
+    mo_coefficients = mos_data.mo_coefficients.astype(dtype)
     ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
-    return jnp.dot(mos_data.mo_coefficients, ao_lap)
+    return jnp.dot(mo_coefficients, ao_lap)
 
 
 def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
@@ -333,10 +337,12 @@ def compute_MOs_grad(
         tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]: Gradients per component
         ``(grad_x, grad_y, grad_z)``, each of shape ``(num_mo, N_e)``.
     """
+    dtype = get_dtype("kinetic")
+    mo_coefficients = mos_data.mo_coefficients.astype(dtype)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
-    mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
-    mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
-    mo_matrix_grad_z = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_z)
+    mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x)
+    mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y)
+    mo_matrix_grad_z = jnp.dot(mo_coefficients, mo_matrix_grad_z)
 
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 
@@ -350,10 +356,12 @@ def _compute_MOs_grad_autodiff(
     npt.NDArray[np.float64],
 ]:
     """This method is for computing the gradients (x,y,z) of the given molecular orbital at r_carts."""
+    dtype = get_dtype("kinetic")
+    mo_coefficients = mos_data.mo_coefficients.astype(dtype)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = _compute_AOs_grad_autodiff(mos_data.aos_data, r_carts)
-    mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
-    mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
-    mo_matrix_grad_z = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_z)
+    mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x)
+    mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y)
+    mo_matrix_grad_z = jnp.dot(mo_coefficients, mo_matrix_grad_z)
 
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 

@@ -1167,6 +1167,7 @@ def compute_ecp_local_parts_all_pairs(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_cart,
             i_atom=i_atom,
+            dtype=dtype,
         )
         V_l = (
             jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
@@ -1213,10 +1214,11 @@ def compute_ecp_local_parts_all_pairs(
     r_up_carts_jnp = jnp.asarray(r_up_carts, dtype=dtype)
     r_dn_carts_jnp = jnp.asarray(r_dn_carts, dtype=dtype)
 
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     i_atom_np = np.array(coulomb_potential_data._nucleus_index_local_part)
-    exponent_np = np.array(coulomb_potential_data._exponents_local_part)
-    coefficient_np = np.array(coulomb_potential_data._coefficients_local_part)
-    power_np = np.array(coulomb_potential_data._powers_local_part)
+    exponent_np = np.array(coulomb_potential_data._exponents_local_part, dtype=dtype_np)
+    coefficient_np = np.array(coulomb_potential_data._coefficients_local_part, dtype=dtype_np)
+    power_np = np.array(coulomb_potential_data._powers_local_part, dtype=dtype_np)
 
     V_ecp_up = jnp.sum(
         vmap_vmap_compute_ecp_up(
@@ -1349,6 +1351,7 @@ def compute_ecp_non_local_parts_nearest_neighbors(
                     structure_data=coulomb_potential_data.structure_data,
                     r_cart=r_cart,
                     i_atom=i_atom,
+                    dtype=dtype,
                 )
             )(i_atom_list)
 
@@ -1576,6 +1579,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
                     structure_data=coulomb_potential_data.structure_data,
                     r_cart=r_cart,
                     i_atom=i_atom,
+                    dtype=dtype,
                 )
             )(i_atom_list)
 
@@ -1859,6 +1863,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_cart,
             i_atom=i_atom,
+            dtype=dtype,
         )
         V_l = (
             jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
@@ -1877,6 +1882,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
             i_atom=i_atom,
+            dtype=dtype,
         )
         r_up_carts_on_mesh = r_up_carts
         r_up_carts_on_mesh = r_up_carts_on_mesh.at[r_up_i].set(
@@ -1897,6 +1903,9 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
         det_numerator_up = compute_det_geminal_all_elements(wavefunction_data.geminal_data, r_up_carts_on_mesh, r_dn_carts)
 
         wf_ratio_up = jnp.exp(jastrow_numerator_up - jastrow_denominator) * det_numerator_up / det_denominator
+        # Cast back to coulomb zone: det/jastrow live in fp64 zones and would otherwise
+        # promote the entire P_l / V_ecp output to fp64.
+        wf_ratio_up = jnp.asarray(wf_ratio_up, dtype=dtype)
 
         P_l_up = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_up) * weight * wf_ratio_up
 
@@ -1910,6 +1919,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
             i_atom=i_atom,
+            dtype=dtype,
         )
         r_dn_carts_on_mesh = r_dn_carts
         r_dn_carts_on_mesh = r_dn_carts_on_mesh.at[r_dn_i].set(
@@ -1930,6 +1940,8 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
         det_numerator_dn = compute_det_geminal_all_elements(wavefunction_data.geminal_data, r_up_carts, r_dn_carts_on_mesh)
 
         wf_ratio_dn = jnp.exp(jastrow_numerator_dn - jastrow_denominator) * det_numerator_dn / det_denominator
+        # Cast back to coulomb zone (see compute_P_l_up).
+        wf_ratio_dn = jnp.asarray(wf_ratio_dn, dtype=dtype)
 
         P_l_dn = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_dn) * weight * wf_ratio_dn
         return r_dn_carts_on_mesh, P_l_dn
@@ -2005,9 +2017,9 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
 
     i_atom_np = jnp.array(coulomb_potential_data._nucleus_index_non_local_part)
     ang_mom_np = jnp.array(coulomb_potential_data._ang_mom_non_local_part)
-    exponent_np = jnp.array(coulomb_potential_data._exponents_non_local_part)
-    coefficient_np = jnp.array(coulomb_potential_data._coefficients_non_local_part)
-    power_np = jnp.array(coulomb_potential_data._powers_non_local_part)
+    exponent_np = jnp.array(coulomb_potential_data._exponents_non_local_part, dtype=dtype)
+    coefficient_np = jnp.array(coulomb_potential_data._coefficients_non_local_part, dtype=dtype)
+    power_np = jnp.array(coulomb_potential_data._powers_non_local_part, dtype=dtype)
 
     r_up_carts_on_mesh, V_ecp_up = vmap_vmap_compute_ecp_up(
         r_up_i_jnp,
@@ -2242,7 +2254,7 @@ def compute_bare_coulomb_potential_el_ion_element_wise(
     dtype = get_dtype("coulomb")
     dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     R_carts = jnp.array(coulomb_potential_data.structure_data._positions_cart_jnp, dtype=dtype)
-    R_charges = np.array(coulomb_potential_data._effective_charges)
+    R_charges = np.array(coulomb_potential_data._effective_charges, dtype=dtype_np)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=dtype_np)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=dtype_np)
 
@@ -2287,7 +2299,7 @@ def compute_discretized_bare_coulomb_potential_el_ion_element_wise(
     dtype = get_dtype("coulomb")
     dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     R_carts = jnp.array(coulomb_potential_data.structure_data._positions_cart_jnp, dtype=dtype)
-    R_charges = np.array(coulomb_potential_data._effective_charges)
+    R_charges = np.array(coulomb_potential_data._effective_charges, dtype=dtype_np)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=dtype_np)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=dtype_np)
 
@@ -2457,8 +2469,9 @@ def compute_bare_coulomb_potential_ion_ion(
         float: Ion–ion Coulomb energy.
     """
     dtype = get_dtype("coulomb")
+    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     R_carts = jnp.array(coulomb_potential_data.structure_data._positions_cart_jnp, dtype=dtype)
-    R_charges = np.array(coulomb_potential_data._effective_charges)
+    R_charges = np.array(coulomb_potential_data._effective_charges, dtype=dtype_np)
 
     all_charges = R_charges
     all_carts = R_carts

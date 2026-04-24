@@ -58,7 +58,7 @@ from numpy import linalg as LA
 
 from ._jqmc_utility import _spherical_to_cart_matrix
 from ._precision import get_dtype
-from ._setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, rtol_consistency
+from ._setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, get_eps, rtol_consistency
 from .structure import Structure_data
 
 # set logger
@@ -1986,16 +1986,18 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     See compute_AOs_api
 
     """
-    # Indices with respect to the contracted AOs
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
-    c_jnp = aos_data._coefficients_jnp
-    Z_jnp = aos_data._exponents_jnp
+    # Downcast all float inputs to orb_eval zone dtype (P0-1, P0-2)
+    dtype = get_dtype("orb_eval")
+    r_carts = r_carts.astype(dtype)
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
     nx_jnp = aos_data._polynominal_order_x_prim_jnp
     ny_jnp = aos_data._polynominal_order_y_prim_jnp
     nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
-    N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp
+    N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
     N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
@@ -2003,7 +2005,7 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
-    eps = EPS_stabilizing_jax_AO_cart_deriv  # This is quite important to avoid some numerical instability in JAX!!
+    eps = get_eps("stabilizing_ao", dtype)
     P_l_nx_ny_nz_dup = (x + eps) ** (nx_jnp[:, None]) * (y + eps) ** (ny_jnp[:, None]) * (z + eps) ** (nz_jnp[:, None])
 
     """
@@ -2033,26 +2035,27 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
     See compute_AOs_api
 
     """
-    # Indices with respect to the contracted AOs
-    # compute R_n inc. the whole normalization factor
+    # Downcast all float inputs to orb_eval zone dtype (P0-1)
+    dtype = get_dtype("orb_eval")
+    r_carts = r_carts.astype(dtype)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
-    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp
-    c_jnp = aos_data._coefficients_jnp
-    Z_jnp = aos_data._exponents_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
-    # use float64 gamma-based factorials to avoid float32 drift vs debug implementation
-    l_f64 = l_jnp.astype(jnp.float64)
-    Z_f64 = Z_jnp.astype(jnp.float64)
-    factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
-    factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
+    # Normalization constants computed in zone dtype (P0-1: replaces .astype(jnp.float64))
+    l_typed = l_jnp.astype(dtype)
+    factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_typed + 2.0))
+    factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_typed + 3.0))
 
     N_n_dup = jnp.sqrt(
-        (2.0 ** (2 * l_f64 + 3) * factorial_l_plus_1 * (2 * Z_f64) ** (l_f64 + 1.5)) / (factorial_2l_plus_2 * jnp.sqrt(jnp.pi))
+        (2.0 ** (2 * l_typed + 3) * factorial_l_plus_1 * (2 * Z_jnp) ** (l_typed + 1.5))
+        / (factorial_2l_plus_2 * jnp.sqrt(jnp.asarray(jnp.pi, dtype=dtype)))
     )
-    N_l_m_dup = jnp.sqrt((2 * l_f64 + 1) / (4 * jnp.pi))
+    N_l_m_dup = jnp.sqrt((2 * l_typed + 1) / (4 * jnp.asarray(jnp.pi, dtype=dtype)))
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
@@ -2565,24 +2568,25 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for Cartesian AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts)
-    R_carts = aos_data._atomic_center_carts_prim_jnp
-    c = aos_data._coefficients_jnp
-    Z = aos_data._exponents_jnp
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    R_carts = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    c = aos_data._coefficients_jnp.astype(dtype)
+    Z = aos_data._exponents_jnp.astype(dtype)
     l = aos_data._angular_momentums_prim_jnp
     nx = aos_data._polynominal_order_x_prim_jnp
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = aos_data._normalization_factorial_ratio_prim_jnp
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    x = x + EPS_stabilizing_jax_AO_cart_deriv
-    y = y + EPS_stabilizing_jax_AO_cart_deriv
-    z = z + EPS_stabilizing_jax_AO_cart_deriv
+    eps = get_eps("stabilizing_ao", dtype)
+    x = x + eps
+    y = y + eps
+    z = z + eps
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
@@ -2610,12 +2614,12 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for spherical AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts)
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
-    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp
-    c_jnp = aos_data._coefficients_jnp
-    Z_jnp = aos_data._exponents_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
@@ -2794,7 +2798,8 @@ def _compute_AOs_laplacian_autodiff(aos_data: AOs_sphe_data | AOs_cart_data, r_c
     See compute_AOs_laplacian_api
 
     """
-    dtype = get_dtype("kinetic")  # noqa: F841
+    dtype = get_dtype("kinetic")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
     # not very fast, but it works.
     ao_matrix_hessian = hessian(compute_AOs, argnums=1)(aos_data, r_carts)
     ao_matrix_laplacian = jnp.einsum("m i i u i u -> mi", ao_matrix_hessian)
@@ -2870,25 +2875,26 @@ def _compute_AOs_laplacian_debug(
 @jit
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for Cartesian AOs (contracted)."""
-    dtype = get_dtype("kinetic")  # noqa: F841
-    r_carts = jnp.asarray(r_carts)
-    R_carts = aos_data._atomic_center_carts_prim_jnp
-    c = aos_data._coefficients_jnp
-    Z = aos_data._exponents_jnp
+    dtype = get_dtype("kinetic")
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    R_carts = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    c = aos_data._coefficients_jnp.astype(dtype)
+    Z = aos_data._exponents_jnp.astype(dtype)
     l = aos_data._angular_momentums_prim_jnp
     nx = aos_data._polynominal_order_x_prim_jnp
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = aos_data._normalization_factorial_ratio_prim_jnp
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    x = x + EPS_stabilizing_jax_AO_cart_deriv
-    y = y + EPS_stabilizing_jax_AO_cart_deriv
-    z = z + EPS_stabilizing_jax_AO_cart_deriv
+    eps = get_eps("stabilizing_ao", dtype)
+    x = x + eps
+    y = y + eps
+    z = z + eps
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
@@ -2919,12 +2925,12 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for spherical AOs (contracted)."""
     dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts)
+    r_carts = jnp.asarray(r_carts, dtype=dtype)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
-    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp
-    c_jnp = aos_data._coefficients_jnp
-    Z_jnp = aos_data._exponents_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp.astype(dtype)
+    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 

@@ -455,10 +455,17 @@ def _get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[flo
     return diff
 
 
-@jit
-def _get_min_dist_rel_R_cart_jnp(structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int) -> float:
-    """See get_min_dist_rel_R_cart_np."""
-    dtype = get_dtype("io")
+@partial(jit, static_argnames=("dtype",))
+def _get_min_dist_rel_R_cart_jnp(
+    structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int, dtype=None
+) -> float:
+    """See get_min_dist_rel_R_cart_np.
+
+    ``dtype`` is marked static for ``jit`` because it is a Python scalar type
+    (e.g. ``jnp.float32``) and cannot be traced as an abstract array.
+    """
+    if dtype is None:
+        dtype = get_dtype("io")
     r_cart = jnp.array(r_cart, dtype=dtype)
     R_cart = jnp.array(structure_data._positions_cart_jnp[i_atom], dtype=dtype)
     diff = R_cart - r_cart
