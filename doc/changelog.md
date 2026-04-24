@@ -2,6 +2,19 @@
 
 # Change Log
 
+## Apr-24-2026: v0.2.1a2
+
+Minor update focusing on workflow improvements, bug fixes, and new benchmark infrastructure.
+
+### New features
+
+* **Kernel benchmark suite**: Added benchmark modules and tests for profiling kernel performance.
+* **`cleanup_patterns` option**: Added a `cleanup_patterns` configuration option to `jqmc_workflow` for automatic post-run file cleanup, with support for recursive matching in subdirectories.
+
+### Bug fixes
+
+* **MPI deadlock in `max_time` / `stop_flag`**: Fixed a deadlock that could occur during `max_time` and `stop_flag` checks in MPI runs.
+
 ## Apr-16-2026: v0.2.1a1
 
 This release focuses on a major update of the VMC optimizer (Linear Method), extended AO basis optimization, memory/performance improvements of the `jqmc` kernel package, and substantial hardening of the `jqmc_workflow` automation package.
