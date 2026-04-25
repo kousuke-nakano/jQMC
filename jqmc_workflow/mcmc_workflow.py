@@ -249,7 +249,6 @@ class MCMC_Workflow(Workflow):
         cleanup_patterns: Optional[list] = None,
         # -- [precision] section --
         precision_mode: Optional[str] = None,
-        precision_overrides: Optional[dict] = None,
     ):
         super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
@@ -279,7 +278,6 @@ class MCMC_Workflow(Workflow):
         self.max_continuation = max_continuation
         # [precision] section
         self.precision_mode = precision_mode
-        self.precision_overrides = precision_overrides
 
     # ── Input generation ──────────────────────────────────────────
 
@@ -323,13 +321,8 @@ class MCMC_Workflow(Workflow):
             "mcmc": mcmc_ov,
         }
         # Add [precision] section if configured
-        if self.precision_mode is not None or self.precision_overrides:
-            precision_ov = {}
-            if self.precision_mode is not None:
-                precision_ov["mode"] = self.precision_mode
-            if self.precision_overrides:
-                precision_ov.update(self.precision_overrides)
-            overrides["precision"] = precision_ov
+        if self.precision_mode is not None:
+            overrides["precision"] = {"mode": self.precision_mode}
         generate_input_toml(
             job_type="mcmc",
             overrides=overrides,

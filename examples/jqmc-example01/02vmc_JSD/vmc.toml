@@ -31,14 +31,3 @@ opt_lambda_basis_coeff = false
 
 # [precision]
 # mode = "full"  # "full" (default, all float64) or "mixed" (recommended mixed precision)
-# # Per-zone overrides (optional, override the mode defaults):
-# # orb_eval = "float32"     # AO/MO forward evaluation
-# # jastrow = "float32"      # Jastrow factor
-# # geminal = "float32"      # Geminal matrix elements
-# # determinant = "float64"  # log-det, SVD, AS regularization
-# # coulomb = "float32"      # Coulomb + ECP potential
-# # kinetic = "float64"      # Kinetic energy + derivatives
-# # mcmc = "float64"         # MCMC sampling
-# # gfmc = "float64"         # GFMC propagation
-# # optimization = "float64" # SR matrix, parameter updates
-# # io = "float64"           # I/O, structure data

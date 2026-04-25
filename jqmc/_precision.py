@@ -5,11 +5,16 @@ specifies dtype for all variables it creates or consumes.  This design
 does NOT rely on JAX's implicit dtype propagation, ensuring robustness
 against future changes in JAX's type promotion semantics.
 
-All zones are user-configurable.  Defaults depend on the mode:
+Users choose one of two modes:
 
-- ``mode="full"``  (default) — all zones float64 (backward compatible).
-- ``mode="mixed"`` — recommended mixed precision; low-risk zones become
+- ``"full"``  (default) — all zones float64 (backward compatible).
+- ``"mixed"`` — recommended mixed precision; low-risk zones become
   float32 while numerically sensitive zones stay float64.
+
+Individual zone assignments are **not** user-configurable; they are
+defined in ``_FULL_PRECISION`` and ``_MIXED_PRECISION`` below.
+Developers who need to tweak per-zone dtypes should edit those dicts
+directly in this file.
 
 Precision Zones
 ---------------
@@ -19,7 +24,7 @@ Zone            Components                    Default    Mixed     float32 risk
 ==============  ============================  =========  ========  ============
 ``orb_eval``    AO/MO forward evaluation      float64    float32   low
 ``jastrow``     Jastrow factor (J1/J2/J3)     float64    float32   low
-``geminal``     Geminal matrix elements        float64    float32   low
+``geminal``     Geminal matrix elements        float64    float64   high
 ``determinant`` log-det, SVD, AS reg.          float64    float64   high
 ``coulomb``     Coulomb + ECP potential        float64    float32   low-medium
 ``kinetic``     Kinetic energy + AO/MO derivs  float64    float64   high
@@ -95,8 +100,8 @@ import jax.numpy as jnp
 
 logger = logging.getLogger(__name__)
 
-# --- mode="full" defaults (all float64, backward compatible) ---
-_DEFAULTS_FULL: dict[str, str] = {
+# --- mode="full" (all float64, backward compatible) ---
+_FULL_PRECISION: dict[str, str] = {
     "orb_eval": "float64",  # AO/MO forward evaluation
     "jastrow": "float64",  # Jastrow factor
     "geminal": "float64",  # Geminal matrix elements
@@ -109,7 +114,7 @@ _DEFAULTS_FULL: dict[str, str] = {
     "io": "float64",  # I/O, structure data
 }
 
-# --- mode="mixed" defaults (recommended mixed precision) ---
+# --- mode="mixed" (recommended mixed precision) ---
 # float32 risk:
 #   orb_eval    - low: smooth Gaussian basis + linear combination.
 #                 (Heavy AO eval stays in fp32; compute_MOs upcasts the small
@@ -126,7 +131,7 @@ _DEFAULTS_FULL: dict[str, str] = {
 #   gfmc        - high: weighted branching/pruning, population collapse in float32
 #   optimization- high: S^{-1}F linear system, ill-conditioned matrix
 #   io          - low-medium: file I/O + nuclear coordinates
-_DEFAULTS_MIXED: dict[str, str] = {
+_MIXED_PRECISION: dict[str, str] = {
     "orb_eval": "float32",  # low risk (heavy kernel only)
     "jastrow": "float32",  # low risk
     "geminal": "float64",  # high risk: feeds LU/det
@@ -139,7 +144,7 @@ _DEFAULTS_MIXED: dict[str, str] = {
     "io": "float64",  # low-medium risk
 }
 
-ALL_ZONES = frozenset(_DEFAULTS_FULL.keys())
+ALL_ZONES = frozenset(_FULL_PRECISION.keys())
 
 # Runtime zone -> dtype mapping
 _zone_dtypes: dict[str, type] = {}
@@ -165,48 +170,46 @@ def _str_to_dtype(s: str) -> type:
         raise ValueError(f"Invalid dtype '{s}'. Must be 'float32' or 'float64'.")
 
 
-def configure(precision_config: dict[str, str]) -> None:
-    """Set zone-level dtypes from a TOML ``[precision]`` section.
+def configure(mode: str = "full") -> None:
+    """Activate a precision mode.
 
     Args:
-        precision_config: Mapping such as ``{"mode": "mixed", "orb_eval": "float32", ...}``.
-
-            - ``mode="full"`` (default): all zones float64.
-            - ``mode="mixed"``: recommended mixed precision defaults.
-            - ``mode`` omitted: same as ``"full"``.
-            - Per-zone overrides take highest priority regardless of *mode*.
+        mode: ``"full"`` (default, all float64) or ``"mixed"``
+            (recommended mixed precision).
 
     Raises:
-        ValueError: If *mode* is unknown, a zone name is invalid, or a dtype
-            string is not ``"float32"``/``"float64"``.
+        ValueError: If *mode* is not ``"full"`` or ``"mixed"``.
     """
     _zone_dtypes.clear()
 
-    mode = precision_config.get("mode", "full")
-
-    # Select base configuration
     if mode == "full":
-        base = dict(_DEFAULTS_FULL)
+        base = _FULL_PRECISION
     elif mode == "mixed":
-        base = dict(_DEFAULTS_MIXED)
+        base = _MIXED_PRECISION
     else:
         raise ValueError(f"Unknown precision mode '{mode}'. Must be 'full' or 'mixed'.")
 
-    # Apply per-zone overrides
-    for zone, dtype_str in precision_config.items():
-        if zone == "mode":
-            continue
-        if zone not in ALL_ZONES:
-            raise ValueError(f"Unknown precision zone '{zone}'. Available zones: {sorted(ALL_ZONES)}")
-        _str_to_dtype(dtype_str)  # validate
-        base[zone] = dtype_str
-
-    # Build final mapping
     for zone, dtype_str in base.items():
         _zone_dtypes[zone] = _str_to_dtype(dtype_str)
 
-    # Log the precision configuration
     logger.info(summary())
+
+
+def _set_zone(zone: str, dtype_str: str) -> None:
+    """Override a single zone's dtype at runtime (developer use only).
+
+    Must be called **after** :func:`configure`.  This is intentionally
+    private — normal users select ``"full"`` or ``"mixed"`` mode and the
+    per-zone mapping is determined by ``_FULL_PRECISION`` /
+    ``_MIXED_PRECISION``.
+
+    Args:
+        zone: Precision Zone name.
+        dtype_str: ``"float32"`` or ``"float64"``.
+    """
+    if zone not in ALL_ZONES:
+        raise ValueError(f"Unknown precision zone '{zone}'. Available zones: {sorted(ALL_ZONES)}")
+    _zone_dtypes[zone] = _str_to_dtype(dtype_str)
 
 
 def get_dtype(zone: str) -> type:

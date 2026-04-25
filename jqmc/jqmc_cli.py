@@ -244,10 +244,19 @@ def _cli():
         logger.info("")
 
     # --- precision configuration ---
-    precision_config = dict_toml.get("precision", {})
-    if not isinstance(precision_config, dict):
+    precision_section = dict_toml.get("precision", {})
+    if not isinstance(precision_section, dict):
         raise ValueError("The [precision] section must be a TOML table.")
-    configure_precision(precision_config)
+    precision_mode = precision_section.get("mode", "full")
+    extra_keys = set(precision_section.keys()) - {"mode"}
+    if extra_keys:
+        logger.warning(
+            "Per-zone precision overrides are no longer supported and will be "
+            "ignored: %s. Edit jqmc/_precision.py directly to change zone "
+            "assignments.",
+            sorted(extra_keys),
+        )
+    configure_precision(precision_mode)
     logger.info("")
 
     # default parameters

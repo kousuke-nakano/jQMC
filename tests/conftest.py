@@ -35,7 +35,7 @@ def configure_precision(request):
     from jqmc._precision import configure
 
     mode = request.config.getoption("--precision-mode")
-    configure({"mode": mode})
+    configure(mode)
 
 
 def pytest_itemcollected(item):

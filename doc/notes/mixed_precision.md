@@ -30,14 +30,14 @@ Or keep the default (all float64, backward compatible):
 
 ## Precision zones
 
-jQMC divides the computation into 10 **Precision Zones**, each independently
-configurable:
+jQMC divides the computation into 10 **Precision Zones**.  The mapping
+from zone to dtype is determined entirely by the chosen mode:
 
 | Zone           | Components                        | `full` | `mixed` | float32 risk |
 |----------------|-----------------------------------|--------|---------|--------------|
 | `orb_eval`     | AO/MO forward evaluation          | f64    | **f32** | low          |
 | `jastrow`      | Jastrow factor (J1/J2/J3)         | f64    | **f32** | low          |
-| `geminal`      | Geminal matrix elements            | f64    | **f32** | low          |
+| `geminal`      | Geminal matrix elements            | f64    | f64     | high         |
 | `determinant`  | log-det, SVD, AS regularization    | f64    | f64     | high         |
 | `coulomb`      | Coulomb + ECP potential            | f64    | **f32** | low-medium   |
 | `kinetic`      | Kinetic energy + AO/MO derivatives | f64    | f64     | high         |
@@ -46,25 +46,9 @@ configurable:
 | `optimization` | SR matrix, parameter updates       | f64    | f64     | high         |
 | `io`           | I/O, structure data                | f64    | f64     | low-medium   |
 
-## Custom zone configuration
-
-Individual zones can be overridden regardless of the base mode:
-
-```toml
-[precision]
-mode = "mixed"          # start from recommended mixed defaults
-orb_eval = "float64"    # override: keep AO/MO in float64
-```
-
-```toml
-[precision]
-mode = "full"           # start from all float64
-orb_eval = "float32"    # override: only AO/MO in float32
-```
-
 ## Workflow integration
 
-When using `jqmc_workflow`, pass precision settings to any workflow class:
+When using `jqmc_workflow`, pass the precision mode to any workflow class:
 
 ```python
 from jqmc_workflow import VMC_Workflow
@@ -76,16 +60,10 @@ wf = VMC_Workflow(
 )
 ```
 
-For custom per-zone overrides:
-
-```python
-wf = VMC_Workflow(
-    server_machine_name="cluster",
-    num_opt_steps=20,
-    precision_mode="mixed",
-    precision_overrides={"orb_eval": "float64"},
-)
-```
+Per-zone assignments are defined in `_FULL_PRECISION` / `_MIXED_PRECISION`
+inside `jqmc/_precision.py` and are not configurable from TOML or workflow
+parameters.  Developers who need per-zone control for diagnostics can edit
+those dicts directly or use `_set_zone()` after calling `configure()`.
 
 ## Design principles
 

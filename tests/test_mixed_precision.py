@@ -94,11 +94,11 @@ def _skip_if_not_mixed(request):
 @pytest.fixture(autouse=True)
 def _configure_mixed():
     """Ensure mixed mode is active and JIT caches are cleared."""
-    configure({"mode": "mixed"})
+    configure("mixed")
     jax.clear_caches()
     yield
     # Restore full mode after each test to avoid polluting other tests
-    configure({"mode": "full"})
+    configure("full")
     jax.clear_caches()
 
 
