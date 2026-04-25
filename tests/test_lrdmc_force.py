@@ -44,7 +44,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_tolerance_min  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -203,8 +203,12 @@ def test_lrdmc_force_with_SWCT_n(trexio_file: str, jastrow_parameters: dict, loc
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
 
+    # Force crosses ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic; bound by weakest zone (fp32 in mixed).
     # See [J. Chem. Phys. 156, 034101 (2022)]
-    atol, rtol = get_tolerance("gfmc", "strict")
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -315,8 +319,12 @@ def test_lrdmc_force_with_SWCT_t(trexio_file: str, jastrow_parameters: dict, loc
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
 
+    # Force crosses ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic; bound by weakest zone (fp32 in mixed).
     # See [J. Chem. Phys. 156, 034101 (2022)]
-    atol, rtol = get_tolerance("gfmc", "strict")
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(

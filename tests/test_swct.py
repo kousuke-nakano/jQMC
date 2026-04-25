@@ -61,7 +61,7 @@ jax.config.update("jax_traceback_filtering", "off")
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_debug_and_jax_SWCT_omega(trexio_file: str):
     """Test SWCT omega, compare debug and jax."""
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("swct", "strict")
     (
         structure_data,
         _,

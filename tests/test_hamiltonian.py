@@ -215,7 +215,7 @@ def test_compute_local_energy_fast(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("local_energy", "strict")
     for _ in range(10):
         r_up = jnp.array(first_nucleus + rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -246,7 +246,7 @@ def _compare_grad_leaves(
 ):
     """Flatten two pytrees and compare every leaf."""
     if atol is None or rtol is None:
-        _atol, _rtol = get_tolerance_min(["geminal", "jastrow"], "strict")
+        _atol, _rtol = get_tolerance_min(["det_eval", "jastrow_eval"], "strict")
         if atol is None:
             atol = _atol
         if rtol is None:
@@ -297,7 +297,7 @@ def test_grad_compute_local_energy(trexio_file):
     r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 0.5, dtype=jnp.float64)
 
     # Sanity: both forward values must agree.
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("local_energy", "strict")
     e_auto = float(_compute_local_energy_auto(hamiltonian_data, r_up, r_dn, RT))
     e_custom = float(compute_local_energy(hamiltonian_data, r_up, r_dn, RT))
     np.testing.assert_allclose(
@@ -314,7 +314,7 @@ def test_grad_compute_local_energy(trexio_file):
     grad_auto = jax.grad(_compute_local_energy_auto, argnums=0)(hamiltonian_data, r_up, r_dn, RT)
     grad_custom = jax.grad(compute_local_energy, argnums=0)(hamiltonian_data, r_up, r_dn, RT)
 
-    atol_grad, rtol_grad = get_tolerance_min(["geminal", "jastrow"], "strict")
+    atol_grad, rtol_grad = get_tolerance_min(["det_eval", "jastrow_eval"], "strict")
     _compare_grad_leaves(
         grad_auto,
         grad_custom,

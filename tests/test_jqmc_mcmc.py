@@ -80,10 +80,10 @@ param_grid = [
 @pytest.mark.parametrize("trexio_file,with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", param_grid)
 def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow):
     """Test comparison with MCMC debug and MCMC production implementations."""
-    # e_L / w_L cross orb_eval/jastrow/geminal/coulomb/kinetic/mcmc zones; the
+    # e_L / w_L cross ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic zones; the
     # achievable debug-vs-jax agreement is bounded by the weakest (fp32 in mixed).
     atol, rtol = get_tolerance_min(
-        ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "mcmc"),
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic"),
         "strict",
     )
     (
@@ -1034,9 +1034,9 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     ln_psi_mo = float(evaluate_ln_wavefunction(final_wf, r_up, r_dn))
     ln_psi_ao = float(evaluate_ln_wavefunction(wf_ao, r_up, r_dn))
 
-    # ln|Psi| crosses orb_eval/jastrow/geminal/determinant; bound by weakest zone.
+    # ln|Psi| crosses ao_eval/jastrow_eval/det_eval; bound by weakest zone.
     atol, rtol = get_tolerance_min(
-        ("orb_eval", "jastrow", "geminal", "determinant", "mcmc"),
+        ("ao_eval", "jastrow_eval", "det_eval"),
         "strict",
     )
     assert not np.any(np.isnan(np.asarray(ln_psi_mo))), "NaN detected in first argument"
@@ -1220,9 +1220,9 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
     lam_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix)
 
     # ── Assertions ───────────────────────────────────────────────────────────
-    # j3 / lambda_matrix live in jastrow / geminal zones; symmetry is a structural
+    # j3 / lambda_matrix live in jastrow_eval / det_eval zones; symmetry is a structural
     # property of the matrix itself, so use those zones' tolerances.
-    atol, rtol = get_tolerance_min(("jastrow", "geminal"), "strict")
+    atol, rtol = get_tolerance_min(("jastrow_eval", "det_eval"), "strict")
     if j3_type == "sym":
         np.testing.assert_allclose(
             j3_after[:, :-1],
@@ -1611,7 +1611,7 @@ def test_get_aH_and_solve_lm_debug_vs_production():
 
     # H_0/f/S/K/B cross the full e_L path + optimization assembly; bound by weakest zone.
     atol, rtol = get_tolerance_min(
-        ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "mcmc", "optimization"),
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "local_energy"),
         "strict",
     )
 

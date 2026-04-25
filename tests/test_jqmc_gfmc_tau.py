@@ -178,10 +178,10 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 
-    # e_L / e_L2 / w_L cross orb_eval/jastrow/geminal/coulomb/kinetic/gfmc zones;
+    # e_L / e_L2 / w_L cross ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic zones;
     # the achievable debug-vs-jax agreement is bounded by the weakest (fp32 in mixed).
     atol, rtol = get_tolerance_min(
-        ("orb_eval", "jastrow", "geminal", "determinant", "coulomb", "kinetic", "gfmc"),
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic"),
         "strict",
     )
 

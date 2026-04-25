@@ -209,7 +209,7 @@ def test_spherical_harmonics_debug_vs_production(l, m):
     r_y_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
     r_z_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
 
-    atol, rtol = get_tolerance("orb_eval", "strict")
+    atol, rtol = get_tolerance("ao_eval", "strict")
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand, strict=True):
         r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
         r_cart_rel = np.array(r_cart) - np.array(R_cart)
@@ -263,7 +263,7 @@ def test_solid_harmonics_debug_vs_production():
 
     # print(f"batch_S_l_m.shape = {batch_S_l_m.shape}.")
 
-    atol, rtol = get_tolerance("orb_eval", "strict")
+    atol, rtol = get_tolerance("ao_eval", "strict")
     assert not np.any(np.isnan(np.asarray(S_l_m_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(S_l_m_jax))), "NaN detected in second argument"
     np.testing.assert_allclose(S_l_m_debug, S_l_m_jax, atol=atol, rtol=rtol)
@@ -283,8 +283,8 @@ def test_AOs_sphe_debug_vs_production():
     magnetic_quantum_numbers = [m for _, m in ml_list]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -317,7 +317,7 @@ def test_AOs_sphe_debug_vs_production():
     )
     aos_data.sanity_check()
 
-    atol, rtol = get_tolerance("orb_eval", "strict")
+    atol, rtol = get_tolerance("ao_eval", "strict")
 
     aos_jax = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
@@ -336,8 +336,8 @@ def test_AOs_sphe_debug_vs_production():
     magnetic_quantum_numbers = magnetic_quantum_numbers
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -406,8 +406,8 @@ def test_AOs_cart_debug_vs_production():
     coefficients = [1.0] * num_ao
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     polynominal_order_x = tuple(polynominal_order_x)
     polynominal_order_y = tuple(polynominal_order_y)
@@ -444,7 +444,7 @@ def test_AOs_cart_debug_vs_production():
     )
     aos_data.sanity_check()
 
-    atol, rtol = get_tolerance("orb_eval", "strict")
+    atol, rtol = get_tolerance("ao_eval", "strict")
 
     aos_jax = _compute_AOs_cart(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
@@ -470,8 +470,8 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     num_ao = 3
     num_ao_prim = 3
     orbital_indices = tuple(range(num_ao))
-    exponents = tuple([0.8, 1.1, 0.6])
-    coefficients = tuple([1.0, 0.7, 1.3])
+    exponents = np.array([0.8, 1.1, 0.6], dtype=np.float64)
+    coefficients = np.array([1.0, 0.7, 1.3], dtype=np.float64)
     angular_momentums = tuple([0, 1, 2])
     polynominal_order_x = tuple([0, 1, 2])
     polynominal_order_y = tuple([0, 0, 0])
@@ -504,7 +504,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     gx_auto, gy_auto, gz_auto = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
     gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("ao_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(gx_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an, gx_auto, atol=atol, rtol=rtol)
@@ -533,8 +533,8 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     num_ao = 3
     num_ao_prim = 3
     orbital_indices = tuple(range(num_ao))
-    exponents = tuple([1.2, 0.9, 0.7])
-    coefficients = tuple([1.0, 0.8, 0.6])
+    exponents = np.array([1.2, 0.9, 0.7], dtype=np.float64)
+    coefficients = np.array([1.0, 0.8, 0.6], dtype=np.float64)
     angular_momentums = tuple([0, 1, 2])
     polynominal_order_x = tuple([0, 1, 2])
     polynominal_order_y = tuple([0, 0, 0])
@@ -567,7 +567,7 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     gx_auto_cart, gy_auto_cart, gz_auto_cart = _compute_AOs_grad_autodiff(aos_data=aos_data_cart, r_carts=r_carts)
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data_cart, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("ao_grad_lap", "loose")
     assert not np.any(np.isnan(np.asarray(gx_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -595,8 +595,8 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     magnetic_quantum_numbers = [0, 0, 0, 0]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -658,8 +658,8 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     magnetic_quantum_numbers = [0, 0, 0, 0]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -721,8 +721,8 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     num_ao = 3
     num_ao_prim = 3
     orbital_indices = tuple(range(num_ao))
-    exponents = tuple([0.9, 1.3, 0.7])
-    coefficients = tuple([1.0, 0.8, 1.2])
+    exponents = np.array([0.9, 1.3, 0.7], dtype=np.float64)
+    coefficients = np.array([1.0, 0.8, 1.2], dtype=np.float64)
     angular_momentums = tuple([0, 1, 2])
     polynominal_order_x = tuple([0, 1, 2])
     polynominal_order_y = tuple([0, 0, 0])
@@ -755,7 +755,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
     gx_an_cart, gy_an_cart, gz_an_cart = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("ao_grad_lap", "loose")
     assert not np.any(np.isnan(np.asarray(gx_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -775,8 +775,8 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     num_ao = 4
     num_ao_prim = 5
     orbital_indices = tuple([0, 1, 2, 2, 3])
-    exponents = tuple([3.0, 1.6, 0.9, 0.9, 2.2])
-    coefficients = tuple([1.0, 0.9, 1.1, 0.7, 1.0])
+    exponents = np.array([3.0, 1.6, 0.9, 0.9, 2.2], dtype=np.float64)
+    coefficients = np.array([1.0, 0.9, 1.1, 0.7, 1.0], dtype=np.float64)
     angular_momentums = tuple([0, 1, 1, 2])
     magnetic_quantum_numbers = tuple([0, -1, 1, 0])
 
@@ -833,8 +833,8 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     num_ao = 3
     num_ao_prim = 3
     orbital_indices = tuple(range(num_ao))
-    exponents = tuple([0.9, 1.2, 0.7])
-    coefficients = tuple([1.0, 0.8, 1.1])
+    exponents = np.array([0.9, 1.2, 0.7], dtype=np.float64)
+    coefficients = np.array([1.0, 0.8, 1.1], dtype=np.float64)
     angular_momentums = tuple([0, 1, 2])
     polynominal_order_x = tuple([0, 1, 2])
     polynominal_order_y = tuple([0, 0, 0])
@@ -867,7 +867,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     lap_auto_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("ao_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_auto_cart, atol=atol, rtol=rtol)
@@ -881,8 +881,8 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     num_ao = 4
     num_ao_prim = 5
     orbital_indices = tuple([0, 1, 2, 2, 3])
-    exponents = tuple([3.0, 1.5, 0.8, 0.8, 2.2])
-    coefficients = tuple([1.0, 0.9, 1.1, 0.7, 1.0])
+    exponents = np.array([3.0, 1.5, 0.8, 0.8, 2.2], dtype=np.float64)
+    coefficients = np.array([1.0, 0.9, 1.1, 0.7, 1.0], dtype=np.float64)
     angular_momentums = tuple([0, 1, 1, 2])
     magnetic_quantum_numbers = tuple([0, -1, 1, 0])
 
@@ -931,8 +931,8 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     num_ao = 2
     num_ao_prim = 3
     orbital_indices = tuple([0, 0, 1])
-    exponents = tuple([1.4, 0.9, 1.1])
-    coefficients = tuple([1.0, 0.7, 0.9])
+    exponents = np.array([1.4, 0.9, 1.1], dtype=np.float64)
+    coefficients = np.array([1.0, 0.7, 0.9], dtype=np.float64)
     angular_momentums = tuple([0, 1])
     polynominal_order_x = tuple([0, 1])
     polynominal_order_y = tuple([0, 0])
@@ -965,7 +965,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("ao_grad_lap", "loose")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -979,8 +979,8 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     num_ao = 3
     num_ao_prim = 4
     orbital_indices = tuple([0, 1, 1, 2])
-    exponents = tuple([2.0, 1.6, 1.1, 0.9])
-    coefficients = tuple([1.0, 0.8, 1.2, 0.7])
+    exponents = np.array([2.0, 1.6, 1.1, 0.9], dtype=np.float64)
+    coefficients = np.array([1.0, 0.8, 1.2, 0.7], dtype=np.float64)
     angular_momentums = tuple([0, 1, 1])
     magnetic_quantum_numbers = tuple([0, 0, 1])
 
@@ -1053,8 +1053,8 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=tuple(orbital_indices),
-        exponents=tuple(exponents),
-        coefficients=tuple(coefficients),
+        exponents=np.array(exponents, dtype=np.float64),
+        coefficients=np.array(coefficients, dtype=np.float64),
         angular_momentums=tuple(angular_momentums),
         polynominal_order_x=tuple(polynominal_order_x),
         polynominal_order_y=tuple(polynominal_order_y),
@@ -1065,7 +1065,7 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("ao_grad_lap", "loose")
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_auto_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1087,8 +1087,8 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     magnetic_quantum_numbers = [0, 0, 0]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -1138,8 +1138,8 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     magnetic_quantum_numbers = [0, 1, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -1196,8 +1196,8 @@ def test_overlap_matrix_cart_analytic_vs_numerical_debug():
         num_ao=2,
         num_ao_prim=2,
         orbital_indices=(0, 1),
-        exponents=(1.20, 1.20),
-        coefficients=(1.0, 1.0),
+        exponents=np.array([1.20, 1.20], dtype=np.float64),
+        coefficients=np.array([1.0, 1.0], dtype=np.float64),
         angular_momentums=(0, 0),
         polynominal_order_x=(0, 0),
         polynominal_order_y=(0, 0),
@@ -1208,7 +1208,7 @@ def test_overlap_matrix_cart_analytic_vs_numerical_debug():
     overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
     overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
 
-    atol, rtol = get_tolerance("orb_eval", "strict")
+    atol, rtol = get_tolerance("ao_eval", "strict")
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(overlap_analytic, overlap_numerical, atol=atol, rtol=rtol)
@@ -1240,8 +1240,8 @@ def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
         num_ao=2,
         num_ao_prim=2,
         orbital_indices=(0, 1),
-        exponents=(1.10, 1.10),
-        coefficients=(1.0, 1.0),
+        exponents=np.array([1.10, 1.10], dtype=np.float64),
+        coefficients=np.array([1.0, 1.0], dtype=np.float64),
         angular_momentums=(0, 0),
         magnetic_quantum_numbers=(0, 0),
     )
@@ -1250,8 +1250,8 @@ def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
     overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
     overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
 
-    atol_l, rtol_l = get_tolerance("orb_eval", "loose")
-    atol_s, rtol_s = get_tolerance("orb_eval", "strict")
+    atol_l, rtol_l = get_tolerance("ao_eval", "loose")
+    atol_s, rtol_s = get_tolerance("ao_eval", "strict")
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(overlap_analytic, overlap_numerical, atol=atol_l, rtol=rtol_l)

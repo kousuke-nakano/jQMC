@@ -46,12 +46,9 @@ from logging import getLogger
 import numpy as np
 import scipy
 
-import jax.numpy as jnp
-
 # import trexio
 import trexio
 
-from ._precision import get_dtype
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
@@ -98,7 +95,7 @@ def read_trexio_file(
         >>> structure_data.atomic_labels[:3]
         ['O', 'H', 'H']
     """
-    dtype = get_dtype("io")
+    dtype_np = np.float64
 
     # read a trexio file
     file_r = trexio.File(
@@ -216,7 +213,7 @@ def read_trexio_file(
             atomic_numbers=tuple(_convert_from_atomic_labels_to_atomic_numbers(labels_r)),
             element_symbols=tuple(labels_r),
             atomic_labels=tuple(labels_r),
-            positions=np.array(coords_r, dtype=dtype),
+            positions=np.array(coords_r, dtype=dtype_np),
         )
     else:
         structure_data = Structure_data(
@@ -227,7 +224,7 @@ def read_trexio_file(
             atomic_numbers=list(_convert_from_atomic_labels_to_atomic_numbers(labels_r)),
             element_symbols=list(labels_r),
             atomic_labels=list(labels_r),
-            positions=np.array(coords_r, dtype=dtype),
+            positions=np.array(coords_r, dtype=dtype_np),
         )
 
     # ao spherical part check
@@ -339,8 +336,8 @@ def read_trexio_file(
                 polynominal_order_y=tuple(polynominal_order_y),
                 polynominal_order_z=tuple(polynominal_order_z),
                 orbital_indices=tuple(orbital_indices),
-                exponents=jnp.array(exponents, dtype=dtype),
-                coefficients=jnp.array(coefficients, dtype=dtype),
+                exponents=np.array(exponents, dtype=dtype_np),
+                coefficients=np.array(coefficients, dtype=dtype_np),
             )
         else:
             aos_data = AOs_cart_data(
@@ -353,8 +350,8 @@ def read_trexio_file(
                 polynominal_order_y=list(polynominal_order_y),
                 polynominal_order_z=list(polynominal_order_z),
                 orbital_indices=list(orbital_indices),
-                exponents=jnp.array(exponents, dtype=dtype),
-                coefficients=jnp.array(coefficients, dtype=dtype),
+                exponents=np.array(exponents, dtype=dtype_np),
+                coefficients=np.array(coefficients, dtype=dtype_np),
             )
     else:
         logger.debug("Spherical basis functions.")
@@ -435,8 +432,8 @@ def read_trexio_file(
                 angular_momentums=tuple(angular_momentums),
                 magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
                 orbital_indices=tuple(orbital_indices),
-                exponents=jnp.array(exponents, dtype=dtype),
-                coefficients=jnp.array(coefficients, dtype=dtype),
+                exponents=np.array(exponents, dtype=dtype_np),
+                coefficients=np.array(coefficients, dtype=dtype_np),
             )
         else:
             aos_data = AOs_sphe_data(
@@ -447,8 +444,8 @@ def read_trexio_file(
                 angular_momentums=list(angular_momentums),
                 magnetic_quantum_numbers=list(magnetic_quantum_numbers),
                 orbital_indices=list(orbital_indices),
-                exponents=jnp.array(exponents, dtype=dtype),
-                coefficients=jnp.array(coefficients, dtype=dtype),
+                exponents=np.array(exponents, dtype=dtype_np),
+                coefficients=np.array(coefficients, dtype=dtype_np),
             )
 
     # MOs_data instance
@@ -472,11 +469,11 @@ def read_trexio_file(
         num_ele_diff = num_ele_up - num_ele_dn
 
         mo_lambda_paired = np.pad(
-            np.eye(num_ele_dn, dtype=dtype), ((0, mo_considered_num - num_ele_dn), (0, mo_considered_num - num_ele_dn))
+            np.eye(num_ele_dn, dtype=dtype_np), ((0, mo_considered_num - num_ele_dn), (0, mo_considered_num - num_ele_dn))
         )
 
         mo_lambda_unpaired = np.pad(
-            np.eye(num_ele_diff, dtype=dtype), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
+            np.eye(num_ele_diff, dtype=dtype_np), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
         )
         mo_lambda_matrix = np.hstack([mo_lambda_paired, mo_lambda_unpaired])
 
@@ -508,11 +505,11 @@ def read_trexio_file(
         num_ele_diff = num_ele_up - num_ele_dn
 
         mo_lambda_paired = np.pad(
-            np.eye(num_ele_dn, dtype=dtype), ((0, mo_considered_num - num_ele_dn), (0, mo_considered_num - num_ele_dn))
+            np.eye(num_ele_dn, dtype=dtype_np), ((0, mo_considered_num - num_ele_dn), (0, mo_considered_num - num_ele_dn))
         )
 
         mo_lambda_unpaired = np.pad(
-            np.eye(num_ele_diff, dtype=dtype), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
+            np.eye(num_ele_diff, dtype=dtype_np), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
         )
         mo_lambda_matrix = np.hstack([mo_lambda_paired, mo_lambda_unpaired])
     else:

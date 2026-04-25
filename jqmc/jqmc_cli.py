@@ -49,6 +49,8 @@ from ._checkpoint import merge_rank_checkpoints
 # jQMC
 from ._header_footer import _print_footer, _print_header
 from ._precision import configure as configure_precision
+from ._precision import mode_label as precision_mode_label
+from ._precision import zone_detail as precision_zone_detail
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -257,6 +259,8 @@ def _cli():
             sorted(extra_keys),
         )
     configure_precision(precision_mode)
+    logger.info("Precision: %s", precision_mode_label())
+    logger.debug("Precision zone detail:\n%s", precision_zone_detail())
     logger.info("")
 
     # default parameters

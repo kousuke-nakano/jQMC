@@ -48,10 +48,9 @@ import numpy as np
 import numpy.typing as npt
 from jax import jacrev, jit, vmap
 from jax import numpy as jnp
-from jax import typing as jnpt
 
 # jQMC modules
-from ._precision import get_dtype
+from ._precision import get_dtype_jnp, get_dtype_np
 from .structure import Structure_data
 
 # set logger
@@ -75,13 +74,18 @@ def evaluate_swct_omega(
     Returns:
         jax.Array: Normalized weights with shape ``(N_a, N_e)``, summing to 1 over atoms for each electron.
     """
-    dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
-    R_carts = jnp.asarray(structure_data._positions_cart_jnp, dtype=dtype)
+    dtype_jnp = get_dtype_jnp("swct")
+    R_carts = structure_data._positions_cart_jnp  # fp64 storage accessor
 
     def compute_omega(R_cart, r_cart):
-        kappa = 1.0 / jnp.linalg.norm(r_cart - R_cart) ** 4
-        kappa_sum = jnp.sum(1.0 / jnp.linalg.norm(r_cart - R_carts, axis=1) ** 4)
+        # Reconstruct r - R in caller-supplied precision (fp64 from MCMC walker
+        # state) via JAX promotion, then downcast to the swct zone at the use
+        # site (Principle 3b — cast operands to this function's own zone
+        # immediately before consuming them as arithmetic operands).
+        diff_one = (r_cart - R_cart).astype(dtype_jnp)
+        diff_all = (r_cart - R_carts).astype(dtype_jnp)
+        kappa = 1.0 / jnp.linalg.norm(diff_one) ** 4
+        kappa_sum = jnp.sum(1.0 / jnp.linalg.norm(diff_all, axis=1) ** 4)
         return kappa / kappa_sum
 
     vmap_compute_omega = vmap(
@@ -100,18 +104,26 @@ def evaluate_swct_omega(
 def _evaluate_swct_omega_debug(
     structure_data: Structure_data,
     r_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """NumPy fallback for ``evaluate_swct_omega`` used in debug paths."""
-    dtype = get_dtype("kinetic")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
-    r_carts = np.asarray(r_carts, dtype=dtype_np)
-    R_carts = structure_data._positions_cart_np
+) -> np.ndarray:
+    """NumPy fallback for ``evaluate_swct_omega`` used in debug paths.
+
+    Return dtype matches the swct zone (selectable precision); declared as a
+    plain ``np.ndarray`` rather than ``npt.NDArray[np.float64]``.
+    """
+    dtype_np = get_dtype_np("swct")
+    R_carts = structure_data._positions_cart_np  # fp64 storage accessor
     omega = np.zeros((len(R_carts), len(r_carts)), dtype=dtype_np)
 
     for alpha in range(len(R_carts)):
         for i in range(len(r_carts)):
-            kappa = 1.0 / np.linalg.norm(r_carts[i] - R_carts[alpha]) ** 4
-            kappa_sum = np.sum([1.0 / np.linalg.norm(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))])
+            # Reconstruct r - R in caller-supplied precision (fp64 from MCMC
+            # walker state), then downcast to the swct zone at the use site
+            # (Principle 3b).
+            diff_one = (r_carts[i] - R_carts[alpha]).astype(dtype_np)
+            kappa = 1.0 / np.linalg.norm(diff_one) ** 4
+            kappa_sum = np.sum(
+                [1.0 / np.linalg.norm((r_carts[i] - R_carts[beta]).astype(dtype_np)) ** 4 for beta in range(len(R_carts))]
+            )
             omega[alpha, i] = kappa / kappa_sum
 
     return omega
@@ -121,7 +133,7 @@ def _evaluate_swct_omega_debug(
 def evaluate_swct_domega(
     structure_data: Structure_data,
     r_carts: jax.Array,
-) -> npt.NDArray[np.float64]:
+) -> jax.Array:
     r"""Evaluate :math:`\sum_i \nabla_{r_i} \omega_{\alpha i}` for each atom.
 
     Args:
@@ -131,8 +143,8 @@ def evaluate_swct_domega(
     Returns:
         jax.Array: Sum of gradients per atom with shape ``(N_a, 3)``.
     """
-    dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    # Forward r_carts as-is (Principle 3a — no parameter rebind). The inner
+    # `evaluate_swct_omega` performs its own use-site cast to the swct zone.
     domega = jnp.sum(jacrev(evaluate_swct_omega, argnums=1)(structure_data, r_carts), axis=(1, 2))
 
     return domega
@@ -141,17 +153,24 @@ def evaluate_swct_domega(
 def _evaluate_swct_domega_debug(
     structure_data: Structure_data,
     r_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """NumPy fallback for ``evaluate_swct_domega`` used in debug paths."""
-    dtype = get_dtype("kinetic")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
-    r_carts = np.asarray(r_carts, dtype=dtype_np)
-    R_carts = structure_data._positions_cart_np
+) -> np.ndarray:
+    """NumPy fallback for ``evaluate_swct_domega`` used in debug paths.
+
+    Return dtype matches the swct zone (selectable precision); declared as a
+    plain ``np.ndarray`` rather than ``npt.NDArray[np.float64]``.
+    """
+    dtype_np = get_dtype_np("swct")
+    R_carts = structure_data._positions_cart_np  # fp64 storage accessor
     domega = np.zeros((len(R_carts), 3), dtype=dtype_np)
 
     def compute_omega(R_cart, r_cart, R_carts):
-        kappa = 1.0 / np.linalg.norm(r_cart - R_cart) ** 4
-        kappa_sum = np.sum([1.0 / np.linalg.norm(r_cart - R_carts[beta]) ** 4 for beta in range(len(R_carts))])
+        # Reconstruct r - R in caller-supplied precision then downcast to the
+        # swct zone at the use site (Principle 3b).
+        diff_one = (r_cart - R_cart).astype(dtype_np)
+        kappa = 1.0 / np.linalg.norm(diff_one) ** 4
+        kappa_sum = np.sum(
+            [1.0 / np.linalg.norm((r_cart - R_carts[beta]).astype(dtype_np)) ** 4 for beta in range(len(R_carts))]
+        )
         omega = kappa / kappa_sum
         return omega
 

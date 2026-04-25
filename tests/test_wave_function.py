@@ -121,7 +121,7 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("wf_kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -172,7 +172,7 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(K_analytic, K_auto, atol=atol, rtol=rtol)
@@ -221,7 +221,7 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("wf_kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(K_elements_up_debug, K_elements_up_auto, atol=atol, rtol=rtol)
@@ -291,7 +291,7 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
     np.testing.assert_allclose(K_elements_up_auto, K_elements_up_analytic, atol=atol, rtol=rtol)
@@ -359,7 +359,7 @@ def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
         geminal_inverse=A_inv,
     )
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(ke_up_fast, ke_up_debug, atol=atol, rtol=rtol)
@@ -441,7 +441,7 @@ def test_debug_and_jax_discretized_kinetic_energy(trexio_file: str):
         RT=RT,
     )
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -542,7 +542,7 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     )
 
     # They should be identical up to numerical noise
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("wf_kinetic", "loose")
     np.testing.assert_allclose(
         np.asarray(nd_analytic),
         np.asarray(nd_debug),
@@ -595,7 +595,7 @@ def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -632,7 +632,7 @@ def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
     grad_ref_fn = jax.grad(evaluate_ln_wavefunction, argnums=0)
     grad_fast_fn = jax.grad(evaluate_ln_wavefunction_fast, argnums=0)
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)

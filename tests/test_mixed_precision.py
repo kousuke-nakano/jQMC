@@ -31,7 +31,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import configure, get_dtype  # noqa: E402
+from jqmc._precision import configure, get_dtype_jnp  # noqa: E402
 from jqmc.atomic_orbital import (  # noqa: E402
     compute_AOs,
     compute_AOs_grad,
@@ -54,12 +54,12 @@ from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy  # noqa: E4
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
     Jastrow_one_body_data,
-    Jastrow_two_body_data,
     Jastrow_three_body_data,
+    Jastrow_two_body_data,
     compute_Jastrow_one_body,
     compute_Jastrow_part,
-    compute_Jastrow_two_body,
     compute_Jastrow_three_body,
+    compute_Jastrow_two_body,
 )
 from jqmc.molecular_orbital import (  # noqa: E402
     compute_MOs,
@@ -178,25 +178,25 @@ class TestAODtype:
     """Verify AO evaluation outputs are float32 in mixed mode."""
 
     def test_compute_AOs_output_dtype(self, h2_data):
-        """compute_AOs must return float32 (orb_eval zone)."""
+        """compute_AOs must return float32 (ao_eval zone)."""
         AOs = compute_AOs(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype("orb_eval")
+        expected = get_dtype_jnp("ao_eval")
         assert AOs.dtype == expected, (
             f"compute_AOs output dtype is {AOs.dtype}, expected {expected}. "
-            "Likely cause: fp64 data (R_carts, exponents, coefficients) not cast to orb_eval dtype inside kernel."
+            "Likely cause: fp64 data (R_carts, exponents, coefficients) not cast to ao_eval dtype inside kernel."
         )
 
     def test_compute_AOs_grad_output_dtype(self, h2_data):
-        """compute_AOs_grad must return float in kinetic zone dtype."""
+        """compute_AOs_grad must return ao_grad_lap zone dtype."""
         grad_x, grad_y, grad_z = compute_AOs_grad(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype("kinetic")
+        expected = get_dtype_jnp("ao_grad_lap")
         for name, arr in [("grad_x", grad_x), ("grad_y", grad_y), ("grad_z", grad_z)]:
             assert arr.dtype == expected, f"compute_AOs_grad {name} dtype is {arr.dtype}, expected {expected}."
 
     def test_compute_AOs_laplacian_output_dtype(self, h2_data):
-        """compute_AOs_laplacian must return kinetic zone dtype."""
+        """compute_AOs_laplacian must return ao_grad_lap zone dtype."""
         lap = compute_AOs_laplacian(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype("kinetic")
+        expected = get_dtype_jnp("ao_grad_lap")
         assert lap.dtype == expected, f"compute_AOs_laplacian dtype is {lap.dtype}, expected {expected}."
 
 
@@ -216,12 +216,12 @@ class TestMODtype:
     """
 
     def test_compute_MOs_output_dtype(self, h2_data):
-        """compute_MOs must return determinant-zone dtype (fp64 in mixed)."""
+        """compute_MOs must return mo_eval-zone dtype (fp64 in mixed)."""
         MOs = compute_MOs(h2_data["mos_data_up"], h2_data["r_up"])
-        expected = get_dtype("determinant")
+        expected = get_dtype_jnp("mo_eval")
         assert MOs.dtype == expected, (
             f"compute_MOs output dtype is {MOs.dtype}, expected {expected}. "
-            "compute_MOs should upcast its small matmul to the determinant zone "
+            "compute_MOs should upcast its small matmul to the mo_eval zone "
             "to avoid fp32 amplification downstream."
         )
 
@@ -241,7 +241,7 @@ class TestJastrowDtype:
         """
         j2_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade")
         J2 = compute_Jastrow_two_body(j2_data, h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("jastrow")
+        expected = get_dtype_jnp("jastrow_eval")
         assert jnp.asarray(J2).dtype == expected, (
             f"compute_Jastrow_two_body dtype is {jnp.asarray(J2).dtype}, expected {expected}. "
             "Likely cause: jastrow_2b_param not cast to jastrow dtype."
@@ -256,7 +256,7 @@ class TestJastrowDtype:
             orb_data=h2_data["aos_data"], random_init=True, random_scale=1e-3
         )
         J3 = compute_Jastrow_three_body(j3_data, h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("jastrow")
+        expected = get_dtype_jnp("jastrow_eval")
         assert jnp.asarray(J3).dtype == expected, (
             f"compute_Jastrow_three_body dtype is {jnp.asarray(J3).dtype}, expected {expected}. "
             "Likely cause: j_matrix not cast to jastrow dtype."
@@ -274,7 +274,7 @@ class TestJastrowDtype:
             jastrow_three_body_data=j3_data,
         )
         J = compute_Jastrow_part(jastrow_data, h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("jastrow")
+        expected = get_dtype_jnp("jastrow_eval")
         assert jnp.asarray(J).dtype == expected, f"compute_Jastrow_part dtype is {jnp.asarray(J).dtype}, expected {expected}."
 
 
@@ -292,7 +292,7 @@ class TestGeminalDtype:
         Catches: lambda_matrix or AO data not cast to geminal dtype.
         """
         G = compute_geminal_all_elements(h2_data["geminal_data"], h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("geminal")
+        expected = get_dtype_jnp("det_eval")
         assert G.dtype == expected, f"compute_geminal_all_elements dtype is {G.dtype}, expected {expected}."
 
 
@@ -310,7 +310,7 @@ class TestDeterminantDtype:
         Even though geminal matrix is float32, the log-det must be computed in float64.
         """
         ln_det = compute_ln_det_geminal_all_elements(h2_data["geminal_data"], h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("determinant")
+        expected = get_dtype_jnp("det_eval")
         assert jnp.asarray(ln_det).dtype == expected, (
             f"compute_ln_det dtype is {jnp.asarray(ln_det).dtype}, expected {expected}."
         )
@@ -327,7 +327,7 @@ class TestCoulombDtype:
     def test_bare_coulomb_el_el_output_dtype(self, h2_data):
         """Electron-electron Coulomb must return float32 (coulomb zone)."""
         V = compute_bare_coulomb_potential_el_el(h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("coulomb")
+        expected = get_dtype_jnp("coulomb")
         assert jnp.asarray(V).dtype == expected, (
             f"compute_bare_coulomb_potential_el_el dtype is {jnp.asarray(V).dtype}, expected {expected}."
         )
@@ -340,7 +340,7 @@ class TestCoulombDtype:
         V_up, V_dn = compute_bare_coulomb_potential_el_ion_element_wise(
             h2_data["coulomb_data"], h2_data["r_up"], h2_data["r_dn"]
         )
-        expected = get_dtype("coulomb")
+        expected = get_dtype_jnp("coulomb")
         assert V_up.dtype == expected, (
             f"el_ion V_up dtype is {V_up.dtype}, expected {expected}. "
             "Likely cause: R_charges or R_carts not cast to coulomb dtype."
@@ -349,7 +349,7 @@ class TestCoulombDtype:
     def test_bare_coulomb_total_output_dtype(self, h2_data):
         """Total bare Coulomb must return float32 (coulomb zone)."""
         V = compute_bare_coulomb_potential(h2_data["coulomb_data"], h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("coulomb")
+        expected = get_dtype_jnp("coulomb")
         assert jnp.asarray(V).dtype == expected, (
             f"compute_bare_coulomb_potential dtype is {jnp.asarray(V).dtype}, expected {expected}."
         )
@@ -364,10 +364,10 @@ class TestKineticDtype:
     """Verify kinetic energy stays float64 in mixed mode."""
 
     def test_kinetic_energy_output_dtype(self, h2_data):
-        """compute_kinetic_energy must return float64 (kinetic zone)."""
+        """compute_kinetic_energy must return float64 (wf_kinetic zone)."""
         wf_data = Wavefunction_data(geminal_data=h2_data["geminal_data"])
         T = compute_kinetic_energy(wf_data, h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("kinetic")
+        expected = get_dtype_jnp("wf_kinetic")
         assert jnp.asarray(T).dtype == expected, f"compute_kinetic_energy dtype is {jnp.asarray(T).dtype}, expected {expected}."
 
 
@@ -393,7 +393,7 @@ class TestWavefunctionDtype:
         )
         wf_data = Wavefunction_data(geminal_data=h2_data["geminal_data"], jastrow_data=jastrow_data)
         ln_psi = evaluate_ln_wavefunction(wf_data, h2_data["r_up"], h2_data["r_dn"])
-        expected = get_dtype("determinant")
+        expected = get_dtype_jnp("wf_eval")
         assert jnp.asarray(ln_psi).dtype == expected, (
             f"evaluate_ln_wavefunction dtype is {jnp.asarray(ln_psi).dtype}, expected {expected}."
         )
@@ -409,16 +409,16 @@ class TestAOSpheDtype:
 
     def test_compute_AOs_sphe_output_dtype(self, h2_sphe_data):
         AOs = compute_AOs(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
-        _assert_dtype(AOs, get_dtype("orb_eval"), "compute_AOs (sphe)")
+        _assert_dtype(AOs, get_dtype_jnp("ao_eval"), "compute_AOs (sphe)")
 
     def test_compute_AOs_sphe_grad_output_dtype(self, h2_sphe_data):
         gx, gy, gz = compute_AOs_grad(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
         for name, arr in [("grad_x", gx), ("grad_y", gy), ("grad_z", gz)]:
-            _assert_dtype(arr, get_dtype("kinetic"), f"compute_AOs_grad sphe {name}")
+            _assert_dtype(arr, get_dtype_jnp("ao_grad_lap"), f"compute_AOs_grad sphe {name}")
 
     def test_compute_AOs_sphe_laplacian_output_dtype(self, h2_sphe_data):
         lap = compute_AOs_laplacian(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
-        _assert_dtype(lap, get_dtype("kinetic"), "compute_AOs_laplacian (sphe)")
+        _assert_dtype(lap, get_dtype_jnp("ao_grad_lap"), "compute_AOs_laplacian (sphe)")
 
 
 class TestMOExtendedDtype:
@@ -426,13 +426,13 @@ class TestMOExtendedDtype:
 
     def test_compute_MOs_grad_output_dtype(self, h2_data):
         gx, gy, gz = compute_MOs_grad(h2_data["mos_data_up"], h2_data["r_up"])
-        expected = get_dtype("kinetic")
+        expected = get_dtype_jnp("mo_grad_lap")
         for name, arr in [("grad_x", gx), ("grad_y", gy), ("grad_z", gz)]:
             _assert_dtype(arr, expected, f"compute_MOs_grad {name}")
 
     def test_compute_MOs_laplacian_output_dtype(self, h2_data):
         lap = compute_MOs_laplacian(h2_data["mos_data_up"], h2_data["r_up"])
-        _assert_dtype(lap, get_dtype("kinetic"), "compute_MOs_laplacian")
+        _assert_dtype(lap, get_dtype_jnp("mo_grad_lap"), "compute_MOs_laplacian")
 
 
 class TestJastrowOneBodyDtype:
@@ -447,7 +447,7 @@ class TestJastrowOneBodyDtype:
             jastrow_1b_type="pade",
         )
         J1 = compute_Jastrow_one_body(j1_data, h2_data["r_up"], h2_data["r_dn"])
-        _assert_dtype(J1, get_dtype("jastrow"), "compute_Jastrow_one_body")
+        _assert_dtype(J1, get_dtype_jnp("jastrow_eval"), "compute_Jastrow_one_body")
 
 
 class TestGeminalFastUpdateDtype:
@@ -461,12 +461,12 @@ class TestGeminalFastUpdateDtype:
     def test_geminal_up_one_row_output_dtype(self, water_data):
         # Use [0:1] to get shape (1, 3) — compute_orb_api requires (N, 3), not (3,)
         row = compute_geminal_up_one_row_elements(water_data["geminal_data"], water_data["r_up"][0:1], water_data["r_dn"])
-        _assert_dtype(row, get_dtype("geminal"), "compute_geminal_up_one_row_elements")
+        _assert_dtype(row, get_dtype_jnp("det_ratio"), "compute_geminal_up_one_row_elements")
 
     def test_geminal_dn_one_column_output_dtype(self, water_data):
         # Use [0:1] to get shape (1, 3) — compute_orb_api requires (N, 3), not (3,)
         col = compute_geminal_dn_one_column_elements(water_data["geminal_data"], water_data["r_up"], water_data["r_dn"][0:1])
-        _assert_dtype(col, get_dtype("geminal"), "compute_geminal_dn_one_column_elements")
+        _assert_dtype(col, get_dtype_jnp("det_ratio"), "compute_geminal_dn_one_column_elements")
 
 
 class TestECPDtype:
@@ -477,7 +477,7 @@ class TestECPDtype:
 
     def test_compute_ecp_local_parts_output_dtype(self, h2_ecp_data):
         V_loc = compute_ecp_local_parts_all_pairs(h2_ecp_data["coulomb_data"], h2_ecp_data["r_up"], h2_ecp_data["r_dn"])
-        _assert_dtype(V_loc, get_dtype("coulomb"), "compute_ecp_local_parts_all_pairs")
+        _assert_dtype(V_loc, get_dtype_jnp("coulomb"), "compute_ecp_local_parts_all_pairs")
 
     def test_compute_ecp_non_local_eval_shape_dtype(self, h2_ecp_data):
         """Heavy ECP non-local kernel: verify dtype via jax.eval_shape (no execution)."""
@@ -498,7 +498,7 @@ class TestECPDtype:
         )
         _assert_eval_shape_dtype(
             compute_ecp_non_local_part_all_pairs_jax_weights_grid_points,
-            get_dtype("coulomb"),
+            get_dtype_jnp("coulomb"),
             "compute_ecp_non_local_part_all_pairs_jax_weights_grid_points",
             h2_ecp_data["coulomb_data"],
             wf_data,
@@ -521,7 +521,7 @@ class TestLocalEnergyDtype:
         )
         RT = jnp.eye(3, dtype=jnp.float64)
         e_L = compute_local_energy(ham, h2_data["r_up"], h2_data["r_dn"], RT)
-        _assert_dtype(e_L, get_dtype("kinetic"), "compute_local_energy")
+        _assert_dtype(e_L, get_dtype_jnp("local_energy"), "compute_local_energy")
 
 
 class TestKineticEvalShape:
@@ -535,7 +535,7 @@ class TestKineticEvalShape:
         wf_data = Wavefunction_data(geminal_data=h2_data["geminal_data"])
         _assert_eval_shape_dtype(
             compute_kinetic_energy,
-            get_dtype("kinetic"),
+            get_dtype_jnp("wf_kinetic"),
             "compute_kinetic_energy (eval_shape)",
             wf_data,
             h2_data["r_up"],
@@ -546,7 +546,7 @@ class TestKineticEvalShape:
         wf_data = Wavefunction_data(geminal_data=h2_data["geminal_data"])
         _assert_eval_shape_dtype(
             evaluate_ln_wavefunction,
-            get_dtype("determinant"),
+            get_dtype_jnp("wf_eval"),
             "evaluate_ln_wavefunction (eval_shape)",
             wf_data,
             h2_data["r_up"],

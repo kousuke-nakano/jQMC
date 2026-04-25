@@ -41,11 +41,8 @@ See :mod:`jqmc._precision` for details.
 from functools import lru_cache
 from logging import getLogger
 
-import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
-
-from ._precision import get_dtype
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -102,8 +99,7 @@ def _generate_init_electron_configurations(
     min_dst = 0.1
     max_dst = 1.0
 
-    dtype = get_dtype("io")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = np.float64
 
     # 1) zeta[i] = integer valence count per atom
     nion = coords.shape[0]
@@ -405,7 +401,6 @@ def _cart_to_spherical_matrix(l: int) -> np.ndarray:
     ``A_sph = A_cart @ T`` under the normalization used in the codebase. Values
     are deterministic and cached to avoid runtime fitting.
     """
-
     precomputed: dict[int, np.ndarray] = {
         0: np.array([[1.0]], dtype=np.float64),
         1: np.array(
@@ -731,7 +726,6 @@ def _spherical_to_cart_matrix(l: int) -> np.ndarray:
     Only ``_cart_to_spherical_matrix`` stores the full analytic values; this helper
     exposes the inverse direction for readability and reuse.
     """
-
     return _cart_to_spherical_matrix(l).T
 
 

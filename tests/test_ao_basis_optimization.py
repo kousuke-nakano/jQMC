@@ -84,11 +84,16 @@ def _random_electron_coords(structure_data, coulomb_potential_data, geminal_data
 
 
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ae_ccpvdz_sphe.h5"])
-def test_exponents_coefficients_are_jax_arrays(trexio_file):
-    """After Phase 1, exponents/coefficients should be jax.Array."""
+def test_exponents_coefficients_storage_is_numpy(trexio_file):
+    """Storage fields exponents/coefficients are np.ndarray[float64] (jnp view via _*_jnp)."""
     structure_data, aos_data, *_ = _load_trexio(trexio_file)
-    assert isinstance(aos_data.exponents, jax.Array), f"exponents type: {type(aos_data.exponents)}"
-    assert isinstance(aos_data.coefficients, jax.Array), f"coefficients type: {type(aos_data.coefficients)}"
+    assert isinstance(aos_data.exponents, np.ndarray), f"exponents type: {type(aos_data.exponents)}"
+    assert aos_data.exponents.dtype == np.float64, f"exponents dtype: {aos_data.exponents.dtype}"
+    assert isinstance(aos_data.coefficients, np.ndarray), f"coefficients type: {type(aos_data.coefficients)}"
+    assert aos_data.coefficients.dtype == np.float64, f"coefficients dtype: {aos_data.coefficients.dtype}"
+    # The jnp accessor returns jax.Array
+    assert isinstance(aos_data._exponents_jnp, jax.Array)
+    assert isinstance(aos_data._coefficients_jnp, jax.Array)
 
 
 # ============================================================
@@ -132,15 +137,15 @@ def test_j3_with_updated_ao_exponents():
     npt.assert_allclose(
         np.array(j3_new.ao_exponents),
         np.array(new_exp),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
     # Original should be unchanged
     npt.assert_allclose(
         np.array(j3.ao_exponents),
         np.array(aos_data.exponents),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
 
 
@@ -166,14 +171,14 @@ def test_geminal_ao_properties():
     npt.assert_allclose(
         np.array(exp_up),
         np.array(exp_up_ao),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
     npt.assert_allclose(
         np.array(exp_dn),
         np.array(exp_dn_ao),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
 
 
@@ -194,14 +199,14 @@ def test_geminal_with_updated_ao_exponents():
     npt.assert_allclose(
         np.array(geminal_new.ao_exponents_up),
         np.array(new_exp_up),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
     npt.assert_allclose(
         np.array(geminal_new.ao_exponents_dn),
         np.array(new_exp_dn),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
     # Lambda matrix should be unchanged
     npt.assert_array_equal(np.array(geminal_new.lambda_matrix), np.array(geminal_ao.lambda_matrix))
@@ -370,8 +375,8 @@ def test_get_variational_blocks_basis_flags():
     npt.assert_allclose(
         symmetrized,
         np.asarray(aos_data.exponents),
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
 
 
@@ -402,8 +407,8 @@ def test_apply_block_update_j3_basis():
     npt.assert_allclose(
         np.array(jastrow_new.jastrow_three_body_data.ao_exponents),
         new_exp,
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
 
 
@@ -430,14 +435,14 @@ def test_apply_block_update_geminal_basis():
     npt.assert_allclose(
         np.array(geminal_new.ao_exponents_up),
         new_exp_up,
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
     npt.assert_allclose(
         np.array(geminal_new.ao_exponents_dn),
         new_exp_dn,
-        atol=get_tolerance("orb_eval", "strict")[0],
-        rtol=get_tolerance("orb_eval", "strict")[1],
+        atol=get_tolerance("ao_eval", "strict")[0],
+        rtol=get_tolerance("ao_eval", "strict")[1],
     )
 
 
@@ -611,7 +616,7 @@ def test_shell_symmetrize_j3_basis():
     spm = ShellPrimMap.from_aos_data(aos_data)
     expected = spm.symmetrize(perturbed)
     npt.assert_allclose(
-        result, expected, atol=get_tolerance("orb_eval", "strict")[0], rtol=get_tolerance("orb_eval", "strict")[1]
+        result, expected, atol=get_tolerance("ao_eval", "strict")[0], rtol=get_tolerance("ao_eval", "strict")[1]
     )
 
 
@@ -656,7 +661,7 @@ def test_shell_symmetrize_geminal_basis():
     )
     expected = spm.symmetrize(perturbed)
     npt.assert_allclose(
-        result, expected, atol=get_tolerance("orb_eval", "strict")[0], rtol=get_tolerance("orb_eval", "strict")[1]
+        result, expected, atol=get_tolerance("ao_eval", "strict")[0], rtol=get_tolerance("ao_eval", "strict")[1]
     )
 
 

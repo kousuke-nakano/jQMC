@@ -57,8 +57,8 @@ from jax import typing as jnpt
 from numpy import linalg as LA
 
 from ._jqmc_utility import _spherical_to_cart_matrix
-from ._precision import get_dtype
-from ._setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, get_eps, rtol_consistency
+from ._precision import get_dtype_jnp, get_dtype_np
+from ._setting import atol_consistency, get_eps, rtol_consistency
 from .structure import Structure_data
 
 # set logger
@@ -86,8 +86,8 @@ class AOs_cart_data:
         num_ao (int): Number of contracted AOs.
         num_ao_prim (int): Number of primitive Gaussians.
         orbital_indices (list[int] | tuple[int]): For each primitive, the parent AO index (``len == num_ao_prim``).
-        exponents (list[float] | tuple[float]): Gaussian exponents for primitives (``len == num_ao_prim``).
-        coefficients (list[float] | tuple[float]): Contraction coefficients per primitive (``len == num_ao_prim``).
+        exponents (npt.NDArray[np.float64]): Gaussian exponents for primitives (``len == num_ao_prim``). dtype: float64.
+        coefficients (npt.NDArray[np.float64]): Contraction coefficients per primitive (``len == num_ao_prim``). dtype: float64.
         angular_momentums (list[int] | tuple[int]): Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
         polynominal_order_x (list[int] | tuple[int]): Cartesian power ``n_x`` for each AO (``len == num_ao``).
         polynominal_order_y (list[int] | tuple[int]): Cartesian power ``n_y`` for each AO (``len == num_ao``).
@@ -230,10 +230,12 @@ class AOs_cart_data:
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
     #: For each primitive, the parent AO index (``len == num_ao_prim``).
     orbital_indices: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    #: Gaussian exponents for primitives (``len == num_ao_prim``).
-    exponents: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
-    #: Contraction coefficients per primitive (``len == num_ao_prim``).
-    coefficients: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
+    #: Gaussian exponents for primitives (``len == num_ao_prim``). dtype: float64.
+    exponents: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64))
+    #: Contraction coefficients per primitive (``len == num_ao_prim``). dtype: float64.
+    coefficients: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64)
+    )
     #: Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
     angular_momentums: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     #: Cartesian power ``n_x`` for each AO (``len == num_ao``).
@@ -287,10 +289,10 @@ class AOs_cart_data:
             raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
         if not isinstance(self.orbital_indices, (tuple, list)):
             raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a list or tuple.")
-        if not isinstance(self.exponents, (tuple, list, jax.Array, np.ndarray)):
-            raise ValueError(f"exponents = {type(self.exponents)} must be a jax.Array, np.ndarray, list, or tuple.")
-        if not isinstance(self.coefficients, (tuple, list, jax.Array, np.ndarray)):
-            raise ValueError(f"coefficients = {type(self.coefficients)} must be a jax.Array, np.ndarray, list, or tuple.")
+        if not isinstance(self.exponents, np.ndarray):
+            raise ValueError(f"exponents = {type(self.exponents)} must be an np.ndarray (float64).")
+        if not isinstance(self.coefficients, np.ndarray):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be an np.ndarray (float64).")
         if not isinstance(self.angular_momentums, (tuple, list)):
             raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a list or tuple.")
         if not isinstance(self.polynominal_order_x, (tuple, list)):
@@ -431,8 +433,8 @@ class AOs_cart_data:
             num_ao=len(new_nucleus_index),
             num_ao_prim=len(new_orbital_indices),
             orbital_indices=new_orbital_indices,
-            exponents=new_exponents,
-            coefficients=new_coefficients,
+            exponents=np.array(new_exponents, dtype=np.float64),
+            coefficients=np.array(new_coefficients, dtype=np.float64),
             angular_momentums=new_angular_momentums,
             polynominal_order_x=new_polynominal_order_x,
             polynominal_order_y=new_polynominal_order_y,
@@ -707,7 +709,9 @@ class AOs_cart_data:
     @property
     def _normalization_factorial_ratio_prim_jnp(self) -> jax.Array:
         """Return factorial ratio used in AO normalization (primitive-wise)."""
-        dtype = get_dtype("io")
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        dtype_jnp = jnp.float64
         nx = self._polynominal_order_x_prim_np
         ny = self._polynominal_order_y_prim_np
         nz = self._polynominal_order_z_prim_np
@@ -721,21 +725,25 @@ class AOs_cart_data:
             * scipy.special.factorial(2 * ny, exact=True)
             * scipy.special.factorial(2 * nz, exact=True)
         )
-        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+        dtype_np = np.float64
         ratio = np.asarray(num / den, dtype=dtype_np)
-        return jnp.array(ratio, dtype=dtype)
+        return jnp.array(ratio, dtype=dtype_jnp)
 
     @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        dtype = get_dtype("io")
-        return jnp.asarray(self.exponents, dtype=dtype)
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        dtype_jnp = jnp.float64
+        return jnp.asarray(self.exponents, dtype=dtype_jnp)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        dtype = get_dtype("io")
-        return jnp.asarray(self.coefficients, dtype=dtype)
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        dtype_jnp = jnp.float64
+        return jnp.asarray(self.coefficients, dtype=dtype_jnp)
 
     @property
     def _num_orb(self) -> int:
@@ -756,8 +764,8 @@ class AOs_sphe_data:
         num_ao (int): Number of contracted AOs.
         num_ao_prim (int): Number of primitive Gaussians.
         orbital_indices (list[int] | tuple[int]): For each primitive, the parent AO index (``len == num_ao_prim``).
-        exponents (list[float] | tuple[float]): Gaussian exponents for primitives (``len == num_ao_prim``).
-        coefficients (list[float] | tuple[float]): Contraction coefficients per primitive (``len == num_ao_prim``).
+        exponents (npt.NDArray[np.float64]): Gaussian exponents for primitives (``len == num_ao_prim``). dtype: float64.
+        coefficients (npt.NDArray[np.float64]): Contraction coefficients per primitive (``len == num_ao_prim``). dtype: float64.
         angular_momentums (list[int] | tuple[int]): Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
         magnetic_quantum_numbers (list[int] | tuple[int]): Magnetic quantum numbers ``m`` per AO (``len == num_ao``),
             satisfying ``-l <= m <= l``.
@@ -883,10 +891,12 @@ class AOs_sphe_data:
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
     #: For each primitive, the parent AO index (``len == num_ao_prim``).
     orbital_indices: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    #: Gaussian exponents for primitives (``len == num_ao_prim``).
-    exponents: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
-    #: Contraction coefficients per primitive (``len == num_ao_prim``).
-    coefficients: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
+    #: Gaussian exponents for primitives (``len == num_ao_prim``). dtype: float64.
+    exponents: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64))
+    #: Contraction coefficients per primitive (``len == num_ao_prim``). dtype: float64.
+    coefficients: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64)
+    )
     #: Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
     angular_momentums: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     #: Magnetic quantum numbers ``m`` per AO (``len == num_ao``; ``-l <= m <= l``).
@@ -929,10 +939,10 @@ class AOs_sphe_data:
             raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
         if not isinstance(self.orbital_indices, (list, tuple)):
             raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a list or tuple.")
-        if not isinstance(self.exponents, (list, tuple, jax.Array, np.ndarray)):
-            raise ValueError(f"exponents = {type(self.exponents)} must be a jax.Array, np.ndarray, list, or tuple.")
-        if not isinstance(self.coefficients, (list, tuple, jax.Array, np.ndarray)):
-            raise ValueError(f"coefficients = {type(self.coefficients)} must be a jax.Array, np.ndarray, list, or tuple.")
+        if not isinstance(self.exponents, np.ndarray):
+            raise ValueError(f"exponents = {type(self.exponents)} must be an np.ndarray (float64).")
+        if not isinstance(self.coefficients, np.ndarray):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be an np.ndarray (float64).")
         if not isinstance(self.angular_momentums, (list, tuple)):
             raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a list or tuple.")
         if not isinstance(self.magnetic_quantum_numbers, (list, tuple)):
@@ -1051,8 +1061,8 @@ class AOs_sphe_data:
             num_ao=len(new_nucleus_index),
             num_ao_prim=len(new_orbital_indices),
             orbital_indices=new_orbital_indices,
-            exponents=new_exponents,
-            coefficients=new_coefficients,
+            exponents=np.array(new_exponents, dtype=np.float64),
+            coefficients=np.array(new_coefficients, dtype=np.float64),
             angular_momentums=new_angular_momentums,
             magnetic_quantum_numbers=new_magnetic_quantum_numbers,
         )
@@ -1278,14 +1288,18 @@ class AOs_sphe_data:
     @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        dtype = get_dtype("io")
-        return jnp.asarray(self.exponents, dtype=dtype)
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        dtype_jnp = jnp.float64
+        return jnp.asarray(self.exponents, dtype=dtype_jnp)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        dtype = get_dtype("io")
-        return jnp.asarray(self.coefficients, dtype=dtype)
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        dtype_jnp = jnp.float64
+        return jnp.asarray(self.coefficients, dtype=dtype_jnp)
 
     @property
     def _num_orb(self) -> int:
@@ -1352,8 +1366,9 @@ class ShellPrimMap:
     @classmethod
     def from_aos_data(cls, aos_data: "AOs_sphe_data | AOs_cart_data") -> "ShellPrimMap":
         """Build a shell map from an AO dataclass instance."""
-        dtype = get_dtype("io")
-        dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+        # Build-time copy of fp64 basis-data storage (see _precision.py exemption for
+        # basis-data storage accessors); used only for shell identity and indexing.
+        dtype_np = np.float64
         ao_prims: dict[int, list[int]] = {}
         for prim_idx, ao_idx in enumerate(aos_data.orbital_indices):
             ao_prims.setdefault(ao_idx, []).append(prim_idx)
@@ -1420,8 +1435,7 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
         tuple: (AOs_cart_data, transform_matrix) where transform_matrix maps
         spherical -> Cartesian coefficients with shape (num_ao_sph, num_ao_cart).
     """
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     if isinstance(aos_data, AOs_cart_data):
         transform_matrix = np.eye(aos_data.num_ao, dtype=dtype_np)
         return aos_data, transform_matrix
@@ -1501,8 +1515,8 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
         num_ao=total_cart,
         num_ao_prim=len(new_exponents),
         orbital_indices=new_orbital_indices,
-        exponents=jnp.array(new_exponents, dtype=dtype),
-        coefficients=jnp.array(new_coefficients, dtype=dtype),
+        exponents=np.array(new_exponents, dtype=np.float64),
+        coefficients=np.array(new_coefficients, dtype=np.float64),
         angular_momentums=new_angular_momentums,
         polynominal_order_x=new_polynominal_order_x,
         polynominal_order_y=new_polynominal_order_y,
@@ -1519,8 +1533,7 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
         tuple: (AOs_sphe_data, transform_pinv) where transform_pinv maps
         Cartesian -> spherical coefficients with shape (num_ao_cart, num_ao_sph).
     """
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     if isinstance(aos_data, AOs_sphe_data):
         transform_pinv = np.eye(aos_data.num_ao, dtype=dtype_np)
         return aos_data, transform_pinv
@@ -1616,8 +1629,8 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
         num_ao=total_sph,
         num_ao_prim=len(new_exponents),
         orbital_indices=new_orbital_indices,
-        exponents=jnp.array(new_exponents, dtype=dtype),
-        coefficients=jnp.array(new_coefficients, dtype=dtype),
+        exponents=np.array(new_exponents, dtype=np.float64),
+        coefficients=np.array(new_coefficients, dtype=np.float64),
         angular_momentums=new_angular_momentums,
         magnetic_quantum_numbers=new_magnetic_quantum_numbers,
     )
@@ -1668,8 +1681,7 @@ def _compute_overlap_1d_cart(
 
 def _compute_overlap_matrix_cart_analytic(aos_cart_data: AOs_cart_data) -> npt.NDArray[np.float64]:
     """Compute AO overlap matrix analytically for Cartesian contracted GTOs."""
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     num_ao = aos_cart_data.num_ao
     overlap_matrix = np.zeros((num_ao, num_ao), dtype=dtype_np)
 
@@ -1740,8 +1752,7 @@ def _estimate_overlap_integration_box(
     tail_tolerance: float = 1.0e-11,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Estimate finite integration bounds for numerical overlap integration."""
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     if tail_tolerance <= 0.0 or tail_tolerance >= 1.0:
         raise ValueError(f"tail_tolerance must satisfy 0 < tail_tolerance < 1. Got {tail_tolerance}.")
 
@@ -1766,8 +1777,7 @@ def _build_overlap_integration_grid(
     tail_tolerance: float,
 ) -> tuple[np.ndarray, float]:
     """Build a uniform midpoint grid and volume element for numerical overlap integration."""
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     if num_grid_points < 3:
         raise ValueError(f"num_grid_points must be >= 3. Got {num_grid_points}.")
 
@@ -1792,8 +1802,7 @@ def _compute_overlap_matrix_debug(
     tail_tolerance: float = 1.0e-11,
 ) -> npt.NDArray[np.float64]:
     """Numerically compute AO overlap matrix by 3D midpoint integration (debug)."""
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     r_carts, volume_element = _build_overlap_integration_grid(
         aos_data=aos_data,
         num_grid_points=num_grid_points,
@@ -1812,7 +1821,7 @@ def compute_overlap_matrix(aos_data: AOs_sphe_data | AOs_cart_data) -> jax.Array
     For spherical AOs, the overlap is evaluated by conversion to Cartesian AOs and
     transformed back with the spherical-to-Cartesian matrix.
     """
-    dtype = get_dtype("orb_eval")
+    dtype_jnp = get_dtype_jnp("ao_eval")
     aos_cart_data, transform_matrix = _aos_sphe_to_cart(aos_data)
     cart_overlap_matrix = _compute_overlap_matrix_cart_analytic(aos_cart_data)
 
@@ -1824,7 +1833,7 @@ def compute_overlap_matrix(aos_data: AOs_sphe_data | AOs_cart_data) -> jax.Array
         raise NotImplementedError
 
     overlap_matrix = 0.5 * (overlap_matrix + overlap_matrix.T)
-    return jnp.asarray(overlap_matrix, dtype=dtype)
+    return jnp.asarray(overlap_matrix, dtype=dtype_jnp)
 
 
 def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> jax.Array:
@@ -1845,9 +1854,11 @@ def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> 
     Raises:
         NotImplementedError: If ``aos_data`` is neither Cartesian nor spherical.
     """
-    dtype = get_dtype("orb_eval")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
-
+    # NOTE: do not pre-cast r_carts here. The internal kernels
+    # ``_compute_AOs_sphe`` / ``_compute_AOs_cart`` reconstruct ``r - R`` in
+    # float64 to avoid catastrophic cancellation (positions can be ~50 Bohr;
+    # an fp32 difference loses ~6 digits). Downcasting r_carts in this wrapper
+    # would destroy that precision *before* the fp64 reconstruction can use it.
     if isinstance(aos_data, AOs_sphe_data):
         AOs = _compute_AOs_sphe(aos_data, r_carts)
 
@@ -1876,8 +1887,6 @@ def _compute_AOs_sphe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.flo
     The method is for computing the value of the given atomic orbital at r_carts
     for debugging purpose. See compute_AOs_api.
     """
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     aos_values = []
 
     for ao_index in range(aos_data.num_ao):
@@ -1931,8 +1940,6 @@ def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.flo
     The method is for computing the value of the given atomic orbital at r_carts
     for debugging purpose. See compute_AOs_api.
     """
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
     aos_values = []
 
     for ao_index in range(aos_data.num_ao):
@@ -1986,30 +1993,29 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     See compute_AOs_api
 
     """
-    # Downcast all float inputs to orb_eval zone dtype (P0-1, P0-2)
-    dtype = get_dtype("orb_eval")
-    # Compute r-R in float64 to avoid catastrophic cancellation when zone dtype is float32
-    # (positions can be ~50 Bohr; float32 difference loses ~6 digits of precision).
-    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
-    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
-    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
-    r_carts = _r_carts_f64.astype(dtype)
-    R_carts_jnp = _R_carts_f64.astype(dtype)
-    c_jnp = aos_data._coefficients_jnp.astype(dtype)
-    Z_jnp = aos_data._exponents_jnp.astype(dtype)
+    dtype_jnp = get_dtype_jnp("ao_eval")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion when one operand is fp64, then downcast to the ao_eval
+    # zone (Principle 3b — local cast at point of arithmetic). r_carts is
+    # forwarded as-is (Principle 3a) and R_carts is read from the fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
     nx_jnp = aos_data._polynominal_order_x_prim_jnp
     ny_jnp = aos_data._polynominal_order_y_prim_jnp
     nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
-    N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
+    N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
-    eps = get_eps("stabilizing_ao", dtype)
+    eps = get_eps("stabilizing_ao", dtype_jnp)
     P_l_nx_ny_nz_dup = (x + eps) ** (nx_jnp[:, None]) * (y + eps) ** (ny_jnp[:, None]) * (z + eps) ** (nz_jnp[:, None])
 
     """
@@ -2039,33 +2045,32 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
     See compute_AOs_api
 
     """
-    # Downcast all float inputs to orb_eval zone dtype (P0-1)
-    dtype = get_dtype("orb_eval")
-    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
-    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
-    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
-    _R_carts_unique_f64 = jnp.asarray(aos_data._atomic_center_carts_unique_jnp, dtype=jnp.float64)
-    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
-    r_R_diffs_uq = (_r_carts_f64[None, :, :] - _R_carts_unique_f64[:, None, :]).astype(dtype)
-    r_carts = _r_carts_f64.astype(dtype)
+    dtype_jnp = get_dtype_jnp("ao_eval")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion when one operand is fp64, then downcast to the ao_eval
+    # zone (Principle 3b — local cast at point of arithmetic). r_carts is
+    # forwarded as-is (Principle 3a) and R_carts is read from the fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    R_carts_unique = aos_data._atomic_center_carts_unique_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
+    r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = _R_carts_f64.astype(dtype)
-    R_carts_unique_jnp = _R_carts_unique_f64.astype(dtype)
-    c_jnp = aos_data._coefficients_jnp.astype(dtype)
-    Z_jnp = aos_data._exponents_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
     # Normalization constants computed in zone dtype.
-    l_typed = l_jnp.astype(dtype)
+    l_typed = l_jnp.astype(dtype_jnp)
     factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_typed + 2.0))
     factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_typed + 3.0))
 
     N_n_dup = jnp.sqrt(
         (2.0 ** (2 * l_typed + 3) * factorial_l_plus_1 * (2 * Z_jnp) ** (l_typed + 1.5))
-        / (factorial_2l_plus_2 * jnp.sqrt(jnp.asarray(jnp.pi, dtype=dtype)))
+        / (factorial_2l_plus_2 * jnp.sqrt(jnp.asarray(jnp.pi, dtype=dtype_jnp)))
     )
-    N_l_m_dup = jnp.sqrt((2 * l_typed + 1) / (4 * jnp.asarray(jnp.pi, dtype=dtype)))
+    N_l_m_dup = jnp.sqrt((2 * l_typed + 1) / (4 * jnp.asarray(jnp.pi, dtype=dtype_jnp)))
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
@@ -2328,40 +2333,40 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
         tuple: (values, grads, laps) where values has shape (49, num_R, num_r), grads has shape (49, num_R, num_r, 3),
         and laps has shape (49, num_R, num_r).
     """
-    dtype = get_dtype("kinetic")
+    dtype_jnp = get_dtype_jnp("ao_grad_lap")
     S_L_M_COEFFS = (
-        jnp.array([1.0], dtype=dtype),
-        jnp.array([1.0], dtype=dtype),
-        jnp.array([1.0], dtype=dtype),
-        jnp.array([1.0], dtype=dtype),
-        jnp.array([1.7320508075688774], dtype=dtype),
-        jnp.array([1.7320508075688774], dtype=dtype),
-        jnp.array([1.0, -0.5, -0.5], dtype=dtype),
-        jnp.array([1.7320508075688774], dtype=dtype),
-        jnp.array([-0.8660254037844387, 0.8660254037844387], dtype=dtype),
-        jnp.array([-0.7905694150420949, 2.3717082451262845], dtype=dtype),
-        jnp.array([3.8729833462074166], dtype=dtype),
-        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=dtype),
-        jnp.array([1.0, -1.5, -1.5], dtype=dtype),
-        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=dtype),
-        jnp.array([-1.9364916731037083, 1.9364916731037083], dtype=dtype),
-        jnp.array([-2.3717082451262845, 0.7905694150420949], dtype=dtype),
-        jnp.array([-2.958039891549808, 2.958039891549808], dtype=dtype),
-        jnp.array([-2.091650066335189, 6.274950199005566], dtype=dtype),
-        jnp.array([6.708203932499371, -1.1180339887498951, -1.1180339887498951], dtype=dtype),
-        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=dtype),
-        jnp.array([1.0, -3.0, 0.375, -3.0, 0.75, 0.375], dtype=dtype),
-        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=dtype),
-        jnp.array([-3.3541019662496856, 0.5590169943749476, 3.3541019662496856, -0.5590169943749476], dtype=dtype),
-        jnp.array([-6.274950199005566, 2.091650066335189], dtype=dtype),
-        jnp.array([0.739509972887452, -4.437059837324712, 0.739509972887452], dtype=dtype),
-        jnp.array([0.7015607600201141, -7.015607600201141, 3.5078038001005707], dtype=dtype),
-        jnp.array([-8.874119674649426, 8.874119674649426], dtype=dtype),
+        jnp.array([1.0], dtype=dtype_jnp),
+        jnp.array([1.0], dtype=dtype_jnp),
+        jnp.array([1.0], dtype=dtype_jnp),
+        jnp.array([1.0], dtype=dtype_jnp),
+        jnp.array([1.7320508075688774], dtype=dtype_jnp),
+        jnp.array([1.7320508075688774], dtype=dtype_jnp),
+        jnp.array([1.0, -0.5, -0.5], dtype=dtype_jnp),
+        jnp.array([1.7320508075688774], dtype=dtype_jnp),
+        jnp.array([-0.8660254037844387, 0.8660254037844387], dtype=dtype_jnp),
+        jnp.array([-0.7905694150420949, 2.3717082451262845], dtype=dtype_jnp),
+        jnp.array([3.8729833462074166], dtype=dtype_jnp),
+        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=dtype_jnp),
+        jnp.array([1.0, -1.5, -1.5], dtype=dtype_jnp),
+        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=dtype_jnp),
+        jnp.array([-1.9364916731037083, 1.9364916731037083], dtype=dtype_jnp),
+        jnp.array([-2.3717082451262845, 0.7905694150420949], dtype=dtype_jnp),
+        jnp.array([-2.958039891549808, 2.958039891549808], dtype=dtype_jnp),
+        jnp.array([-2.091650066335189, 6.274950199005566], dtype=dtype_jnp),
+        jnp.array([6.708203932499371, -1.1180339887498951, -1.1180339887498951], dtype=dtype_jnp),
+        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=dtype_jnp),
+        jnp.array([1.0, -3.0, 0.375, -3.0, 0.75, 0.375], dtype=dtype_jnp),
+        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=dtype_jnp),
+        jnp.array([-3.3541019662496856, 0.5590169943749476, 3.3541019662496856, -0.5590169943749476], dtype=dtype_jnp),
+        jnp.array([-6.274950199005566, 2.091650066335189], dtype=dtype_jnp),
+        jnp.array([0.739509972887452, -4.437059837324712, 0.739509972887452], dtype=dtype_jnp),
+        jnp.array([0.7015607600201141, -7.015607600201141, 3.5078038001005707], dtype=dtype_jnp),
+        jnp.array([-8.874119674649426, 8.874119674649426], dtype=dtype_jnp),
         jnp.array(
             [-4.183300132670378, 0.5229125165837972, 12.549900398011133, -1.0458250331675945, -1.5687375497513916],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
-        jnp.array([10.2469507659596, -5.1234753829798, -5.1234753829798], dtype=dtype),
+        jnp.array([10.2469507659596, -5.1234753829798, -5.1234753829798], dtype=dtype_jnp),
         jnp.array(
             [
                 3.872983346207417,
@@ -2371,9 +2376,9 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 0.9682458365518543,
                 0.4841229182759271,
             ],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
-        jnp.array([1.0, -5.0, 1.875, -5.0, 3.75, 1.875], dtype=dtype),
+        jnp.array([1.0, -5.0, 1.875, -5.0, 3.75, 1.875], dtype=dtype_jnp),
         jnp.array(
             [
                 3.872983346207417,
@@ -2383,21 +2388,21 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 0.9682458365518543,
                 0.4841229182759271,
             ],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
-        jnp.array([-5.1234753829798, 2.5617376914899, 5.1234753829798, -2.5617376914899], dtype=dtype),
+        jnp.array([-5.1234753829798, 2.5617376914899, 5.1234753829798, -2.5617376914899], dtype=dtype_jnp),
         jnp.array(
             [-12.549900398011133, 1.5687375497513916, 4.183300132670378, 1.0458250331675945, -0.5229125165837972],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
-        jnp.array([2.2185299186623566, -13.311179511974139, 2.2185299186623566], dtype=dtype),
-        jnp.array([3.5078038001005707, -7.015607600201141, 0.7015607600201141], dtype=dtype),
-        jnp.array([4.030159736288377, -13.433865787627923, 4.030159736288377], dtype=dtype),
-        jnp.array([2.3268138086232857, -23.268138086232856, 11.634069043116428], dtype=dtype),
-        jnp.array([-19.843134832984433, 1.9843134832984433, 19.843134832984433, -1.9843134832984433], dtype=dtype),
+        jnp.array([2.2185299186623566, -13.311179511974139, 2.2185299186623566], dtype=dtype_jnp),
+        jnp.array([3.5078038001005707, -7.015607600201141, 0.7015607600201141], dtype=dtype_jnp),
+        jnp.array([4.030159736288377, -13.433865787627923, 4.030159736288377], dtype=dtype_jnp),
+        jnp.array([2.3268138086232857, -23.268138086232856, 11.634069043116428], dtype=dtype_jnp),
+        jnp.array([-19.843134832984433, 1.9843134832984433, 19.843134832984433, -1.9843134832984433], dtype=dtype_jnp),
         jnp.array(
             [-7.245688373094719, 2.7171331399105196, 21.737065119284157, -5.434266279821039, -8.15139941973156],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
         jnp.array(
             [
@@ -2408,16 +2413,16 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 1.8114220932736798,
                 0.9057110466368399,
             ],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
         jnp.array(
             [4.58257569495584, -11.4564392373896, 2.8641098093474, -11.4564392373896, 5.7282196186948, 2.8641098093474],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
-        jnp.array([1.0, -7.5, 5.625, -0.3125, -7.5, 11.25, -0.9375, 5.625, -0.9375, -0.3125], dtype=dtype),
+        jnp.array([1.0, -7.5, 5.625, -0.3125, -7.5, 11.25, -0.9375, 5.625, -0.9375, -0.3125], dtype=dtype_jnp),
         jnp.array(
             [4.58257569495584, -11.4564392373896, 2.8641098093474, -11.4564392373896, 5.7282196186948, 2.8641098093474],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
         jnp.array(
             [
@@ -2430,11 +2435,11 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 0.45285552331841994,
                 0.45285552331841994,
             ],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
         jnp.array(
             [-21.737065119284157, 8.15139941973156, 7.245688373094719, 5.434266279821039, -2.7171331399105196],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
         jnp.array(
             [
@@ -2446,10 +2451,10 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
                 2.480391854123054,
                 -0.4960783708246108,
             ],
-            dtype=dtype,
+            dtype=dtype_jnp,
         ),
-        jnp.array([11.634069043116428, -23.268138086232856, 2.3268138086232857], dtype=dtype),
-        jnp.array([-0.6716932893813962, 10.075399340720942, -10.075399340720942, 0.6716932893813962], dtype=dtype),
+        jnp.array([11.634069043116428, -23.268138086232856, 2.3268138086232857], dtype=dtype_jnp),
+        jnp.array([-0.6716932893813962, 10.075399340720942, -10.075399340720942, 0.6716932893813962], dtype=dtype_jnp),
     )
 
     S_L_M_EXPS = (
@@ -2575,26 +2580,26 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 @jit
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for Cartesian AOs (contracted)."""
-    dtype = get_dtype("kinetic")
-    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
-    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
-    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
-    diff = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
-    r_carts = _r_carts_f64.astype(dtype)
-    R_carts = _R_carts_f64.astype(dtype)
-    c = aos_data._coefficients_jnp.astype(dtype)
-    Z = aos_data._exponents_jnp.astype(dtype)
+    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    diff = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
+    c = aos_data._coefficients_jnp.astype(dtype_jnp)
+    Z = aos_data._exponents_jnp.astype(dtype_jnp)
     l = aos_data._angular_momentums_prim_jnp
     nx = aos_data._polynominal_order_x_prim_jnp
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    eps = get_eps("stabilizing_ao", dtype)
+    eps = get_eps("stabilizing_ao", dtype_jnp)
     x = x + eps
     y = y + eps
     z = z + eps
@@ -2624,24 +2629,23 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 @jit
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for spherical AOs (contracted)."""
-    dtype = get_dtype("kinetic")
-    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
-    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
-    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
-    _R_carts_unique_f64 = jnp.asarray(aos_data._atomic_center_carts_unique_jnp, dtype=jnp.float64)
-    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
-    r_R_diffs_uq = (_r_carts_f64[None, :, :] - _R_carts_unique_f64[:, None, :]).astype(dtype)
-    r_carts = _r_carts_f64.astype(dtype)
+    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    R_carts_unique = aos_data._atomic_center_carts_unique_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
+    r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = _R_carts_f64.astype(dtype)
-    R_carts_unique_jnp = _R_carts_unique_f64.astype(dtype)
-    c_jnp = aos_data._coefficients_jnp.astype(dtype)
-    Z_jnp = aos_data._exponents_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
-    l_f64 = l_jnp.astype(dtype)
-    Z_f64 = Z_jnp.astype(dtype)
+    l_f64 = l_jnp.astype(dtype_jnp)
+    Z_f64 = Z_jnp.astype(dtype_jnp)
     factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
     factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
 
@@ -2700,9 +2704,9 @@ def compute_AOs_laplacian(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.
     Raises:
         NotImplementedError: If ``aos_data`` is not Cartesian or spherical.
     """
-    dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
-
+    # NOTE: do not pre-cast r_carts here. The analytic kernels reconstruct
+    # ``r - R`` in float64 internally to avoid catastrophic cancellation; a
+    # premature downcast in this wrapper would defeat that guard.
     if isinstance(aos_data, AOs_cart_data):
         return _compute_AOs_laplacian_analytic_cart(aos_data, r_carts)
 
@@ -2755,8 +2759,7 @@ def _compute_S_l_m_debug(
         They can be hardcoded into a code, or they can be computed analytically (e.g., https://en.wikipedia.org/wiki/Solid_harmonics).
         The latter one is the strategy employed in this code,
     """
-    dtype = get_dtype("orb_eval")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32
+    dtype_np = get_dtype_np("ao_eval")
     R_cart = atomic_center_cart
     x, y, z = np.array(r_cart, dtype=dtype_np) - np.array(R_cart, dtype=dtype_np)
     r_norm = LA.norm(np.array(r_cart, dtype=dtype_np) - np.array(R_cart, dtype=dtype_np))
@@ -2813,8 +2816,9 @@ def _compute_AOs_laplacian_autodiff(aos_data: AOs_sphe_data | AOs_cart_data, r_c
     See compute_AOs_laplacian_api
 
     """
-    dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
+    # Forward r_carts as-is (Principle 3a — no parameter rebind). compute_AOs's
+    # inner kernels reconstruct r-R in caller-supplied precision and downcast to
+    # the ao_eval zone at the use site; the hessian inherits that dtype.
     # not very fast, but it works.
     ao_matrix_hessian = hessian(compute_AOs, argnums=1)(aos_data, r_carts)
     ao_matrix_laplacian = jnp.einsum("m i i u i u -> mi", ao_matrix_hessian)
@@ -2840,8 +2844,6 @@ def _compute_AOs_laplacian_debug(
             Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
 
     """
-    dtype = get_dtype("kinetic")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32  # noqa: F841
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
@@ -2890,26 +2892,26 @@ def _compute_AOs_laplacian_debug(
 @jit
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for Cartesian AOs (contracted)."""
-    dtype = get_dtype("kinetic")
-    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
-    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
-    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
-    diff = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
-    r_carts = _r_carts_f64.astype(dtype)
-    R_carts = _R_carts_f64.astype(dtype)
-    c = aos_data._coefficients_jnp.astype(dtype)
-    Z = aos_data._exponents_jnp.astype(dtype)
+    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    diff = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
+    c = aos_data._coefficients_jnp.astype(dtype_jnp)
+    Z = aos_data._exponents_jnp.astype(dtype_jnp)
     l = aos_data._angular_momentums_prim_jnp
     nx = aos_data._polynominal_order_x_prim_jnp
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype)
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    eps = get_eps("stabilizing_ao", dtype)
+    eps = get_eps("stabilizing_ao", dtype_jnp)
     x = x + eps
     y = y + eps
     z = z + eps
@@ -2942,24 +2944,23 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 @jit
 def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for spherical AOs (contracted)."""
-    dtype = get_dtype("kinetic")
-    # Compute r-R in float64 to avoid catastrophic cancellation under float32 zones.
-    _r_carts_f64 = jnp.asarray(r_carts, dtype=jnp.float64)
-    _R_carts_f64 = jnp.asarray(aos_data._atomic_center_carts_prim_jnp, dtype=jnp.float64)
-    _R_carts_unique_f64 = jnp.asarray(aos_data._atomic_center_carts_unique_jnp, dtype=jnp.float64)
-    r_R_diffs = (_r_carts_f64[None, :, :] - _R_carts_f64[:, None, :]).astype(dtype)
-    r_R_diffs_uq = (_r_carts_f64[None, :, :] - _R_carts_unique_f64[:, None, :]).astype(dtype)
-    r_carts = _r_carts_f64.astype(dtype)
+    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    R_carts_unique = aos_data._atomic_center_carts_unique_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
+    r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
-    R_carts_jnp = _R_carts_f64.astype(dtype)
-    R_carts_unique_jnp = _R_carts_unique_f64.astype(dtype)
-    c_jnp = aos_data._coefficients_jnp.astype(dtype)
-    Z_jnp = aos_data._exponents_jnp.astype(dtype)
+    c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
+    Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
-    l_f64 = l_jnp.astype(dtype)
-    Z_f64 = Z_jnp.astype(dtype)
+    l_f64 = l_jnp.astype(dtype_jnp)
+    Z_f64 = Z_jnp.astype(dtype_jnp)
     factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
     factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
 
@@ -3026,9 +3027,9 @@ def compute_AOs_grad(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array
     Raises:
         NotImplementedError: If ``aos_data`` is neither Cartesian nor spherical.
     """
-    dtype = get_dtype("kinetic")
-    r_carts = jnp.asarray(r_carts, dtype=dtype)
-
+    # NOTE: do not pre-cast r_carts here. The analytic kernels reconstruct
+    # ``r - R`` in float64 internally to avoid catastrophic cancellation; a
+    # premature downcast in this wrapper would defeat that guard.
     if isinstance(aos_data, AOs_cart_data):
         return _compute_AOs_grad_analytic_cart(aos_data, r_carts)
 
@@ -3055,7 +3056,6 @@ def _compute_AOs_grad_autodiff(
         The dim. of each matrix is (num_ao, N_e)
 
     """
-    dtype = get_dtype("kinetic")  # noqa: F841
     grad_full = jacrev(compute_AOs, argnums=1)(aos_data, r_carts)
     grad_diag = jnp.diagonal(grad_full, axis1=1, axis2=2)
     grad_diag = jnp.swapaxes(grad_diag, 1, 2)
@@ -3077,8 +3077,6 @@ def _compute_AOs_grad_debug(
     the given atomic orbital at r_carts using FDM for debugging JAX
     implementations. See compute_AOs_grad_api
     """
-    dtype = get_dtype("kinetic")
-    dtype_np = np.float64 if dtype == jnp.float64 else np.float32  # noqa: F841
     # Gradients of AOs (numerical)
     diff_h = 1.0e-5
 

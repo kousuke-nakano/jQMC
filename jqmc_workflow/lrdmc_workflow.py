@@ -325,7 +325,7 @@ class LRDMC_Workflow(Workflow):
         max_continuation: int = 1,
         cleanup_patterns: Optional[list] = None,
         # -- [precision] section --
-        precision_mode: Optional[str] = None,
+        precision_mode: str = "full",
     ):
         super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
@@ -462,9 +462,8 @@ class LRDMC_Workflow(Workflow):
             "control": control_ov,
             jt: section_ov,
         }
-        # Add [precision] section if configured
-        if self.precision_mode is not None:
-            overrides["precision"] = {"mode": self.precision_mode}
+        # Add [precision] section
+        overrides["precision"] = {"mode": self.precision_mode}
         generate_input_toml(
             job_type=jt,
             overrides=overrides,

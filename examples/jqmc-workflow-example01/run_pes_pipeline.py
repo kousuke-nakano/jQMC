@@ -51,9 +51,9 @@ TARGET_VMC_ERROR = 5e-4  # Target statistical error (Ha)
 TARGET_MCMC_ERROR = 5e-5  # Target statistical error (Ha)
 TARGET_LRDMC_ERROR = 5e-5  # Target statistical error (Ha)
 
-# Mixed precision: set to "mixed" to enable float32 for low-risk zones,
-# or None (default) for all-float64. See doc/notes/mixed_precision.md.
-PRECISION_MODE = None  # "mixed" or None
+# Mixed precision: set to "mixed" to enable float32 for low-risk zones.
+# Default "full" keeps all zones in float64. See doc/notes/mixed_precision.md.
+PRECISION_MODE = "full"  # "full" or "mixed"
 
 R_VALUES = [
     0.40,

@@ -50,10 +50,7 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit
 from jax import numpy as jnp
-from jax import typing as jnpt
 from numpy import linalg as LA
-
-from ._precision import get_dtype
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -73,7 +70,7 @@ class Structure_data:
     element metadata used by AOs/MOs, Coulomb, and Hamiltonian builders.
 
     Attributes:
-        positions (npt.NDArray | jax.Array): Atomic Cartesian coordinates with shape ``(N, 3)`` in Bohr.
+        positions (npt.NDArray[np.float64]): Atomic Cartesian coordinates with shape ``(N, 3)`` in Bohr. dtype: float64.
         pbc_flag (bool): Whether periodic boundary conditions are active. If ``True``, lattice
             vectors ``vec_a|b|c`` must be provided; otherwise they must be empty.
         vec_a (list[float] | tuple[float]): Lattice vector **a** (Bohr) when ``pbc_flag=True``.
@@ -99,8 +96,8 @@ class Structure_data:
             structure.sanity_check()
     """
 
-    #: Atomic Cartesian coordinates with shape ``(N, 3)`` in Bohr.
-    positions: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    #: Atomic Cartesian coordinates with shape ``(N, 3)`` in Bohr. dtype: float64.
+    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64))
     #: Whether periodic boundary conditions are active.
     pbc_flag: bool = struct.field(pytree_node=False, default=False)
     #: Lattice vector **a** in Bohr (requires ``pbc_flag=True``).
@@ -189,8 +186,8 @@ class Structure_data:
     @property
     def cell(self) -> npt.NDArray:
         """Lattice vectors as a ``(3, 3)`` matrix in Bohr (``[a, b, c]``)."""
-        dtype = get_dtype("io")
-        cell = np.array([self.vec_a, self.vec_b, self.vec_c], dtype=dtype)
+        dtype_np = np.float64
+        cell = np.array([self.vec_a, self.vec_b, self.vec_c], dtype=dtype_np)
         return cell
 
     @property
@@ -206,10 +203,10 @@ class Structure_data:
 
         and asserts the orthonormality condition :math:`T_i \cdot G_j = 2\pi\,\delta_{ij}`.
         """
-        dtype = get_dtype("io")
-        va = np.asarray(self.vec_a, dtype=dtype)
-        vb = np.asarray(self.vec_b, dtype=dtype)
-        vc = np.asarray(self.vec_c, dtype=dtype)
+        dtype_np = np.float64
+        va = np.asarray(self.vec_a, dtype=dtype_np)
+        vb = np.asarray(self.vec_b, dtype=dtype_np)
+        vc = np.asarray(self.vec_c, dtype=dtype_np)
         recip_a = 2 * np.pi * (np.cross(vb, vc)) / (np.dot(va, np.cross(vb, vc)))
         recip_b = 2 * np.pi * (np.cross(vc, va)) / (np.dot(vb, np.cross(vc, va)))
         recip_c = 2 * np.pi * (np.cross(va, vb)) / (np.dot(vc, np.cross(va, vb)))
@@ -225,7 +222,7 @@ class Structure_data:
             else:
                 np.testing.assert_almost_equal(np.dot(lattice_vec, recip_vec), 0.0, decimal=15)
 
-        recip_cell = np.array([recip_a, recip_b, recip_c], dtype=dtype)
+        recip_cell = np.array([recip_a, recip_b, recip_c], dtype=dtype_np)
         return recip_cell
 
     @property
@@ -321,23 +318,23 @@ class Structure_data:
     @property
     def _positions_cart_np(self) -> npt.NDArray:
         """Atomic positions as ``numpy.ndarray`` with shape ``(N, 3)`` in Bohr."""
-        dtype = get_dtype("io")
-        return np.array(self.positions, dtype=dtype)
+        dtype_np = np.float64
+        return np.array(self.positions, dtype=dtype_np)
 
     @property
     def _positions_cart_jnp(self) -> jax.Array:
         """Atomic positions as ``jax.Array`` with shape ``(N, 3)`` in Bohr."""
-        dtype = get_dtype("io")
-        return jnp.array(self.positions, dtype=dtype)
+        dtype_jnp = jnp.float64
+        return jnp.array(self.positions, dtype=dtype_jnp)
 
     @property
     def _positions_frac_np(self) -> npt.NDArray:
         """Fractional (crystal) coordinates as ``numpy.ndarray`` with shape ``(N, 3)``."""
-        dtype = get_dtype("io")
-        h = np.array([self.vec_a, self.vec_b, self.vec_c], dtype=dtype)
+        dtype_np = np.float64
+        h = np.array([self.vec_a, self.vec_b, self.vec_c], dtype=dtype_np)
         positions_frac = np.array(
-            [np.dot(np.asarray(pos, dtype=dtype), np.linalg.inv(h)) for pos in self._positions_cart_np],
-            dtype=dtype,
+            [np.dot(np.asarray(pos, dtype=dtype_np), np.linalg.inv(h)) for pos in self._positions_cart_np],
+            dtype=dtype_np,
         )
         return positions_frac
 
@@ -394,9 +391,9 @@ def _find_nearest_index_jnp(structure: Structure_data, r_cart: list[float]) -> i
 
 def _find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
-    dtype = get_dtype("io")
+    dtype_np = np.float64
     positions = structure_data._positions_cart_np
-    r_cart = np.array(r_cart, dtype=dtype)
+    r_cart = np.array(r_cart, dtype=dtype_np)
     diffs = positions - r_cart
     if structure_data.pbc_flag:
         cell = structure_data.cell
@@ -413,12 +410,12 @@ def _find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
 @partial(jit, static_argnums=2)
 def _find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
-    dtype = get_dtype("io")
+    dtype_jnp = jnp.float64
     positions = structure_data._positions_cart_jnp
-    r_cart = jnp.array(r_cart, dtype=dtype)
+    r_cart = jnp.array(r_cart, dtype=dtype_jnp)
     diffs = positions - r_cart
     if structure_data.pbc_flag:
-        cell = jnp.array(structure_data.cell, dtype=dtype)
+        cell = jnp.array(structure_data.cell, dtype=dtype_jnp)
         inv_cell = jnp.linalg.inv(cell)
         diffs_frac = diffs @ inv_cell
         diffs_frac = diffs_frac - jnp.round(diffs_frac)
@@ -442,8 +439,8 @@ def _get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[flo
         with respect to the given r_cart in cartesian. The unit is Bohr
 
     """
-    dtype = get_dtype("io")
-    r_cart = np.array(r_cart, dtype=dtype)
+    dtype_np = np.float64
+    r_cart = np.array(r_cart, dtype=dtype_np)
     R_cart = structure_data._positions_cart_np[i_atom]
     diff = R_cart - r_cart
     if structure_data.pbc_flag:
@@ -465,12 +462,12 @@ def _get_min_dist_rel_R_cart_jnp(
     (e.g. ``jnp.float32``) and cannot be traced as an abstract array.
     """
     if dtype is None:
-        dtype = get_dtype("io")
-    # Compute R - r in float64 to avoid catastrophic cancellation under float32 zones,
-    # then downcast.
-    _r_f64 = jnp.asarray(r_cart, dtype=jnp.float64)
-    _R_f64 = jnp.asarray(structure_data._positions_cart_jnp[i_atom], dtype=jnp.float64)
-    diff = (_R_f64 - _r_f64).astype(dtype)
+        dtype = jnp.float64
+    # Subtract in the passed dtype (the caller chain is responsible for keeping
+    # high precision up to this point — see Principle 3b in jqmc._precision)
+    # and cast only the *result* down to the local zone.
+    R_cart = structure_data._positions_cart_jnp[i_atom]
+    diff = (R_cart - r_cart).astype(dtype)
     if structure_data.pbc_flag:
         cell = jnp.array(structure_data.cell, dtype=dtype)
         inv_cell = jnp.linalg.inv(cell)

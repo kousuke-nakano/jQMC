@@ -46,7 +46,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
@@ -156,8 +156,8 @@ def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
     r_up_carts = np.array(r_up_carts).reshape(-1, 3)
     r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
-    atol_g, rtol_g = get_tolerance("geminal", "strict")
-    atol_d, rtol_d = get_tolerance("determinant", "strict")
+    atol_g, rtol_g = get_tolerance("det_eval", "strict")
+    atol_d, rtol_d = get_tolerance("det_eval", "strict")
 
     geminal_mo_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
@@ -300,8 +300,8 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
         num_ao=len(angular_momentums),
         num_ao_prim=len(exponents),
         orbital_indices=tuple(orbital_indices),
-        exponents=tuple(exponents),
-        coefficients=tuple(coefficients),
+        exponents=np.array(exponents, dtype=np.float64),
+        coefficients=np.array(coefficients, dtype=np.float64),
         angular_momentums=tuple(angular_momentums),
         magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
     )
@@ -309,7 +309,9 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
 
 def test_geminal_sphe_to_cart_AOs_data():
     """Round-trip AOs l<=6: spherical→Cartesian keeps geminal values/grads."""
-    atol_c, rtol_c = get_tolerance("geminal", "strict")
+    # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
     rng = np.random.default_rng(321)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -347,7 +349,9 @@ def test_geminal_sphe_to_cart_AOs_data():
 
 def test_geminal_cart_to_sphe_AOs_data():
     """Round-trip AOs l<=6: Cartesian→spherical keeps geminal values/grads."""
-    atol_c, rtol_c = get_tolerance("geminal", "strict")
+    # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
     rng = np.random.default_rng(654)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -387,7 +391,11 @@ def test_geminal_cart_to_sphe_AOs_data():
 
 def test_geminal_sphe_to_cart_MOs_data():
     """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps geminal values/grads."""
-    atol_c, rtol_c = get_tolerance("geminal", "strict")
+    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(
+        ("ao_eval", "mo_eval", "det_eval", "ao_grad_lap", "mo_grad_lap", "det_grad_lap"), "strict"
+    )
     rng = np.random.default_rng(777)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -429,7 +437,11 @@ def test_geminal_sphe_to_cart_MOs_data():
 
 def test_geminal_cart_to_sphe_MOs_data():
     """Round-trip MOs l<=6: Cartesian→spherical keeps geminal values/grads."""
-    atol_c, rtol_c = get_tolerance("geminal", "strict")
+    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(
+        ("ao_eval", "mo_eval", "det_eval", "ao_grad_lap", "mo_grad_lap", "det_grad_lap"), "strict"
+    )
     rng = np.random.default_rng(888)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -485,8 +497,8 @@ def _build_small_sphe_aos_for_conversion() -> AOs_sphe_data:
         num_ao=4,
         num_ao_prim=4,
         orbital_indices=(0, 1, 2, 3),
-        exponents=(1.20, 1.00, 1.00, 1.00),
-        coefficients=(1.0, 1.0, 1.0, 1.0),
+        exponents=np.array([1.20, 1.00, 1.00, 1.00], dtype=np.float64),
+        coefficients=np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64),
         angular_momentums=(0, 1, 1, 1),
         magnetic_quantum_numbers=(0, -1, 0, 1),
     )
@@ -494,7 +506,7 @@ def _build_small_sphe_aos_for_conversion() -> AOs_sphe_data:
 
 def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
     """AO->MO (all eigenvectors) followed by MO->AO recovers the AO lambda matrix."""
-    atol_c, rtol_c = get_tolerance("determinant", "strict")
+    atol_c, rtol_c = get_tolerance("det_eval", "strict")
     rng = np.random.default_rng(1234)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -528,7 +540,7 @@ def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
 
 def test_convert_from_AOs_to_MOs_full_projection_open_shell():
     """AO->MO (all eigenvectors) round-trip recovers AO lambda matrix for open-shell case."""
-    atol_c, rtol_c = get_tolerance("determinant", "strict")
+    atol_c, rtol_c = get_tolerance("det_eval", "strict")
     rng = np.random.default_rng(1334)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -629,7 +641,7 @@ def test_convert_from_AOs_to_MOs_truncated_mode_open_shell():
 
 def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
     """AO-corrected paired update is applied then reprojected with fixed N=num_electron_dn."""
-    atol_c, rtol_c = get_tolerance("determinant", "strict")
+    atol_c, rtol_c = get_tolerance("det_eval", "strict")
     rng = np.random.default_rng(97531)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -806,7 +818,7 @@ def test_grads_and_laplacian_fast_update(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(grad_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_up_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(grad_up_fast, grad_up_debug, atol=atol, rtol=rtol)
@@ -904,7 +916,7 @@ def test_comparing_AS_regularization(trexio_file: str):
 
     R_AS_jax = compute_AS_regularization_factor(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    atol, rtol = get_tolerance("determinant", "strict")
+    atol, rtol = get_tolerance("det_eval", "strict")
     assert not np.any(np.isnan(np.asarray(R_AS_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(R_AS_jax))), "NaN detected in second argument"
     np.testing.assert_allclose(R_AS_debug, R_AS_jax, atol=atol, rtol=rtol)
@@ -1015,7 +1027,7 @@ def test_one_row_or_one_column_update(trexio_file: str):
     )
 
     # --- Numerical consistency asserts (no shape checks) ---
-    atol, rtol = get_tolerance("geminal", "strict")
+    atol, rtol = get_tolerance("det_eval", "strict")
     # up-one-row must equal the i-th row of the full geminal
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo_up_one_row).ravel()))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo[i_up, :])))), "NaN detected in second argument"
@@ -1152,7 +1164,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("kinetic", "loose")
+    atol, rtol = get_tolerance("det_grad_lap", "loose")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -1284,7 +1296,7 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("kinetic", "strict")
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -1405,7 +1417,7 @@ def test_ratio_determinant_rank1_update(pattern: str):
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
-    atol, rtol = get_tolerance("determinant", "strict")
+    atol, rtol = get_tolerance("det_eval", "strict")
     atol_c, rtol_c = atol, rtol
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_rank1)))), "NaN detected in second argument"
@@ -1430,7 +1442,7 @@ def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
-    atol, rtol = get_tolerance("determinant", "strict")
+    atol, rtol = get_tolerance("det_eval", "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -1467,7 +1479,11 @@ def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
     grad_ref_fn = jax.grad(compute_ln_det_geminal_all_elements, argnums=0)
     grad_fast_fn = jax.grad(compute_ln_det_geminal_all_elements_fast, argnums=0)
 
-    atol, rtol = get_tolerance("determinant", "strict")
+    # Backward-AD comparison: ref uses SVD-pseudoinverse custom VJP, fast uses
+    # caller-supplied G_inv; both VJPs propagate through compute_geminal_all_elements
+    # which crosses ao_eval/mo_eval/det_eval. Tolerance is bounded by the
+    # loosest zone on the path.
+    atol, rtol = get_tolerance_min(("ao_eval", "mo_eval", "det_eval"), "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)

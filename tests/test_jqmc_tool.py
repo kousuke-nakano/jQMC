@@ -604,7 +604,7 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        atol, rtol = get_tolerance("io", "strict")
+        atol, rtol = get_tolerance("local_energy", "strict")
         np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
         np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
@@ -636,7 +636,7 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        atol, rtol = get_tolerance("io", "strict")
+        atol, rtol = get_tolerance("local_energy", "strict")
         np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
         np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
@@ -668,7 +668,7 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        atol, rtol = get_tolerance("io", "strict")
+        atol, rtol = get_tolerance("local_energy", "strict")
         np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
         np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
@@ -699,7 +699,7 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        atol, rtol = get_tolerance("io", "strict")
+        atol, rtol = get_tolerance("local_energy", "strict")
         np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
         np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
@@ -731,7 +731,7 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        atol, rtol = get_tolerance("io", "strict")
+        atol, rtol = get_tolerance("local_energy", "strict")
         np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
         np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 

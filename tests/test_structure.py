@@ -54,7 +54,7 @@ def _make_non_pbc_structure():
 
 def test_reciprocal_lattice_dot_2pi():
     """Test that the dot product of the cell and reciprocal cell gives 2pi delta_ij."""
-    atol, rtol = get_tolerance("io", "strict")
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_pbc_structure()
     recip = structure.recip_cell
     cell = structure.cell
@@ -69,7 +69,7 @@ def test_reciprocal_lattice_dot_2pi():
 
 def test_np_jnp_consistency_non_pbc():
     """Test consistency between NumPy and JAX implementations for non-PBC structures."""
-    atol, rtol = get_tolerance("io", "strict")
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_non_pbc_structure()
     r_cart = np.array([0.2, 0.0, 0.0])
 
@@ -100,7 +100,7 @@ def test_np_jnp_consistency_non_pbc():
 
 def test_pbc_minimum_image_and_nearest():
     """Test PBC minimum image convention and nearest nucleus finding."""
-    atol, rtol = get_tolerance("io", "strict")
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_pbc_structure()
     r_cart = np.array([9.1, 0.0, 0.0])
 
@@ -145,7 +145,7 @@ def test_pbc_minimum_image_and_nearest():
 @pytest.mark.parametrize("use_pbc", [False, True])
 def test_find_nearest_index_matches_min_dist_jnp(use_pbc):
     """Test that the nearest index found matches the minimum distance calculation."""
-    atol, rtol = get_tolerance("io", "strict")
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_pbc_structure() if use_pbc else _make_non_pbc_structure()
     r_cart = np.array([9.1, 0.0, 0.0]) if use_pbc else np.array([1.8, 0.1, 0.0])
 
