@@ -30,21 +30,44 @@ Or keep the default (all float64, backward compatible):
 
 ## Precision zones
 
-jQMC divides the computation into 10 **Precision Zones**.  The mapping
-from zone to dtype is determined entirely by the chosen mode:
+jQMC divides the computation into 16 **Precision Zones**.  Each zone is
+owned by exactly one module and is named for its *purpose* (not its
+dtype).  The mapping from zone to dtype is determined entirely by the
+chosen mode.
 
-| Zone           | Components                        | `full` | `mixed` | float32 risk |
-|----------------|-----------------------------------|--------|---------|--------------|
-| `orb_eval`     | AO/MO forward evaluation          | f64    | **f32** | low          |
-| `jastrow`      | Jastrow factor (J1/J2/J3)         | f64    | **f32** | low          |
-| `geminal`      | Geminal matrix elements            | f64    | f64     | high         |
-| `determinant`  | log-det, SVD, AS regularization    | f64    | f64     | high         |
-| `coulomb`      | Coulomb + ECP potential            | f64    | **f32** | low-medium   |
-| `kinetic`      | Kinetic energy + AO/MO derivatives | f64    | f64     | high         |
-| `mcmc`         | MCMC sampling                      | f64    | f64     | high         |
-| `gfmc`         | GFMC propagation                   | f64    | f64     | high         |
-| `optimization` | SR matrix, parameter updates       | f64    | f64     | high         |
-| `io`           | I/O, structure data                | f64    | f64     | low-medium   |
+| Zone               | Owning module          | `full` | `mixed`  | risk     | E_L path   |
+|--------------------|------------------------|--------|----------|----------|------------|
+| `ao_eval`          | `atomic_orbital`       | f64    | **f32**  | low      | core       |
+| `ao_grad_lap`      | `atomic_orbital`       | f64    | **f32**  | low      | core       |
+| `mo_eval`          | `molecular_orbital`    | f64    | f64      | high\*   | core       |
+| `mo_grad_lap`      | `molecular_orbital`    | f64    | f64      | high     | core       |
+| `jastrow_eval`     | `jastrow_factor`       | f64    | **f32**  | low      | core†      |
+| `jastrow_grad_lap` | `jastrow_factor`       | f64    | **f32**  | low      | core       |
+| `jastrow_ratio`    | `jastrow_factor`       | f64    | **f32**  | low      | indirect‡  |
+| `det_eval`         | `determinant`          | f64    | f64      | high     | core       |
+| `det_grad_lap`     | `determinant`          | f64    | f64      | high     | core       |
+| `det_ratio`        | `determinant`          | f64    | f64      | high     | indirect‡  |
+| `coulomb`          | `coulomb_potential`    | f64    | **f32**  | low-med  | core       |
+| `wf_eval`          | `wavefunction`         | f64    | f64      | high     | core†      |
+| `wf_kinetic`       | `wavefunction`         | f64    | f64      | high     | core       |
+| `wf_ratio`         | `wavefunction`         | f64    | f64      | high     | no         |
+| `local_energy`     | `hamiltonians`         | f64    | f64      | high     | core       |
+| `swct`             | `swct`                 | f64    | f64      | high     | no         |
+
+\* `mo_eval` is high-risk even though the consumed AO values are fp32:
+the small `mo_coefficients @ aos` matmul runs in this zone, and its
+output feeds the determinant matrix where fp32 round-off is amplified
+by `log|det|`.
+
+† `jastrow_eval` and `wf_eval` are on the E_L core path but their
+forward values (J and ln|Psi|) do not enter the E_L formula directly
+(E_L depends on *derivatives* of ln|Psi|).  Diagnostics show zero E_L
+bias when these zones alone are fp32.
+
+‡ `det_ratio` and `jastrow_ratio` affect E_L **indirectly** through the
+ECP non-local potential, which evaluates `Psi(R')/Psi(R)` on a
+quadrature grid via rank-1 ratio updates.  In non-ECP systems these
+zones have no E_L impact.
 
 ## Workflow integration
 
@@ -67,17 +90,105 @@ those dicts directly or use `_set_zone()` after calling `configure()`.
 
 ## Design principles
 
-1. **Explicit dtype declaration** — Every function declares its Precision Zone
-   and specifies dtype for all arrays.  No reliance on JAX implicit promotion.
+The implementation rests on **three** principles documented at the top of
+`jqmc/_precision.py`.  Principle 3 is the most important in practice; almost
+every precision bug we have seen is a violation of 3a or 3b.
 
-2. **Zone boundaries** — When results cross zone boundaries (e.g. Jastrow
-   float32 → determinant float64), explicit casts ensure the higher-precision
-   zone receives correctly typed inputs.
+**Principle 1 — One Precision Zone is owned by exactly one module.**
+A zone (e.g. `ao_eval`, `coulomb`) is *defined and consumed* in a single
+module.  The mapping zone ↔ owning module is one-to-one.
 
-3. **Backward compatibility** — Default mode is `"full"` (all float64).
-   Existing input files work without modification.
+**Principle 2 — A module may own multiple Precision Zones.**
+Different code paths in the same module legitimately need different
+precisions (e.g. `ao_eval` vs `ao_grad_lap`, or `det_eval` vs `det_ratio`).
+Each zone is named for its *purpose*, not for its dtype.
+
+**Principle 3 — Cast responsibility lies with the function that does
+arithmetic on the value, never with passthrough wrappers.**
+
+* **3a (frozen args).** Function arguments are *frozen*: the parameter name
+  must not be rebound for the entire body of the function.  Writing
+  `arg = jnp.asarray(arg, dtype=...)` at the top of a function is forbidden
+  — it silently coerces the argument for every later use, including
+  forwarding to other functions.  When the function consumes `arg` as an
+  arithmetic operand, the cast appears **inside the expression**
+  (`arg.astype(dtype)`), or — if the cast result is reused — through a
+  *new* local variable (e.g. `arg_local = arg.astype(dtype)`).  The
+  original `arg` always remains frozen.
+
+* **3b (local cast at the point of arithmetic).** A function casts a value
+  to its own zone's dtype **immediately before** consuming it as an
+  operand.  Inputs and outputs of the function's arithmetic both live in
+  its zone.  For catastrophic cancellation (`r - R`): reconstruct the
+  difference in the dtype the values were received in (the
+  caller-supplied precision — fp64 in jQMC because the upstream MCMC
+  walker state is fp64), then down-cast the result to the function's own
+  zone.  The principle is "use the caller-supplied precision," **not**
+  "hardcode fp64."
+
+```python
+# WRONG (3a violation): rebinding `r_carts` silently forwards a
+# fp32-truncated array to compute_AOs even though `ao_eval` is fp64.
+def compute_coulomb(r_carts, R_carts):
+    dtype_jnp = get_dtype_jnp("coulomb")
+    r_carts = jnp.asarray(r_carts, dtype=dtype_jnp)  # <-- forbidden
+    ao = compute_AOs(..., r_carts, R_carts)          # downstream sees fp32
+    diff = r_carts - R_carts
+    ...
+
+# RIGHT: forwarding stays in caller's dtype; reconstruction is in
+# caller-supplied precision; downcast happens at the use site.
+def compute_coulomb(r_carts, R_carts):
+    ao = compute_AOs(..., r_carts, R_carts)          # forward as-is
+    dtype_jnp = get_dtype_jnp("coulomb")
+    diff = (r_carts - R_carts).astype(dtype_jnp)     # 3b
+    ...
+```
+
+### No hardcoded dtype literals
+
+Inside any module that owns a selectable-precision zone, **never hardcode**
+`jnp.float64` / `np.float64` / `jnp.float32` / `np.float32` for arrays the
+module produces or consumes.  Always go through `get_dtype_jnp("<zone>")`
+/ `get_dtype_np("<zone>")` so the dtype follows the active mode
+automatically.
+
+The exemptions (modules whose data is *always fp64 by construction*,
+independent of mode) are:
+
+* `mcmc` / `gfmc` — MCMC and GFMC walker state.
+* I/O modules — `structure`, `trexio_wrapper`, `_jqmc_utility`,
+  `jqmc_tool`, and the `_load_dataclass_from_hdf5` /
+  `_save_dataclass_to_hdf5` helpers in `hamiltonians`.  On-disk numerical
+  data (AO exponents/coefficients, nuclear coordinates, geminal
+  coefficients, etc.) is always fp64 because fp32 storage would silently
+  lose precision that no downstream upcast can recover.
+* **Basis-data storage accessors.** `_*_jnp` properties on
+  selectable-precision dataclasses whose underlying storage field is
+  typed `npt.NDArray[np.float64]` are *lift-only* adapters
+  (numpy → `jax.Array`), not arithmetic.  The dtype is fp64 by
+  construction (storage is loaded from HDF5/TREXIO/optimizer output);
+  the consumer is responsible for casting the lifted array to its own
+  zone at the use site (Principle 3b).  Concretely this covers
+  `_exponents_jnp` / `_coefficients_jnp` /
+  `_normalization_factorial_ratio_prim_jnp` in `atomic_orbital`,
+  `_mo_coefficients_jnp` in `molecular_orbital`,
+  `_lambda_matrix_jnp` in `determinant`, `_j_matrix_jnp` in
+  `jastrow_factor`, and the `ShellPrimMap.from_aos_data` constructor in
+  `atomic_orbital`.
 
 ## API reference
 
-See {py:mod}`jqmc._precision` for the programmatic API (`get_dtype`,
-`configure`, `get_tolerance`, etc.).
+See {py:mod}`jqmc._precision` for the programmatic API:
+
+* `get_dtype_jnp(zone)` / `get_dtype_np(zone)` — return the JAX / NumPy
+  dtype currently assigned to *zone*.
+* `get_eps(name, dtype)` — return a dtype-aware numerical-stability
+  constant (e.g. `"rcond_svd"`, `"stabilizing_ao"`).
+* `configure(mode)` — programmatically switch the active precision mode.
+* `get_tolerance(zone, level)` — return `(atol, rtol)` for tests, scaled
+  by the zone's current dtype (`level` = `"strict"` or `"loose"`).
+* `get_tolerance_min(zones, level)` — return the loosest `(atol, rtol)`
+  across the given zones.  Use this when a test compares two paths whose
+  combined dtype span crosses multiple zones; the achievable agreement
+  is bounded by the weakest zone on the path.
