@@ -14,6 +14,17 @@ on:
       - 'README.md'
       - '.pre-commit-config.yaml'
       - 'jqmc_workflow/**'
+  pull_request:
+    branches: [ "devel*" ]
+    paths-ignore:
+      - '.gitignore'
+      - '.github/**'
+      - 'doc/**'
+      - 'examples/**'
+      - 'benchmarks/**'
+      - 'README.md'
+      - '.pre-commit-config.yaml'
+      - 'jqmc_workflow/**'
 
 jobs:
   run:
@@ -67,6 +78,7 @@ jobs:
         pytest -s -v tests/test_swct.py --skip-heavy
         pytest -s -v tests/test_mcmc_force.py --skip-heavy
         pytest -s -v tests/test_lrdmc_force.py --skip-heavy
+        pytest -s -v tests/test_mixed_precision.py --precision-mode=mixed --skip-heavy
 
     - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
       run: |
