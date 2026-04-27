@@ -307,10 +307,20 @@ class TestMCMCOptaxRoundtrip:
     """Optax optimizer state round-trip through MCMC save/load."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, trexio_file, jastrow_combo, tmp_path):
-        """Build hamiltonian_data once per test method."""
+    def _setup(self, trexio_file, jastrow_combo, tmp_path, monkeypatch):
+        """Build hamiltonian_data once per test method.
+
+        ``run_optimize`` writes ``hamiltonian_data_opt_step_*.h5`` checkpoint
+        files relative to the current working directory.  Without isolating
+        the CWD per test, parametrized runs (especially under pytest-xdist)
+        race on the same filename and h5py raises
+        ``BlockingIOError: Resource temporarily unavailable`` from the
+        underlying file lock.  Switch CWD to the per-test ``tmp_path`` so
+        each test owns its own checkpoint files.
+        """
         self.hd = _build_hamiltonian(trexio_file, jastrow_combo)
         self.tmp_path = tmp_path
+        monkeypatch.chdir(tmp_path)
 
     def test_optax_adam_state_roundtrip(self):
         """After 1 optax optimization step, optimizer_runtime survives save→load."""
