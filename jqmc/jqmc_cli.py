@@ -35,7 +35,7 @@
 # python modules
 import os
 import sys
-from logging import FileHandler, Formatter, StreamHandler, getLogger
+from logging import DEBUG, FileHandler, Formatter, StreamHandler, getLogger
 
 import jax
 import toml
@@ -48,6 +48,7 @@ from ._checkpoint import merge_rank_checkpoints
 
 # jQMC
 from ._header_footer import _print_footer, _print_header
+from ._jqmc_utility import num_sep_line
 from ._precision import configure as configure_precision
 from ._precision import mode_label as precision_mode_label
 from ._precision import zone_detail as precision_zone_detail
@@ -67,6 +68,25 @@ jax.config.update("jax_traceback_filtering", "off")
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
+
+
+def _log_precision_section() -> None:
+    """Log the active precision configuration as a labeled section.
+
+    Output format mirrors the ``hamiltonian_data`` info section: a title
+    line, top ``=`` separator, the summary at INFO level, the per-zone
+    detail at DEBUG level, and a bottom ``=`` separator.
+    """
+    logger.info("=" * num_sep_line)
+    logger.info("Printing out precision information.")
+    logger.info("=" * num_sep_line)
+    logger.info("Precision: %s", precision_mode_label())
+    if logger.isEnabledFor(DEBUG):
+        logger.debug("Zone detail:")
+        for line in precision_zone_detail().split("\n"):
+            logger.debug(line)
+    logger.info("=" * num_sep_line)
+    logger.info("")
 
 
 def _cli():
@@ -259,9 +279,6 @@ def _cli():
             sorted(extra_keys),
         )
     configure_precision(precision_mode)
-    logger.info("Precision: %s", precision_mode_label())
-    logger.debug("Precision zone detail:\n%s", precision_zone_detail())
-    logger.info("")
 
     # default parameters
     parameters = cli_parameters.copy()
@@ -337,6 +354,8 @@ def _cli():
                 comput_log_WF_param_deriv=parameter_derivatives,
                 use_swct=use_swct,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         mcmc.hamiltonian_data._logger_info()
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -469,6 +488,8 @@ def _cli():
                 comput_log_WF_param_deriv=True,
                 comput_e_L_param_deriv=_need_eL_deriv,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         mcmc.hamiltonian_data._logger_info()
         mcmc.run_optimize(
@@ -580,6 +601,8 @@ def _cli():
                 epsilon_PW=epsilon_PW,
                 use_swct=use_swct,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -682,6 +705,8 @@ def _cli():
                 epsilon_PW=epsilon_PW,
                 use_swct=use_swct,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)

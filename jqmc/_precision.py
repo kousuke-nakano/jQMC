@@ -373,6 +373,12 @@ ALL_ZONES = frozenset(_FULL_PRECISION.keys())
 # Strings are stored (not numpy/jax dtype types) so the str -> jnp.* / np.*
 # conversion lives inside the per-flavor accessors below.  This keeps the
 # concrete dtype flavor (jnp vs np) cleanly separated at the API boundary.
+#
+# This module-level dict is the **single source of truth** for the precision
+# state within a Python process: ``configure(mode)`` clears and refills it,
+# and ``get_dtype_jnp`` / ``get_dtype_np`` read from it.  No other variable
+# (class attribute, environment variable, etc.) holds the active dtype
+# mapping — this dict is the only place to consult or mutate.
 _zone_dtypes: dict[str, str] = {}
 
 
