@@ -2,7 +2,8 @@
 
 Precision Zones:
     - ``mo_eval``: forward MO evaluation (compute_MOs).
-    - ``mo_grad_lap``: MO gradient and Laplacian (compute_MOs_grad, compute_MOs_laplacian).
+    - ``mo_grad``: MO gradient (compute_MOs_grad).
+    - ``mo_lap``: MO Laplacian (compute_MOs_laplacian).
 
 See :mod:`jqmc._precision` for details.
 """
@@ -285,10 +286,10 @@ def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: Laplacians of each MO, shape ``(num_mo, N_e)``.
     """
-    dtype_jnp = get_dtype_jnp("mo_grad_lap")
+    dtype_jnp = get_dtype_jnp("mo_lap")
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
-    # ao_lap lives in the ao_grad_lap zone; cast to mo_grad_lap at the use site
+    # ao_lap lives in the ao_lap zone; cast to mo_lap at the use site
     # (Principle 3b — cast operands to this function's own zone immediately
     # before consuming them as arithmetic operands).
     return jnp.dot(mo_coefficients, ao_lap.astype(dtype_jnp))
@@ -352,10 +353,10 @@ def compute_MOs_grad(
         tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]: Gradients per component
         ``(grad_x, grad_y, grad_z)``, each of shape ``(num_mo, N_e)``.
     """
-    dtype_jnp = get_dtype_jnp("mo_grad_lap")
+    dtype_jnp = get_dtype_jnp("mo_grad")
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
-    # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad_lap at the
+    # AO gradient outputs live in the ao_grad zone; cast to mo_grad at the
     # use site (Principle 3b — cast operands to this function's own zone immediately
     # before consuming them as arithmetic operands).
     mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
@@ -374,10 +375,10 @@ def _compute_MOs_grad_autodiff(
     npt.NDArray[np.float64],
 ]:
     """This method is for computing the gradients (x,y,z) of the given molecular orbital at r_carts."""
-    dtype_jnp = get_dtype_jnp("mo_grad_lap")
+    dtype_jnp = get_dtype_jnp("mo_grad")
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = _compute_AOs_grad_autodiff(mos_data.aos_data, r_carts)
-    # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad_lap at the
+    # AO gradient outputs live in the ao_grad zone; cast to mo_grad at the
     # use site (Principle 3b).
     mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
     mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y.astype(dtype_jnp))

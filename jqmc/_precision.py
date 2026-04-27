@@ -20,7 +20,7 @@ the table below (and enforced by convention in ``_FULL_PRECISION`` /
 Principle 2 — A module may own multiple Precision Zones.
 ------------------------------------------------------------
 Different code paths in the same module legitimately need different precisions
-(e.g. ``ao_eval`` vs ``ao_grad_lap``, or ``det_eval`` vs ``det_ratio``). Each
+(e.g. ``ao_eval`` vs ``ao_grad``, or ``det_eval`` vs ``det_ratio``). Each
 zone is named for its *purpose*, not for its dtype.
 
 ------------------------------------------------------------
@@ -174,9 +174,11 @@ Precision Zones
 Zone                Owning module                      Default    Mixed     risk   E_L path
 ==================  =================================  =========  ========  =====  =========
 ``ao_eval``         atomic_orbital.py (forward)        float64    float32   low    core
-``ao_grad_lap``     atomic_orbital.py (grad/lap)       float64    float32   low    core
+``ao_grad``         atomic_orbital.py (gradient)       float64    float32   low    core
+``ao_lap``          atomic_orbital.py (Laplacian)      float64    float64   high§  core
 ``mo_eval``         molecular_orbital.py (forward)     float64    float64   high*  core
-``mo_grad_lap``     molecular_orbital.py (grad/lap)    float64    float64   high   core
+``mo_grad``         molecular_orbital.py (gradient)    float64    float64   high   core
+``mo_lap``          molecular_orbital.py (Laplacian)   float64    float64   high   core
 ``jastrow_eval``    jastrow_factor.py (forward)        float64    float32   low    core†
 ``jastrow_grad_lap`` jastrow_factor.py (grad/lap)      float64    float32   low    core
 ``jastrow_ratio``   jastrow_factor.py (ratio update)   float64    float32   low    indirect‡
@@ -200,6 +202,16 @@ amplified by log|det|.  See ``bug/fp32`` diagnostics.
 forward values (J and ln|Psi|) do not enter the E_L formula directly
 (E_L depends on *derivatives* of ln|Psi|).  Diagnostics show zero E_L
 bias when these zones alone are fp32.
+
+§ ``ao_lap`` is fp64 even in mixed mode because the analytic Laplacian
+kernel for spherical AOs contains catastrophic cancellation
+(``4 Z² r² − 6 Z`` and ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``
+terms) that fp32 cannot resolve for tight Gaussians. Diagnostic
+``bug/fp32/diag_07_ao_grad_vs_lap_split.py`` showed that
+``ao_lap=fp32`` alone reproduces the full atomic-force bias
+(``max|dF| ≈ 1.9 Ha/bohr`` on N₂ at scale=0.3, ``≈ 2e−2 Ha/bohr`` on
+the water-cluster-8 system), while ``ao_grad=fp32`` alone is safe
+(``max|dF| < 8e−3 Ha/bohr``).
 
 ‡ ``det_ratio`` and ``jastrow_ratio`` affect E_L **indirectly** through
 the ECP non-local potential, which evaluates Psi(R')/Psi(R) on a
@@ -225,7 +237,7 @@ Usage::
         # NOTE: never reach for another module's zone (e.g.
         # ``get_dtype_jnp("local_energy")``) here — that violates
         # Principle 1 (zone ↔ owning module is 1:1). atomic_orbital.py
-        # may only consult ao_eval / ao_grad_lap.
+        # may only consult ao_eval / ao_grad / ao_lap.
         dtype_jnp = get_dtype_jnp("ao_eval")
         R_carts = aos_data._atomic_center_carts_jnp
         diff = (r_carts - R_carts).astype(dtype_jnp)
@@ -276,10 +288,12 @@ logger = logging.getLogger(__name__)
 _FULL_PRECISION: dict[str, str] = {
     # atomic_orbital.py
     "ao_eval": "float64",  # AO forward evaluation
-    "ao_grad_lap": "float64",  # AO gradient / Laplacian
+    "ao_grad": "float64",  # AO gradient
+    "ao_lap": "float64",  # AO Laplacian
     # molecular_orbital.py
     "mo_eval": "float64",  # MO forward evaluation (mo_coef @ AO)
-    "mo_grad_lap": "float64",  # MO gradient / Laplacian
+    "mo_grad": "float64",  # MO gradient
+    "mo_lap": "float64",  # MO Laplacian
     # jastrow_factor.py
     "jastrow_eval": "float64",  # Jastrow factor (J1/J2/J3)
     "jastrow_grad_lap": "float64",  # Jastrow gradient / Laplacian
@@ -307,13 +321,19 @@ _FULL_PRECISION: dict[str, str] = {
 #                      The downstream consumer (mo_eval / det_eval /
 #                      jastrow_eval) is fp64 and explicitly casts the AO
 #                      result up before any sensitive arithmetic.
-#   ao_grad_lap      - AO gradient / Laplacian kernel; same O(N_ao × N_e)
-#                      cost as ao_eval.  Diagnostics show bias < 6e-05 Ha
-#                      at 32 electrons (0.05 kcal/mol margin ×1.3).
+#   ao_grad          - AO analytic gradient kernel; same O(N_ao × N_e)
+#                      cost as ao_eval.  Diagnostics
+#                      (bug/fp32/diag_07) show grad-only fp32 yields
+#                      max|dF| < 8e-3 Ha/bohr (relative bias ~5e-5 on
+#                      water-cluster-8) — well within chemical accuracy.
 #   jastrow_eval     - smooth correlation function value (pre-exp).
-#   jastrow_grad_lap - nabla J, nabla^2 J; Jastrow is a smooth function
-#                      with low cancellation.  Diagnostics show bias
-#                      < 8e-06 Ha at 32 electrons (0.05 kcal/mol margin ×11).
+#   jastrow_grad_lap - nabla J, nabla^2 J; smooth Jastrow factor, low
+#                      cancellation. Diagnostics show bias < 8e-06 Ha
+#                      at 32 electrons (0.05 kcal/mol margin ×11).
+#                      Kept as a single zone (no grad/lap split) because
+#                      both halves share the same fp32 risk profile and
+#                      Jastrow grad/lap functions compute the two
+#                      together (``compute_grads_and_laplacian_*``).
 #   jastrow_ratio    - J(R')-J(R) log-ratio; smooth and well-behaved.
 #                      Diagnostics show bias < 2e-06 Ha (margin ×44).
 #
@@ -322,6 +342,12 @@ _FULL_PRECISION: dict[str, str] = {
 # unacceptable bias on E_L for ~32-electron systems, OR the
 # kernel is cheap enough that fp32 is not worth the bias:
 #
+#   ao_lap        - analytic Laplacian kernel for spherical/Cartesian AOs
+#                   contains catastrophic cancellation (``4 Z² r² − 6 Z``
+#                   and ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``).
+#                   diag_07 showed lap=fp32 alone yields max|dF| ≈ 1.9
+#                   Ha/bohr on N₂ (scale=0.3), reproducing the entire
+#                   bias of grad+lap=fp32. fp64 mandatory.
 #   coulomb       - sum of 1/r + ECP spherical quadrature.  Cheap
 #                   (O(N_e^2) el-el + O(N_e * N_nuc) el-ion, vs
 #                   O(N_e * N_ao) AO eval) but contributes the
@@ -333,8 +359,15 @@ _FULL_PRECISION: dict[str, str] = {
 #   det_eval      - geminal matrix + log(det) + SVD; cancellation in
 #                   log(det), SVD 1/s near-singular, ε≈1e-7 entries
 #                   produce O(1) log|det| error.
-#   *_grad_lap    - second derivatives of ln|Psi|; cancellation-sensitive
-#                   (except ao_grad_lap and jastrow_grad_lap — smooth kernels).
+#   mo_grad / mo_lap / det_grad_lap
+#                 - second derivatives of ln|Psi|; cancellation-sensitive
+#                   on the determinant side (the AO-side fp32 is absorbed
+#                   by the fp64 mo_coef matmul). jastrow_grad_lap is the
+#                   exception (smooth Jastrow, no severe cancellation).
+#                   det_grad_lap is kept as a single zone (no grad/lap
+#                   split) for symmetry with jastrow_grad_lap and because
+#                   the determinant grad/lap functions naturally compute
+#                   both quantities together (``compute_grads_and_laplacian_*``).
 #   wf_kinetic    - sum (lap_J + lap_lnD) + |grad_J + grad_lnD|^2; cancellation.
 #   local_energy  - T + V assembly; small differences between large terms.
 #   det_ratio     - SM rank-1 ratio used by MCMC accept/reject AND
@@ -343,17 +376,19 @@ _FULL_PRECISION: dict[str, str] = {
 _MIXED_PRECISION: dict[str, str] = {
     # atomic_orbital.py
     "ao_eval": "float32",  # low risk (heavy kernel)
-    "ao_grad_lap": "float32",  # low risk (bias < 6e-05 Ha at 32e; heavy kernel)
+    "ao_grad": "float32",  # low risk (smooth grad kernel; bias < 8e-3 Ha/bohr atomic force)
+    "ao_lap": "float64",  # high risk (catastrophic cancellation in 4Z²r²-6Z terms)
     # molecular_orbital.py
     "mo_eval": "float64",  # high risk (feeds det_eval)
-    "mo_grad_lap": "float64",  # high risk
+    "mo_grad": "float64",  # high risk
+    "mo_lap": "float64",  # high risk
     # jastrow_factor.py
     "jastrow_eval": "float32",  # low risk
     "jastrow_grad_lap": "float32",  # low risk (smooth J; bias < 8e-06 Ha at 32e)
     "jastrow_ratio": "float32",  # low risk (smooth J ratio; bias < 2e-06 Ha at 32e)
     # determinant.py
     "det_eval": "float64",  # high risk (LU/det / SVD)
-    "det_grad_lap": "float64",  # high risk
+    "det_grad_lap": "float64",  # high risk (kept unsplit for symmetry with jastrow)
     "det_ratio": "float64",  # high risk (SM update error + ECP non-local ratio)
     # coulomb_potential.py
     "coulomb": "float64",  # cheap kernel + largest single fp32 bias (~6e-5 Ha)

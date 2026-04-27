@@ -251,7 +251,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_grad_lap", "loose")
+    atol, rtol = get_tolerance("mo_grad", "loose")
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
@@ -388,7 +388,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_grad_lap", "loose")
+    atol, rtol = get_tolerance("mo_lap", "loose")
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -454,8 +454,8 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad_lap (fp32 in mixed) -> mo_grad_lap (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_grad_lap"], "strict")
+    # Path crosses ao_grad (fp32 in mixed) -> mo_grad (fp64); use min.
+    atol, rtol = get_tolerance_min(["ao_grad", "mo_grad"], "strict")
     assert not np.any(np.isnan(np.asarray(grad_x_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_x_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol, rtol=rtol)
@@ -522,8 +522,8 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad_lap (fp32 in mixed) -> mo_grad_lap (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_grad_lap"], "strict")
+    # Path crosses ao_lap (fp64) -> mo_lap (fp64); use min.
+    atol, rtol = get_tolerance_min(["ao_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_lap_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_lap_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol, rtol=rtol)
@@ -603,19 +603,21 @@ def test_MOs_sphe_to_cart():
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
 
-    # grad/lap path crosses ao_grad_lap (fp32 in mixed) -> mo_grad_lap.
-    atol_gl, rtol_gl = get_tolerance_min(["ao_grad_lap", "mo_grad_lap"], "strict")
+    # grad path crosses ao_grad (fp32 in mixed) -> mo_grad.
+    atol_g, rtol_g = get_tolerance_min(["ao_grad", "mo_grad"], "strict")
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in second argument"
-        np.testing.assert_allclose(g_cart, g_sphe, atol=atol_gl, rtol=rtol_gl)
+        np.testing.assert_allclose(g_cart, g_sphe, atol=atol_g, rtol=rtol_g)
 
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
 
+    # lap path crosses ao_lap (fp64) -> mo_lap (fp64).
+    atol_l, rtol_l = get_tolerance_min(["ao_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol_gl, rtol=rtol_gl)
+    np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol_l, rtol=rtol_l)
 
     jax.clear_caches()
 
@@ -708,19 +710,21 @@ def test_MOs_cart_to_sphe():
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
 
-    # grad/lap path crosses ao_grad_lap (fp32 in mixed) -> mo_grad_lap.
-    atol_gl, rtol_gl = get_tolerance_min(["ao_grad_lap", "mo_grad_lap"], "strict")
+    # grad path crosses ao_grad (fp32 in mixed) -> mo_grad.
+    atol_g, rtol_g = get_tolerance_min(["ao_grad", "mo_grad"], "strict")
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in second argument"
-        np.testing.assert_allclose(g_sphe, g_cart, atol=atol_gl, rtol=rtol_gl)
+        np.testing.assert_allclose(g_sphe, g_cart, atol=atol_g, rtol=rtol_g)
 
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
 
+    # lap path crosses ao_lap (fp64) -> mo_lap (fp64).
+    atol_l, rtol_l = get_tolerance_min(["ao_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol_gl, rtol=rtol_gl)
+    np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol_l, rtol=rtol_l)
 
     jax.clear_caches()
 

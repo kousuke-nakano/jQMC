@@ -48,6 +48,7 @@ from jqmc.determinant import (  # noqa: E402
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
+    compute_grads_and_laplacian_ln_Det,
     compute_ln_det_geminal_all_elements,
 )
 from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy  # noqa: E402
@@ -187,16 +188,16 @@ class TestAODtype:
         )
 
     def test_compute_AOs_grad_output_dtype(self, h2_data):
-        """compute_AOs_grad must return ao_grad_lap zone dtype."""
+        """compute_AOs_grad must return ao_grad zone dtype."""
         grad_x, grad_y, grad_z = compute_AOs_grad(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype_jnp("ao_grad_lap")
+        expected = get_dtype_jnp("ao_grad")
         for name, arr in [("grad_x", grad_x), ("grad_y", grad_y), ("grad_z", grad_z)]:
             assert arr.dtype == expected, f"compute_AOs_grad {name} dtype is {arr.dtype}, expected {expected}."
 
     def test_compute_AOs_laplacian_output_dtype(self, h2_data):
-        """compute_AOs_laplacian must return ao_grad_lap zone dtype."""
+        """compute_AOs_laplacian must return ao_lap zone dtype."""
         lap = compute_AOs_laplacian(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype_jnp("ao_grad_lap")
+        expected = get_dtype_jnp("ao_lap")
         assert lap.dtype == expected, f"compute_AOs_laplacian dtype is {lap.dtype}, expected {expected}."
 
 
@@ -315,6 +316,17 @@ class TestDeterminantDtype:
             f"compute_ln_det dtype is {jnp.asarray(ln_det).dtype}, expected {expected}."
         )
 
+    def test_compute_grads_and_laplacian_ln_Det_output_dtype(self, h2_data):
+        """compute_grads_and_laplacian_ln_Det outputs must use det_grad_lap zone dtype."""
+        grad_up, grad_dn, lap_up, lap_dn = compute_grads_and_laplacian_ln_Det(
+            h2_data["geminal_data"], h2_data["r_up"], h2_data["r_dn"]
+        )
+        expected = get_dtype_jnp("det_grad_lap")
+        _assert_dtype(grad_up, expected, "compute_grads_and_laplacian_ln_Det grad_up")
+        _assert_dtype(grad_dn, expected, "compute_grads_and_laplacian_ln_Det grad_dn")
+        _assert_dtype(lap_up, expected, "compute_grads_and_laplacian_ln_Det lap_up")
+        _assert_dtype(lap_dn, expected, "compute_grads_and_laplacian_ln_Det lap_dn")
+
 
 # ---------------------------------------------------------------------------
 # F. Coulomb zone (coulomb → float32 in mixed)
@@ -414,11 +426,11 @@ class TestAOSpheDtype:
     def test_compute_AOs_sphe_grad_output_dtype(self, h2_sphe_data):
         gx, gy, gz = compute_AOs_grad(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
         for name, arr in [("grad_x", gx), ("grad_y", gy), ("grad_z", gz)]:
-            _assert_dtype(arr, get_dtype_jnp("ao_grad_lap"), f"compute_AOs_grad sphe {name}")
+            _assert_dtype(arr, get_dtype_jnp("ao_grad"), f"compute_AOs_grad sphe {name}")
 
     def test_compute_AOs_sphe_laplacian_output_dtype(self, h2_sphe_data):
         lap = compute_AOs_laplacian(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
-        _assert_dtype(lap, get_dtype_jnp("ao_grad_lap"), "compute_AOs_laplacian (sphe)")
+        _assert_dtype(lap, get_dtype_jnp("ao_lap"), "compute_AOs_laplacian (sphe)")
 
 
 class TestMOExtendedDtype:
@@ -426,13 +438,13 @@ class TestMOExtendedDtype:
 
     def test_compute_MOs_grad_output_dtype(self, h2_data):
         gx, gy, gz = compute_MOs_grad(h2_data["mos_data_up"], h2_data["r_up"])
-        expected = get_dtype_jnp("mo_grad_lap")
+        expected = get_dtype_jnp("mo_grad")
         for name, arr in [("grad_x", gx), ("grad_y", gy), ("grad_z", gz)]:
             _assert_dtype(arr, expected, f"compute_MOs_grad {name}")
 
     def test_compute_MOs_laplacian_output_dtype(self, h2_data):
         lap = compute_MOs_laplacian(h2_data["mos_data_up"], h2_data["r_up"])
-        _assert_dtype(lap, get_dtype_jnp("mo_grad_lap"), "compute_MOs_laplacian")
+        _assert_dtype(lap, get_dtype_jnp("mo_lap"), "compute_MOs_laplacian")
 
 
 class TestJastrowOneBodyDtype:

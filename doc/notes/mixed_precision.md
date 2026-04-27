@@ -30,7 +30,7 @@ Or keep the default (all float64, backward compatible):
 
 ## Precision zones
 
-jQMC divides the computation into 16 **Precision Zones**.  Each zone is
+jQMC divides the computation into 18 **Precision Zones**.  Each zone is
 owned by exactly one module and is named for its *purpose* (not its
 dtype).  The mapping from zone to dtype is determined entirely by the
 chosen mode.
@@ -38,9 +38,11 @@ chosen mode.
 | Zone               | Owning module          | `full` | `mixed`  | risk     | E_L path   |
 |--------------------|------------------------|--------|----------|----------|------------|
 | `ao_eval`          | `atomic_orbital`       | f64    | **f32**  | low      | core       |
-| `ao_grad_lap`      | `atomic_orbital`       | f64    | **f32**  | low      | core       |
+| `ao_grad`          | `atomic_orbital`       | f64    | **f32**  | low      | core       |
+| `ao_lap`           | `atomic_orbital`       | f64    | f64      | high§    | core       |
 | `mo_eval`          | `molecular_orbital`    | f64    | f64      | high\*   | core       |
-| `mo_grad_lap`      | `molecular_orbital`    | f64    | f64      | high     | core       |
+| `mo_grad`          | `molecular_orbital`    | f64    | f64      | high     | core       |
+| `mo_lap`           | `molecular_orbital`    | f64    | f64      | high     | core       |
 | `jastrow_eval`     | `jastrow_factor`       | f64    | **f32**  | low      | core†      |
 | `jastrow_grad_lap` | `jastrow_factor`       | f64    | **f32**  | low      | core       |
 | `jastrow_ratio`    | `jastrow_factor`       | f64    | **f32**  | low      | indirect‡  |
@@ -68,6 +70,17 @@ bias when these zones alone are fp32.
 ECP non-local potential, which evaluates `Psi(R')/Psi(R)` on a
 quadrature grid via rank-1 ratio updates.  In non-ECP systems these
 zones have no E_L impact.
+
+§ `ao_lap` is kept fp64 in `mixed` mode because the analytic Laplacian
+formula contains catastrophic-cancellation terms of the form
+`4 Z² r² − 6 Z` and `(safe_div − 2 Z·base)² − safe_div² − 2 Z` that
+amplify fp32 round-off into a force bias of order ~1 Ha/bohr in N₂
+(diagnostic `bug/fp32/diag_07_ao_grad_vs_lap_split.py`).  The grad
+counterpart `ao_grad` has no such cancellation and is safe at fp32
+(max|dF| ≈ 5e-6 Ha/bohr).  This is the only zone pair in jQMC where the
+grad and Laplacian halves take different dtypes, motivating the split
+of the original `ao_grad_lap` zone into separate `ao_grad` / `ao_lap`
+zones.
 
 ## Workflow integration
 
@@ -100,8 +113,8 @@ module.  The mapping zone ↔ owning module is one-to-one.
 
 **Principle 2 — A module may own multiple Precision Zones.**
 Different code paths in the same module legitimately need different
-precisions (e.g. `ao_eval` vs `ao_grad_lap`, or `det_eval` vs `det_ratio`).
-Each zone is named for its *purpose*, not for its dtype.
+precisions (e.g. `ao_eval` vs `ao_grad` vs `ao_lap`, or `det_eval` vs
+`det_ratio`).  Each zone is named for its *purpose*, not for its dtype.
 
 **Principle 3 — Cast responsibility lies with the function that does
 arithmetic on the value, never with passthrough wrappers.**

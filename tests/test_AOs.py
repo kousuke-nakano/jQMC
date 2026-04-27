@@ -504,7 +504,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     gx_auto, gy_auto, gz_auto = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
     gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad_lap", "strict")
+    atol, rtol = get_tolerance("ao_grad", "strict")
     assert not np.any(np.isnan(np.asarray(gx_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an, gx_auto, atol=atol, rtol=rtol)
@@ -567,7 +567,7 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     gx_auto_cart, gy_auto_cart, gz_auto_cart = _compute_AOs_grad_autodiff(aos_data=aos_data_cart, r_carts=r_carts)
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data_cart, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad_lap", "loose")
+    atol, rtol = get_tolerance("ao_grad", "loose")
     assert not np.any(np.isnan(np.asarray(gx_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -755,7 +755,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
     gx_an_cart, gy_an_cart, gz_an_cart = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad_lap", "loose")
+    atol, rtol = get_tolerance("ao_grad", "loose")
     assert not np.any(np.isnan(np.asarray(gx_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -867,7 +867,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     lap_auto_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad_lap", "strict")
+    atol, rtol = get_tolerance("ao_lap", "strict")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_auto_cart, atol=atol, rtol=rtol)
@@ -965,7 +965,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad_lap", "loose")
+    atol, rtol = get_tolerance("ao_lap", "loose")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1065,7 +1065,7 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad_lap", "loose")
+    atol, rtol = get_tolerance("ao_lap", "loose")
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_auto_cart, lap_num_cart, atol=atol, rtol=rtol)

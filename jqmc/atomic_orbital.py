@@ -2329,11 +2329,21 @@ def _compute_S_l_m(
 def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Vectorized solid harmonics values, gradients, and Laplacians.
 
+    Pinned to the ``ao_lap`` zone (fp64 in mixed mode). The gradient
+    consumer (``_compute_AOs_grad_analytic_sphe``) lives in the
+    ``ao_grad`` zone (fp32 in mixed mode); it is responsible for
+    down-casting the grad output of this helper to its own zone at the
+    use site (Principle 3b). Running the helper at the higher of the
+    two precisions is intentional — the solid-harmonics polynomial
+    expansion is cheap (49 × num_R × num_e) compared to the contracted
+    AO formulas, so the perf cost of fp64 here is small while keeping
+    the laplacian path numerically safe.
+
     Returns:
         tuple: (values, grads, laps) where values has shape (49, num_R, num_r), grads has shape (49, num_R, num_r, 3),
         and laps has shape (49, num_R, num_r).
     """
-    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    dtype_jnp = get_dtype_jnp("ao_lap")
     S_L_M_COEFFS = (
         jnp.array([1.0], dtype=dtype_jnp),
         jnp.array([1.0], dtype=dtype_jnp),
@@ -2580,9 +2590,9 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 @jit
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for Cartesian AOs (contracted)."""
-    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    dtype_jnp = get_dtype_jnp("ao_lap")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
-    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # via JAX promotion, then downcast to the ao_lap zone (Principle 3b).
     # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
     # accessor on the basis-data dataclass.
     R_carts = aos_data._atomic_center_carts_prim_jnp
@@ -2629,9 +2639,9 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 @jit
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for spherical AOs (contracted)."""
-    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    dtype_jnp = get_dtype_jnp("ao_lap")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
-    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # via JAX promotion, then downcast to the ao_lap zone (Principle 3b).
     # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
     # accessor on the basis-data dataclass.
     R_carts = aos_data._atomic_center_carts_prim_jnp
@@ -2892,9 +2902,9 @@ def _compute_AOs_laplacian_debug(
 @jit
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for Cartesian AOs (contracted)."""
-    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    dtype_jnp = get_dtype_jnp("ao_grad")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
-    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # via JAX promotion, then downcast to the ao_grad zone (Principle 3b).
     # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
     # accessor on the basis-data dataclass.
     R_carts = aos_data._atomic_center_carts_prim_jnp
@@ -2944,9 +2954,9 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 @jit
 def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for spherical AOs (contracted)."""
-    dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    dtype_jnp = get_dtype_jnp("ao_grad")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
-    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # via JAX promotion, then downcast to the ao_grad zone (Principle 3b).
     # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
     # accessor on the basis-data dataclass.
     R_carts = aos_data._atomic_center_carts_prim_jnp
@@ -2973,7 +2983,12 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     max_ml, S_l_m_dup_all_l_m = _compute_S_l_m(r_R_diffs_uq)
+    # ``_compute_S_l_m_and_grad_lap`` is pinned to ``ao_lap`` (fp64); its
+    # grad output is therefore returned in fp64. Cast it down to the
+    # ``ao_grad`` zone at the use site (Principle 3b) so the contracted
+    # grad arithmetic below stays in this function's own zone.
     _, S_l_m_grad_all_l_m, _ = _compute_S_l_m_and_grad_lap(r_R_diffs_uq)
+    S_l_m_grad_all_l_m = S_l_m_grad_all_l_m.astype(dtype_jnp)
 
     S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
         (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"
