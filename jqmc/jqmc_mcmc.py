@@ -1162,28 +1162,25 @@ class MCMC:
 
         Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-        # E: jackknife mean and std
-        sum_E_local = np.sum(E_jackknife_binned_local)
-        sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+        # Two-pass jackknife std (centered sum of squares) to avoid catastrophic
+        # cancellation in <x^2> - <x>^2 when M_total grows large (many walkers).
 
-        # E: global sums
-        sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
-        sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
-
+        # E: 1st pass — global mean
+        sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
         E_mean = sum_E_global / M_total
-        E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+
+        # E: 2nd pass — centered sum of squares (numerically stable)
+        sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
+        E_var = sumsq_centered_E_global / M_total
         E_std = np.sqrt((M_total - 1) * E_var)
 
-        # Var: jackknife mean and std
-        sum_Var_local = np.sum(Var_jackknife_binned_local)
-        sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-        # Var: global sums
-        sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
-        sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-
+        # Var: 1st pass — global mean
+        sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
         Var_mean = sum_Var_global / M_total
-        Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+
+        # Var: 2nd pass — centered sum of squares
+        sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
+        Var_var = sumsq_centered_Var_global / M_total
         Var_std = np.sqrt((M_total - 1) * Var_var)
 
         logger.devel(f"E = {E_mean} +- {E_std} Ha.")
@@ -1347,18 +1344,20 @@ class MCMC:
         )
         force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
+        # Two-pass jackknife std (centered sum of squares) to avoid catastrophic
+        # cancellation in <x^2> - <x>^2 when M_total grows large.
+
+        # 1st pass — global mean
         sum_force_local = np.sum(force_jn_local, axis=0)
-        sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
         sum_force_global = np.empty_like(sum_force_local)
-        sumsq_force_global = np.empty_like(sumsq_force_local)
-
         mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
-        mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
-
-        ## mean and var = E[x^2] - (E[x])^2
         mean_force_global = sum_force_global / M_total
-        var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+        # 2nd pass — centered sum of squares (numerically stable)
+        sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
+        sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
+        mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
+        var_force_global = sumsq_centered_force_global / M_total
 
         ## mean and std
         force_mean = mean_force_global
@@ -1663,18 +1662,21 @@ class MCMC:
         bar_eL_bar_O_jn_local = np.einsum("i,ij->ij", eL_jn_local, O_jn_local)
 
         force_local = -2.0 * (eL_O_jn_local - bar_eL_bar_O_jn_local)  # (M_local, D)
+
+        # Two-pass jackknife std (centered sum of squares) to avoid catastrophic
+        # cancellation in <x^2> - <x>^2 when M_total grows large.
+
+        # 1st pass — global mean
         sum_local = np.sum(force_local, axis=0)  # shape (D,)
-        sumsq_local = np.sum(force_local**2, axis=0)  # shape (D,)
-
         sum_global = np.empty_like(sum_local)
-        sumsq_global = np.empty_like(sumsq_local)
-
         mpi_comm.Allreduce([sum_local, MPI.DOUBLE], [sum_global, MPI.DOUBLE], op=MPI.SUM)
-        mpi_comm.Allreduce([sumsq_local, MPI.DOUBLE], [sumsq_global, MPI.DOUBLE], op=MPI.SUM)
-
-        ## mean and var = E[x^2] - (E[x])^2
         mean_global = sum_global / M_total
-        var_global = (sumsq_global / M_total) - (sum_global / M_total) ** 2
+
+        # 2nd pass — centered sum of squares (numerically stable)
+        sumsq_centered_local = np.sum((force_local - mean_global) ** 2, axis=0)  # shape (D,)
+        sumsq_centered_global = np.empty_like(sumsq_centered_local)
+        mpi_comm.Allreduce([sumsq_centered_local, MPI.DOUBLE], [sumsq_centered_global, MPI.DOUBLE], op=MPI.SUM)
+        var_global = sumsq_centered_global / M_total
 
         ## mean and std
         generalized_force_mean = mean_global

@@ -2146,20 +2146,17 @@ class GFMC_t:
 
                 Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-                # E: jackknife mean and std
-                sum_E_local = np.sum(E_jackknife_binned_local)
-                sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
 
-                E_mean = sum_E_local / M_local
-                E_var = (sumsq_E_local / M_local) - (sum_E_local / M_local) ** 2
+                # E: 1st pass — mean, 2nd pass — centered sum of squares
+                E_mean = np.sum(E_jackknife_binned_local) / M_local
+                E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: jackknife mean and std
-                sum_Var_local = np.sum(Var_jackknife_binned_local)
-                sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-                Var_mean = sum_Var_local / M_total
-                Var_var = (sumsq_Var_local / M_total) - (sum_Var_local / M_local) ** 2
+                # Var: 1st pass — mean, 2nd pass — centered sum of squares
+                Var_mean = np.sum(Var_jackknife_binned_local) / M_total
+                Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
 
             else:
@@ -2243,28 +2240,25 @@ class GFMC_t:
 
             Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-            # E: jackknife mean and std
-            sum_E_local = np.sum(E_jackknife_binned_local)
-            sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: global sum
-            sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
-            sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
-
+            # E: 1st pass — global mean
+            sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
-            E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+
+            # E: 2nd pass — centered sum of squares (numerically stable)
+            sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
+            E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: jackknife mean and std
-            sum_Var_local = np.sum(Var_jackknife_binned_local)
-            sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-            # Var: global sum
-            sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
-            sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-
+            # Var: 1st pass — global mean
+            sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
-            Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+
+            # Var: 2nd pass — centered sum of squares
+            sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
+            Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
 
         # return
@@ -2383,12 +2377,10 @@ class GFMC_t:
 
                 force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
-                sum_force_local = np.sum(force_jn_local, axis=0)
-                sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
-                ## mean and var = E[x^2] - (E[x])^2
-                mean_force_global = sum_force_local / M_local
-                var_force_global = (sumsq_force_local / M_local) - (sum_force_local / M_local) ** 2
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
+                mean_force_global = np.sum(force_jn_local, axis=0) / M_local
+                var_force_global = np.sum((force_jn_local - mean_force_global) ** 2, axis=0) / M_local
 
                 ## mean and std
                 force_mean = mean_force_global
@@ -2545,18 +2537,20 @@ class GFMC_t:
 
             force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
+
+            # 1st pass — global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
-            sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
             sum_force_global = np.empty_like(sum_force_local)
-            sumsq_force_global = np.empty_like(sumsq_force_local)
-
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
-
-            ## mean and var = E[x^2] - (E[x])^2
             mean_force_global = sum_force_global / M_total
-            var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+            # 2nd pass — centered sum of squares (numerically stable)
+            sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
+            sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
+            mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
+            var_force_global = sumsq_centered_force_global / M_total
 
             ## mean and std
             force_mean = mean_force_global
@@ -6082,20 +6076,17 @@ class GFMC_n:
 
                 Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-                # E: jackknife mean and std
-                sum_E_local = np.sum(E_jackknife_binned_local)
-                sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
 
-                E_mean = sum_E_local / M_local
-                E_var = (sumsq_E_local / M_local) - (sum_E_local / M_local) ** 2
+                # E: 1st pass — mean, 2nd pass — centered sum of squares
+                E_mean = np.sum(E_jackknife_binned_local) / M_local
+                E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: jackknife mean and std
-                sum_Var_local = np.sum(Var_jackknife_binned_local)
-                sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-                Var_mean = sum_Var_local / M_total
-                Var_var = (sumsq_Var_local / M_total) - (sum_Var_local / M_local) ** 2
+                # Var: 1st pass — mean, 2nd pass — centered sum of squares
+                Var_mean = np.sum(Var_jackknife_binned_local) / M_total
+                Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
 
             else:
@@ -6179,28 +6170,25 @@ class GFMC_n:
 
             Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-            # E: jackknife mean and std
-            sum_E_local = np.sum(E_jackknife_binned_local)
-            sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: global sums
-            sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
-            sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
-
+            # E: 1st pass — global mean
+            sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
-            E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+
+            # E: 2nd pass — centered sum of squares (numerically stable)
+            sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
+            E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: jackknife mean and std
-            sum_Var_local = np.sum(Var_jackknife_binned_local)
-            sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-            # Var: global sums
-            sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
-            sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-
+            # Var: 1st pass — global mean
+            sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
-            Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+
+            # Var: 2nd pass — centered sum of squares
+            sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
+            Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
 
         # return
@@ -6320,12 +6308,10 @@ class GFMC_n:
 
                 force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
-                sum_force_local = np.sum(force_jn_local, axis=0)
-                sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
-                ## mean and var = E[x^2] - (E[x])^2
-                mean_force_global = sum_force_local / M_local
-                var_force_global = (sumsq_force_local / M_local) - (sum_force_local / M_local) ** 2
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
+                mean_force_global = np.sum(force_jn_local, axis=0) / M_local
+                var_force_global = np.sum((force_jn_local - mean_force_global) ** 2, axis=0) / M_local
 
                 ## mean and std
                 force_mean = mean_force_global
@@ -6484,18 +6470,20 @@ class GFMC_n:
 
             force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
+
+            # 1st pass — global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
-            sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
             sum_force_global = np.empty_like(sum_force_local)
-            sumsq_force_global = np.empty_like(sumsq_force_local)
-
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
-
-            ## mean and var = E[x^2] - (E[x])^2
             mean_force_global = sum_force_global / M_total
-            var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+            # 2nd pass — centered sum of squares (numerically stable)
+            sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
+            sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
+            mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
+            var_force_global = sumsq_centered_force_global / M_total
 
             ## mean and std
             force_mean = mean_force_global
