@@ -190,7 +190,11 @@ class MCMC:
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list = jnp.array([jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
+        # Use jax.random.split to obtain ``num_walkers`` independent PRNGKeys in
+        # one batched call; replaces the previous ``[fold_in(..., nw) for nw ...]``
+        # Python-loop, which scaled linearly with num_walkers and dominated init
+        # time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
 
         # initialize random seed
         np.random.seed(self.__mpi_seed)
@@ -221,15 +225,18 @@ class MCMC:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
         dtype_jnp = jnp.float64
         self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
@@ -4791,7 +4798,9 @@ class _MCMC_debug:
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list = jnp.array([jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
+        # Use jax.random.split (batched) to match the production MCMC class so
+        # MCMC ↔ _MCMC_debug parity tests stay aligned.
+        self.__jax_PRNG_key_list = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
 
         # initialize random seed
         np.random.seed(self.__mpi_seed)
@@ -4821,15 +4830,16 @@ class _MCMC_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed (see MCMC.__init__ for rationale).
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
         dtype_jnp = jnp.float64
         self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)

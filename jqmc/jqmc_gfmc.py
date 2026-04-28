@@ -242,9 +242,10 @@ class GFMC_t:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -269,15 +270,18 @@ class GFMC_t:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
         dtype_jnp = jnp.float64
         self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
@@ -2629,9 +2633,10 @@ class _GFMC_t_debug:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -2656,15 +2661,18 @@ class _GFMC_t_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
         dtype_jnp = jnp.float64
         self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
@@ -3937,9 +3945,10 @@ class GFMC_n:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -3964,15 +3973,18 @@ class GFMC_n:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
         dtype_jnp = jnp.float64
         self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
@@ -6560,9 +6572,10 @@ class _GFMC_n_debug:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -6587,15 +6600,18 @@ class _GFMC_n_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
         dtype_jnp = jnp.float64
         self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
