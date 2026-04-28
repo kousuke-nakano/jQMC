@@ -45,14 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    atol_debug_vs_production,
-    rtol_auto_vs_analytic_deriv,
-    rtol_auto_vs_numerical_deriv,
-    rtol_debug_vs_production,
-)
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -87,6 +80,7 @@ jax.config.update("jax_traceback_filtering", "off")
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
     """Test the kinetic energy computation."""
@@ -127,13 +121,14 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    atol, rtol = get_tolerance("wf_kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_debug),
         np.asarray(K_jax),
-        rtol=rtol_auto_vs_numerical_deriv,
-        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol,
+        atol=atol,
     )
 
 
@@ -177,9 +172,10 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(K_analytic, K_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(K_analytic, K_auto, atol=atol, rtol=rtol)
 
 
 @pytest.mark.activate_if_skip_heavy
@@ -225,24 +221,21 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    atol, rtol = get_tolerance("wf_kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        K_elements_up_debug, K_elements_up_auto, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(K_elements_up_debug, K_elements_up_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(K_elements_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        K_elements_dn_debug, K_elements_dn_auto, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(K_elements_dn_debug, K_elements_dn_auto, atol=atol, rtol=rtol)
 
     assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_elements_up_debug),
         np.asarray(K_elements_up_auto),
-        rtol=rtol_auto_vs_numerical_deriv,
-        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol,
+        atol=atol,
     )
 
     assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_debug)))), "NaN detected in first argument"
@@ -250,8 +243,8 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
     np.testing.assert_allclose(
         np.asarray(K_elements_dn_debug),
         np.asarray(K_elements_dn_auto),
-        rtol=rtol_auto_vs_numerical_deriv,
-        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol,
+        atol=atol,
     )
 
 
@@ -298,16 +291,13 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        K_elements_up_auto, K_elements_up_analytic, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(K_elements_up_auto, K_elements_up_analytic, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_dn_analytic))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        K_elements_dn_auto, K_elements_dn_analytic, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv
-    )
+    np.testing.assert_allclose(K_elements_dn_auto, K_elements_dn_analytic, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
@@ -369,12 +359,13 @@ def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
         geminal_inverse=A_inv,
     )
 
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(ke_up_fast, ke_up_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(ke_up_fast, ke_up_debug, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(ke_dn_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_dn_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(ke_dn_fast, ke_dn_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(ke_dn_fast, ke_dn_debug, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
@@ -450,50 +441,49 @@ def test_debug_and_jax_discretized_kinetic_energy(trexio_file: str):
         RT=RT,
     )
 
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_kinetic_part_r_up_carts_jax,
         mesh_kinetic_part_r_up_carts_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_kinetic_part_r_dn_carts_jax,
         mesh_kinetic_part_r_dn_carts_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax_fast_update))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_kinetic_part_r_up_carts_jax_fast_update,
         mesh_kinetic_part_r_up_carts_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax_fast_update))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_kinetic_part_r_dn_carts_jax_fast_update,
         mesh_kinetic_part_r_dn_carts_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        elements_kinetic_part_jax, elements_kinetic_part_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(elements_kinetic_part_jax, elements_kinetic_part_debug, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax_fast_update))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         elements_kinetic_part_jax_fast_update,
         elements_kinetic_part_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
 
@@ -552,11 +542,12 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     )
 
     # They should be identical up to numerical noise
+    atol, rtol = get_tolerance("wf_kinetic", "loose")
     np.testing.assert_allclose(
         np.asarray(nd_analytic),
         np.asarray(nd_debug),
-        rtol=rtol_auto_vs_numerical_deriv,
-        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol,
+        atol=atol,
     )
 
     # Sanity: nodal distance should be positive
@@ -604,6 +595,7 @@ def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -618,8 +610,8 @@ def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
         np.testing.assert_allclose(
             val_fast,
             val_ref,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
             err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
         )
 
@@ -640,6 +632,7 @@ def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
     grad_ref_fn = jax.grad(evaluate_ln_wavefunction, argnums=0)
     grad_fast_fn = jax.grad(evaluate_ln_wavefunction_fast, argnums=0)
 
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -653,8 +646,8 @@ def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
             lambda a, b: np.testing.assert_allclose(
                 np.asarray(a),
                 np.asarray(b),
-                atol=atol_debug_vs_production,
-                rtol=rtol_debug_vs_production,
+                atol=atol,
+                rtol=rtol,
                 err_msg="Backward mismatch in evaluate_ln_wavefunction_fast",
             ),
             grad_ref,

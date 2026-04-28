@@ -1,4 +1,12 @@
-"""Wavefunction module."""
+"""Wavefunction module.
+
+Precision Zones:
+    - ``kinetic``: kinetic-energy evaluation (compute_kinetic_energy*).
+    - Zone-boundary casts when combining results from ``jastrow`` and
+      ``determinant`` zones.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -46,10 +54,10 @@ from jax import grad, hessian, jit, tree_util, vmap
 from jax import typing as jnpt
 
 from ._diff_mask import DiffMask, apply_diff_mask
+from ._precision import get_dtype_jnp
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap
 from .determinant import (
     Geminal_data,
-    _compute_ratio_determinant_part_rank1_update,
     _compute_ratio_determinant_part_split_spin,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,
@@ -662,8 +670,8 @@ def evaluate_ln_wavefunction(
 
     This follows the original behavior: compute the Jastrow part, multiply the
     determinant part, and then take ``log(abs(det))`` while keeping the full
-    Jastrow contribution. The inputs are converted to float64 ``jax.Array`` for
-    downstream consistency.
+    Jastrow contribution. The inputs are converted to the determinant zone dtype
+    ``jax.Array`` for downstream consistency.
 
     Args:
         wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
@@ -673,22 +681,29 @@ def evaluate_ln_wavefunction(
     Returns:
         Scalar log-value of the wavefunction magnitude.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # NOTE: do not pre-cast r_*_carts. They are forwarded unchanged to
+    # ``compute_Jastrow_part`` and ``compute_det_geminal_all_elements`` (which
+    # ultimately reach the AO kernels that reconstruct ``r - R`` in float64);
+    # a wrapper-level downcast would defeat that precision guard. The scalar
+    # arithmetic below uses ``Jastrow_part`` and ``Determinant_part`` which
+    # are explicitly cast to ``wf_eval``.
+    dtype_wf_jnp = get_dtype_jnp("wf_eval")
 
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
-    return Jastrow_part + jnp.log(jnp.abs(Determinant_part))
+    # Consumer-zone explicit cast: both terms cast to wf_eval before addition,
+    # never relying on implicit fp32 + fp64 -> fp64 promotion.
+    return jnp.asarray(Jastrow_part, dtype=dtype_wf_jnp) + jnp.asarray(jnp.log(jnp.abs(Determinant_part)), dtype=dtype_wf_jnp)
 
 
 def evaluate_ln_wavefunction_fast(
@@ -726,23 +741,24 @@ def evaluate_ln_wavefunction_fast(
         Passing an inverse from a different configuration silently produces
         incorrect parameter gradients (``O_matrix`` / SR).
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
+    dtype_wf_jnp = get_dtype_jnp("wf_eval")
 
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     ln_det = compute_ln_det_geminal_all_elements_fast(
         wavefunction_data.geminal_data,
-        r_up,
-        r_dn,
+        r_up_carts,
+        r_dn_carts,
         geminal_inv,
     )
 
-    return Jastrow_part + ln_det
+    # Consumer-zone explicit cast: both terms cast to wf_eval before addition.
+    return jnp.asarray(Jastrow_part, dtype=dtype_wf_jnp) + jnp.asarray(ln_det, dtype=dtype_wf_jnp)
 
 
 @jit
@@ -754,8 +770,8 @@ def evaluate_wavefunction(
     """Evaluate the wavefunction ``Psi`` at given electron coordinates.
 
     The method is for evaluate wavefunction (Psi) at ``(r_up_carts, r_dn_carts)`` and
-    returns ``exp(Jastrow) * Determinant``. Inputs are coerced to float64
-    ``jax.Array`` to match other compute utilities.
+    returns ``exp(Jastrow) * Determinant``. Inputs are coerced to the determinant
+    zone dtype ``jax.Array`` to match other compute utilities.
 
     Args:
         wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
@@ -765,22 +781,23 @@ def evaluate_wavefunction(
     Returns:
         Complex or real wavefunction value.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
+    dtype_wf_jnp = get_dtype_jnp("wf_eval")
 
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
-    return jnp.exp(Jastrow_part) * Determinant_part
+    # Consumer-zone explicit cast: both factors cast to wf_eval before multiplication.
+    return jnp.exp(jnp.asarray(Jastrow_part, dtype=dtype_wf_jnp)) * jnp.asarray(Determinant_part, dtype=dtype_wf_jnp)
 
 
 def evaluate_jastrow(
@@ -802,13 +819,11 @@ def evaluate_jastrow(
     Returns:
         Real Jastrow factor ``exp(J)``.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
-
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     return jnp.exp(Jastrow_part)
@@ -829,13 +844,11 @@ def evaluate_determinant(
     Returns:
         Determinant value evaluated at the supplied coordinates.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
-
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
     Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     return Determinant_part
@@ -851,8 +864,8 @@ def compute_kinetic_energy(
 
     The method is for computing kinetic energy of the given WF at
     ``(r_up_carts, r_dn_carts)`` and fully exploits the JAX library for the
-    kinetic energy calculation. Inputs are converted to float64 ``jax.Array``
-    for consistency with other compute utilities.
+    kinetic energy calculation. Inputs are converted to the kinetic zone dtype
+    ``jax.Array`` for consistency with other compute utilities.
 
     Args:
         wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
@@ -862,15 +875,15 @@ def compute_kinetic_energy(
     Returns:
         Kinetic energy evaluated for the supplied configuration.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
 
     # grad_J_up, grad_J_dn, sum_laplacian_J = 0.0, 0.0, 0.0
     # """
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
     # """
 
@@ -878,10 +891,21 @@ def compute_kinetic_energy(
     # """
     grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
     # """
+
+    # Explicitly cast jastrow_grad_lap and det_grad_lap zone values to wf_kinetic
+    # zone dtype before assembling T_L; do not rely on JAX implicit promotion.
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+    grad_ln_D_up = jnp.asarray(grad_ln_D_up, dtype=dtype_jnp)
+    grad_ln_D_dn = jnp.asarray(grad_ln_D_dn, dtype=dtype_jnp)
+    lap_ln_D_up = jnp.asarray(lap_ln_D_up, dtype=dtype_jnp)
+    lap_ln_D_dn = jnp.asarray(lap_ln_D_dn, dtype=dtype_jnp)
 
     # compute kinetic energy
     L = (
@@ -917,8 +941,9 @@ def _compute_kinetic_energy_auto(
     Returns:
         The kinetic energy with the given wavefunction (float | complex)
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
+    r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
 
     kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_auto(
         wavefunction_data=wavefunction_data, r_up_carts=r_up, r_dn_carts=r_dn
@@ -994,14 +1019,21 @@ def _compute_kinetic_energy_all_elements_auto(
     r_dn_carts: jax.Array,
 ) -> jax.Array:
     """See compute_kinetic_energy_api."""
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
+    r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
 
     # compute gradients
     grad_J_up = grad(compute_Jastrow_part, argnums=1)(wavefunction_data.jastrow_data, r_up, r_dn)
     grad_J_dn = grad(compute_Jastrow_part, argnums=2)(wavefunction_data.jastrow_data, r_up, r_dn)
     grad_ln_Det_up = grad(compute_ln_det_geminal_all_elements, argnums=1)(wavefunction_data.geminal_data, r_up, r_dn)
     grad_ln_Det_dn = grad(compute_ln_det_geminal_all_elements, argnums=2)(wavefunction_data.geminal_data, r_up, r_dn)
+
+    # Cast jastrow/det grad/lap zone values to wf_kinetic dtype before combining.
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    grad_ln_Det_up = jnp.asarray(grad_ln_Det_up, dtype=dtype_jnp)
+    grad_ln_Det_dn = jnp.asarray(grad_ln_Det_dn, dtype=dtype_jnp)
 
     grad_ln_Psi_up = grad_J_up + grad_ln_Det_up
     grad_ln_Psi_dn = grad_J_dn + grad_ln_Det_dn
@@ -1016,6 +1048,11 @@ def _compute_kinetic_energy_all_elements_auto(
     laplacian_ln_Det_up = jnp.einsum("ijij->i", hessian_ln_Det_up)
     hessian_ln_Det_dn = hessian(compute_ln_det_geminal_all_elements, argnums=2)(wavefunction_data.geminal_data, r_up, r_dn)
     laplacian_ln_Det_dn = jnp.einsum("ijij->i", hessian_ln_Det_dn)
+
+    laplacian_J_up = jnp.asarray(laplacian_J_up, dtype=dtype_jnp)
+    laplacian_J_dn = jnp.asarray(laplacian_J_dn, dtype=dtype_jnp)
+    laplacian_ln_Det_up = jnp.asarray(laplacian_ln_Det_up, dtype=dtype_jnp)
+    laplacian_ln_Det_dn = jnp.asarray(laplacian_ln_Det_dn, dtype=dtype_jnp)
 
     laplacian_Psi_up = laplacian_J_up + laplacian_ln_Det_up
     laplacian_Psi_dn = laplacian_J_dn + laplacian_ln_Det_dn
@@ -1047,22 +1084,32 @@ def compute_kinetic_energy_all_elements(
         Tuple of two ``jax.Array`` objects containing per-electron kinetic energies
         for spin-up and spin-down electrons, respectively.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
 
     # --- Jastrow contributions (per-electron Laplacians) ---
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     # --- Determinant contributions (per-electron Laplacians) ---
     grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
+
+    # Cast jastrow_grad_lap / det_grad_lap zone values to wf_kinetic dtype.
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+    grad_ln_D_up = jnp.asarray(grad_ln_D_up, dtype=dtype_jnp)
+    grad_ln_D_dn = jnp.asarray(grad_ln_D_dn, dtype=dtype_jnp)
+    lap_ln_D_up = jnp.asarray(lap_ln_D_up, dtype=dtype_jnp)
+    lap_ln_D_dn = jnp.asarray(lap_ln_D_dn, dtype=dtype_jnp)
 
     # --- Assemble kinetic energy per electron ---
     grad_ln_Psi_up = grad_J_up + grad_ln_D_up
@@ -1108,21 +1155,31 @@ def compute_kinetic_energy_all_elements_fast_update(
     if geminal_inverse is None:
         raise ValueError("geminal_inverse must be provided for fast update")
 
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
 
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det_fast(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
         geminal_inverse=geminal_inverse,
     )
+
+    # Cast jastrow_grad_lap / det_grad_lap zone values to wf_kinetic dtype.
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+    grad_ln_D_up = jnp.asarray(grad_ln_D_up, dtype=dtype_jnp)
+    grad_ln_D_dn = jnp.asarray(grad_ln_D_dn, dtype=dtype_jnp)
+    lap_ln_D_up = jnp.asarray(lap_ln_D_up, dtype=dtype_jnp)
+    lap_ln_D_dn = jnp.asarray(lap_ln_D_dn, dtype=dtype_jnp)
 
     grad_ln_Psi_up = grad_J_up + grad_ln_D_up
     grad_ln_Psi_dn = grad_J_dn + grad_ln_D_dn
@@ -1246,7 +1303,7 @@ def compute_discretized_kinetic_energy(
     Function for computing discretized kinetic grid points and their energies with a
     given lattice space (alat). This keeps the original semantics used by the LRDMC
     path: ratios are computed as ``exp(J_xp - J_x) * det_xp / det_x``. Inputs are
-    coerced to float64 ``jax.Array`` before evaluation.
+    coerced to the kinetic zone dtype ``jax.Array`` before evaluation.
 
     Args:
         alat: Hamiltonian discretization (bohr), which will be replaced with ``LRDMC_data``.
@@ -1260,9 +1317,10 @@ def compute_discretized_kinetic_energy(
         combined coordinate arrays have shapes ``(n_grid, n_up, 3)`` and ``(n_grid, n_dn, 3)``
         and ``elements_kinetic_part`` contains the kinetic prefactor-scaled ratios.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
-    rt = jnp.asarray(RT, dtype=jnp.float64)
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
+    r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
+    rt = jnp.asarray(RT, dtype=dtype_jnp)
     # Define the shifts to apply (+/- alat in each coordinate direction)
     shifts = alat * jnp.array(
         [
@@ -1339,6 +1397,14 @@ def compute_discretized_kinetic_energy(
     det_xp = vmap(compute_det_geminal_all_elements, in_axes=(None, 0, 0))(
         wavefunction_data.geminal_data, r_up_carts_combined, r_dn_carts_combined
     )
+    # Explicitly cast both jastrow (jastrow_eval zone, possibly fp32) and det
+    # values to the wf_ratio zone dtype so that exp() and the wf_ratio arithmetic
+    # do not rely on JAX implicit fp32 x fp64 -> fp64 promotion.
+    dtype_wf_ratio_jnp = get_dtype_jnp("wf_ratio")
+    jastrow_x = jnp.asarray(jastrow_x, dtype=dtype_wf_ratio_jnp)
+    jastrow_xp = jnp.asarray(jastrow_xp, dtype=dtype_wf_ratio_jnp)
+    det_x = jnp.asarray(det_x, dtype=dtype_wf_ratio_jnp)
+    det_xp = jnp.asarray(det_xp, dtype=dtype_wf_ratio_jnp)
     wf_ratio = jnp.exp(jastrow_xp - jastrow_x) * det_xp / det_x
 
     # Compute the kinetic part elements
@@ -1361,8 +1427,8 @@ def compute_discretized_kinetic_energy_fast_update(
 
     Function for computing discretized kinetic grid points and their energies with
     a given lattice space (alat). Uses precomputed ``A_old_inv`` to evaluate
-    determinant ratios efficiently. Inputs are converted to float64 ``jax.Array``
-    before use.
+    determinant ratios efficiently. Inputs are converted to the kinetic zone dtype
+    ``jax.Array`` before use.
 
     Args:
         alat: Hamiltonian discretization (bohr), which will be replaced with ``LRDMC_data``.
@@ -1377,9 +1443,10 @@ def compute_discretized_kinetic_energy_fast_update(
         coordinate arrays of shapes ``(n_grid, n_up, 3)`` and ``(n_grid, n_dn, 3)``, and kinetic
         prefactor-scaled ratios ``elements_kinetic_part``.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
-    rt = jnp.asarray(RT, dtype=jnp.float64)
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
+    r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
+    rt = jnp.asarray(RT, dtype=dtype_jnp)
     # Define the shifts to apply (+/- alat in each coordinate direction)
     shifts = alat * jnp.array(
         [
@@ -1429,21 +1496,32 @@ def compute_discretized_kinetic_energy_fast_update(
     r_up_carts_combined = jnp.concatenate([r_up_carts_shifted, r_up_carts_repeated_dn], axis=0)  # Shape: (N_configs, N_up, 3)
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
-    # Evaluate the ratios of wavefunctions between the shifted positions and the original position
-    wf_ratio = _compute_ratio_determinant_part_split_spin(
-        geminal_data=wavefunction_data.geminal_data,
-        A_old_inv=A_old_inv,
-        old_r_up_carts=r_up,
-        old_r_dn_carts=r_dn,
-        new_r_up_shifted=r_up_carts_shifted,
-        new_r_dn_shifted=r_dn_carts_shifted,
-    ) * _compute_ratio_Jastrow_part_rank1_update(
-        jastrow_data=wavefunction_data.jastrow_data,
-        old_r_up_carts=r_up,
-        old_r_dn_carts=r_dn,
-        new_r_up_carts_arr=r_up_carts_combined,
-        new_r_dn_carts_arr=r_dn_carts_combined,
+    # Evaluate the ratios of wavefunctions between the shifted positions and the original position.
+    # det_ratio (det_ratio zone) and jastrow_ratio (jastrow_ratio zone) are explicitly cast to
+    # the wf_ratio zone dtype to avoid relying on JAX implicit promotion.
+    dtype_wf_ratio_jnp = get_dtype_jnp("wf_ratio")
+    det_ratio = jnp.asarray(
+        _compute_ratio_determinant_part_split_spin(
+            geminal_data=wavefunction_data.geminal_data,
+            A_old_inv=A_old_inv,
+            old_r_up_carts=r_up,
+            old_r_dn_carts=r_dn,
+            new_r_up_shifted=r_up_carts_shifted,
+            new_r_dn_shifted=r_dn_carts_shifted,
+        ),
+        dtype=dtype_wf_ratio_jnp,
     )
+    jastrow_ratio = jnp.asarray(
+        _compute_ratio_Jastrow_part_rank1_update(
+            jastrow_data=wavefunction_data.jastrow_data,
+            old_r_up_carts=r_up,
+            old_r_dn_carts=r_dn,
+            new_r_up_carts_arr=r_up_carts_combined,
+            new_r_dn_carts_arr=r_dn_carts_combined,
+        ),
+        dtype=dtype_wf_ratio_jnp,
+    )
+    wf_ratio = det_ratio * jastrow_ratio
 
     # Compute the kinetic part elements
     elements_kinetic_part = -1.0 / (2.0 * alat**2) * wf_ratio
@@ -1516,20 +1594,26 @@ def compute_nodal_distance(
     Returns:
         Scalar nodal distance value.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    # r_*_carts forwarded unchanged (see ``evaluate_ln_wavefunction`` for rationale).
+    dtype_jnp = get_dtype_jnp("wf_eval")
 
     grad_J_up, grad_J_dn, _, _ = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
 
     grad_ln_D_up, grad_ln_D_dn, _, _ = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
+
+    # Cast jastrow_grad_lap / det_grad_lap zone values to wf_eval dtype.
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    grad_ln_D_up = jnp.asarray(grad_ln_D_up, dtype=dtype_jnp)
+    grad_ln_D_dn = jnp.asarray(grad_ln_D_dn, dtype=dtype_jnp)
 
     grad_ln_Psi_up = grad_J_up + grad_ln_D_up  # (n_up, 3)
     grad_ln_Psi_dn = grad_J_dn + grad_ln_D_dn  # (n_dn, 3)
@@ -1564,8 +1648,9 @@ def _compute_nodal_distance_debug(
     Returns:
         Scalar nodal distance value.
     """
-    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
-    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    dtype_jnp = get_dtype_jnp("wf_eval")
+    r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
+    r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
 
     Psi = evaluate_wavefunction(wavefunction_data, r_up, r_dn)
 

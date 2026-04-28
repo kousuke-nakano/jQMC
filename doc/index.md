@@ -21,6 +21,7 @@ install
 examples
 notes/technical_notes
 notes/workflows
+notes/mixed_precision
 api_reference_cli
 api_reference_cli_tool
 api_reference_mod/modules

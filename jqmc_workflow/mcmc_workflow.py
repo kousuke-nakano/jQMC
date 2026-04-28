@@ -247,6 +247,8 @@ class MCMC_Workflow(Workflow):
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
         cleanup_patterns: Optional[list] = None,
+        # -- [precision] section --
+        precision_mode: str = "full",
     ):
         super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
@@ -274,6 +276,8 @@ class MCMC_Workflow(Workflow):
         self.pilot_steps = pilot_steps
         self.pilot_queue_label = pilot_queue_label or queue_label
         self.max_continuation = max_continuation
+        # [precision] section
+        self.precision_mode = precision_mode
 
     # ── Input generation ──────────────────────────────────────────
 
@@ -316,6 +320,8 @@ class MCMC_Workflow(Workflow):
             "control": control_ov,
             "mcmc": mcmc_ov,
         }
+        # Add [precision] section
+        overrides["precision"] = {"mode": self.precision_mode}
         generate_input_toml(
             job_type="mcmc",
             overrides=overrides,

@@ -1,4 +1,10 @@
-"""utility module."""
+"""utility module.
+
+Precision Zones:
+    - ``io``: all functions in this module.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -93,6 +99,8 @@ def _generate_init_electron_configurations(
     min_dst = 0.1
     max_dst = 1.0
 
+    dtype_np = np.float64
+
     # 1) zeta[i] = integer valence count per atom
     nion = coords.shape[0]
     zeta = np.array([int(round(c)) for c in charges], dtype=int)
@@ -120,8 +128,8 @@ def _generate_init_electron_configurations(
         i_prev = best_i
 
     # 4) Prepare storage for all walkers
-    r_carts_up = np.zeros((num_walkers, tot_num_electron_up, 3), dtype=float)
-    r_carts_dn = np.zeros((num_walkers, tot_num_electron_dn, 3), dtype=float)
+    r_carts_up = np.zeros((num_walkers, tot_num_electron_up, 3), dtype=dtype_np)
+    r_carts_dn = np.zeros((num_walkers, tot_num_electron_dn, 3), dtype=dtype_np)
     up_owner = np.zeros((num_walkers, tot_num_electron_up), dtype=int)
     dn_owner = np.zeros((num_walkers, tot_num_electron_dn), dtype=int)
 
@@ -143,7 +151,7 @@ def _generate_init_electron_configurations(
         # Phase 1a: Place all down-electrons under Hund’s limit first
         # -----------------------------------------
         ned_dn = tot_num_electron_dn
-        down_positions = np.zeros((ned_dn, 3), dtype=float)
+        down_positions = np.zeros((ned_dn, 3), dtype=dtype_np)
         j_counter = 0
 
         for idn in range(ned_dn):
@@ -209,7 +217,7 @@ def _generate_init_electron_configurations(
         sum_up_needed = int(np.sum(up_needed))
 
         ned_up = tot_num_electron_up
-        up_positions = np.zeros((ned_up, 3), dtype=float)
+        up_positions = np.zeros((ned_up, 3), dtype=dtype_np)
 
         # Case 1: ned_up <= sum_up_needed → place ned_up among those up_needed slots
         if ned_up <= sum_up_needed:
@@ -393,7 +401,6 @@ def _cart_to_spherical_matrix(l: int) -> np.ndarray:
     ``A_sph = A_cart @ T`` under the normalization used in the codebase. Values
     are deterministic and cached to avoid runtime fitting.
     """
-
     precomputed: dict[int, np.ndarray] = {
         0: np.array([[1.0]], dtype=np.float64),
         1: np.array(
@@ -719,7 +726,6 @@ def _spherical_to_cart_matrix(l: int) -> np.ndarray:
     Only ``_cart_to_spherical_matrix`` stores the full analytic values; this helper
     exposes the inverse direction for readability and reuse.
     """
-
     return _cart_to_spherical_matrix(l).T
 
 

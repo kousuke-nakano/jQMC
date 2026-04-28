@@ -17,3 +17,6 @@
   num_gfmc_bin_blocks = 50
   num_gfmc_collect_steps = 20
   E_scf = -17.00
+
+# [precision]
+# mode = "full"  # "full" (default, all float64) or "mixed" (recommended mixed precision)

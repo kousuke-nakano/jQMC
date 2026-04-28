@@ -39,6 +39,7 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
 # Add the project root directory to sys.path to allow executing this script directly
@@ -64,6 +65,8 @@ from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluat
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
+
+pytestmark = pytest.mark.external_reference
 
 Nv = 6
 NN = 1

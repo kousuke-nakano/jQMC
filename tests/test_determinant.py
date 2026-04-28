@@ -46,16 +46,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    atol_consistency,
-    atol_debug_vs_production,
-    rtol_auto_vs_analytic_deriv,
-    rtol_auto_vs_numerical_deriv,
-    rtol_consistency,
-    rtol_debug_vs_production,
-)
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
@@ -165,6 +156,9 @@ def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
     r_up_carts = np.array(r_up_carts).reshape(-1, 3)
     r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
+    atol_g, rtol_g = get_tolerance("det_eval", "strict")
+    atol_d, rtol_d = get_tolerance("det_eval", "strict")
+
     geminal_mo_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
@@ -179,7 +173,7 @@ def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(geminal_mo_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(geminal_mo_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(geminal_mo_debug, geminal_mo_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(geminal_mo_debug, geminal_mo_jax, atol=atol_g, rtol=rtol_g)
 
     geminal_mo = geminal_mo_jax
 
@@ -220,14 +214,14 @@ def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(geminal_ao_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(geminal_ao_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(geminal_ao_debug, geminal_ao_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(geminal_ao_debug, geminal_ao_jax, atol=atol_g, rtol=rtol_g)
 
     geminal_ao = geminal_ao_jax
 
     # check if geminals with AO and MO representations are consistent
     assert not np.any(np.isnan(np.asarray(geminal_ao))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(geminal_mo))), "NaN detected in second argument"
-    np.testing.assert_allclose(geminal_ao, geminal_mo, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(geminal_ao, geminal_mo, atol=atol_g, rtol=rtol_g)
 
     det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
@@ -243,9 +237,7 @@ def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(det_geminal_mo_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(det_geminal_mo_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        det_geminal_mo_debug, det_geminal_mo_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(det_geminal_mo_debug, det_geminal_mo_jax, atol=atol_d, rtol=rtol_d)
 
     det_geminal_mo = det_geminal_mo_jax
 
@@ -263,14 +255,12 @@ def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(det_geminal_ao_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(det_geminal_ao_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        det_geminal_ao_debug, det_geminal_ao_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(det_geminal_ao_debug, det_geminal_ao_jax, atol=atol_d, rtol=rtol_d)
     det_geminal_ao = det_geminal_ao_jax
 
     assert not np.any(np.isnan(np.asarray(det_geminal_ao))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(det_geminal_mo))), "NaN detected in second argument"
-    np.testing.assert_allclose(det_geminal_ao, det_geminal_mo, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(det_geminal_ao, det_geminal_mo, atol=atol_d, rtol=rtol_d)
 
     jax.clear_caches()
 
@@ -310,8 +300,8 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
         num_ao=len(angular_momentums),
         num_ao_prim=len(exponents),
         orbital_indices=tuple(orbital_indices),
-        exponents=tuple(exponents),
-        coefficients=tuple(coefficients),
+        exponents=np.array(exponents, dtype=np.float64),
+        coefficients=np.array(coefficients, dtype=np.float64),
         angular_momentums=tuple(angular_momentums),
         magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
     )
@@ -319,6 +309,9 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
 
 def test_geminal_sphe_to_cart_AOs_data():
     """Round-trip AOs l<=6: spherical→Cartesian keeps geminal values/grads."""
+    # Comparison crosses ao_eval/det_eval (values) and ao_grad/ao_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad", "ao_lap", "det_grad_lap"), "strict")
     rng = np.random.default_rng(321)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -342,20 +335,23 @@ def test_geminal_sphe_to_cart_AOs_data():
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), atol=atol_consistency, rtol=rtol_consistency)
+    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), atol=atol_c, rtol=rtol_c)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), atol=atol_c, rtol=rtol_c)
 
     jax.clear_caches()
 
 
 def test_geminal_cart_to_sphe_AOs_data():
     """Round-trip AOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    # Comparison crosses ao_eval/det_eval (values) and ao_grad/ao_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad", "ao_lap", "det_grad_lap"), "strict")
     rng = np.random.default_rng(654)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -381,20 +377,26 @@ def test_geminal_cart_to_sphe_AOs_data():
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), atol=atol_consistency, rtol=rtol_consistency)
+    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), atol=atol_c, rtol=rtol_c)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), atol=atol_c, rtol=rtol_c)
 
     jax.clear_caches()
 
 
 def test_geminal_sphe_to_cart_MOs_data():
     """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps geminal values/grads."""
+    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad/ao_lap/mo_grad/mo_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(
+        ("ao_eval", "mo_eval", "det_eval", "ao_grad", "ao_lap", "mo_grad", "mo_lap", "det_grad_lap"),
+        "strict",
+    )
     rng = np.random.default_rng(777)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -422,20 +424,26 @@ def test_geminal_sphe_to_cart_MOs_data():
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), atol=atol_consistency, rtol=rtol_consistency)
+    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), atol=atol_c, rtol=rtol_c)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), atol=atol_c, rtol=rtol_c)
 
     jax.clear_caches()
 
 
 def test_geminal_cart_to_sphe_MOs_data():
     """Round-trip MOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad/ao_lap/mo_grad/mo_lap/det_grad_lap (grads);
+    # achievable agreement is bounded by the loosest zone on the path.
+    atol_c, rtol_c = get_tolerance_min(
+        ("ao_eval", "mo_eval", "det_eval", "ao_grad", "ao_lap", "mo_grad", "mo_lap", "det_grad_lap"),
+        "strict",
+    )
     rng = np.random.default_rng(888)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -465,14 +473,14 @@ def test_geminal_cart_to_sphe_MOs_data():
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), atol=atol_consistency, rtol=rtol_consistency)
+    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), atol=atol_c, rtol=rtol_c)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), atol=atol_c, rtol=rtol_c)
 
     jax.clear_caches()
 
@@ -491,8 +499,8 @@ def _build_small_sphe_aos_for_conversion() -> AOs_sphe_data:
         num_ao=4,
         num_ao_prim=4,
         orbital_indices=(0, 1, 2, 3),
-        exponents=(1.20, 1.00, 1.00, 1.00),
-        coefficients=(1.0, 1.0, 1.0, 1.0),
+        exponents=np.array([1.20, 1.00, 1.00, 1.00], dtype=np.float64),
+        coefficients=np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64),
         angular_momentums=(0, 1, 1, 1),
         magnetic_quantum_numbers=(0, -1, 0, 1),
     )
@@ -500,6 +508,7 @@ def _build_small_sphe_aos_for_conversion() -> AOs_sphe_data:
 
 def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
     """AO->MO (all eigenvectors) followed by MO->AO recovers the AO lambda matrix."""
+    atol_c, rtol_c = get_tolerance("det_eval", "strict")
     rng = np.random.default_rng(1234)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -526,13 +535,14 @@ def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
     np.testing.assert_allclose(
         np.asarray(geminal_ao_back.lambda_matrix),
         np.asarray(geminal_ao.lambda_matrix),
-        atol=atol_consistency,
-        rtol=rtol_consistency,
+        atol=atol_c,
+        rtol=rtol_c,
     )
 
 
 def test_convert_from_AOs_to_MOs_full_projection_open_shell():
     """AO->MO (all eigenvectors) round-trip recovers AO lambda matrix for open-shell case."""
+    atol_c, rtol_c = get_tolerance("det_eval", "strict")
     rng = np.random.default_rng(1334)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -561,8 +571,8 @@ def test_convert_from_AOs_to_MOs_full_projection_open_shell():
     np.testing.assert_allclose(
         np.asarray(geminal_ao_back.lambda_matrix),
         np.asarray(geminal_ao.lambda_matrix),
-        atol=atol_consistency,
-        rtol=rtol_consistency,
+        atol=atol_c,
+        rtol=rtol_c,
     )
 
 
@@ -633,6 +643,7 @@ def test_convert_from_AOs_to_MOs_truncated_mode_open_shell():
 
 def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
     """AO-corrected paired update is applied then reprojected with fixed N=num_electron_dn."""
+    atol_c, rtol_c = get_tolerance("det_eval", "strict")
     rng = np.random.default_rng(97531)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -700,8 +711,8 @@ def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
     np.testing.assert_allclose(
         np.asarray(actual.lambda_matrix),
         np.asarray(expected.lambda_matrix),
-        atol=atol_consistency,
-        rtol=rtol_consistency,
+        atol=atol_c,
+        rtol=rtol_c,
     )
 
 
@@ -809,18 +820,19 @@ def test_grads_and_laplacian_fast_update(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(grad_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_up_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_up_fast, grad_up_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(grad_up_fast, grad_up_debug, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(grad_dn_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_dn_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_dn_fast, grad_dn_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(grad_dn_fast, grad_dn_debug, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(lap_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_up_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_up_fast, lap_up_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(lap_up_fast, lap_up_debug, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(lap_dn_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_dn_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_dn_fast, lap_dn_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(lap_dn_fast, lap_dn_debug, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
@@ -906,9 +918,10 @@ def test_comparing_AS_regularization(trexio_file: str):
 
     R_AS_jax = compute_AS_regularization_factor(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
+    atol, rtol = get_tolerance("det_eval", "strict")
     assert not np.any(np.isnan(np.asarray(R_AS_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(R_AS_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(R_AS_debug, R_AS_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(R_AS_debug, R_AS_jax, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -1016,14 +1029,15 @@ def test_one_row_or_one_column_update(trexio_file: str):
     )
 
     # --- Numerical consistency asserts (no shape checks) ---
+    atol, rtol = get_tolerance("det_eval", "strict")
     # up-one-row must equal the i-th row of the full geminal
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo_up_one_row).ravel()))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo[i_up, :])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(geminal_mo_up_one_row).ravel(),
         np.asarray(geminal_mo[i_up, :]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
     # dn-one-column must equal the j-th *paired* column of the full geminal
@@ -1032,11 +1046,12 @@ def test_one_row_or_one_column_update(trexio_file: str):
     np.testing.assert_allclose(
         np.asarray(geminal_mo_dn_one_column).ravel(),
         np.asarray(geminal_mo[:, j_dn]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
 
+@pytest.mark.numerical_diff
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     """Test the numerical and automatic gradients of the logarithm of the determinant of the geminal wave function."""
@@ -1151,37 +1166,38 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
+    atol, rtol = get_tolerance("det_grad_lap", "loose")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(grad_ln_D_up_numerical),
         np.asarray(grad_ln_D_up_auto),
-        atol=atol_auto_vs_numerical_deriv,
-        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(grad_ln_D_dn_numerical),
         np.asarray(grad_ln_D_dn_auto),
-        atol=atol_auto_vs_numerical_deriv,
-        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_up_numerical),
         np.asarray(lap_ln_D_up_auto),
-        rtol=rtol_auto_vs_numerical_deriv,
-        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol,
+        atol=atol,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_dn_numerical),
         np.asarray(lap_ln_D_dn_auto),
-        rtol=rtol_auto_vs_numerical_deriv,
-        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol,
+        atol=atol,
     )
 
     jax.clear_caches()
@@ -1282,37 +1298,38 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(grad_ln_D_up_analytic),
         np.asarray(grad_ln_D_up_auto),
-        atol=atol_auto_vs_analytic_deriv,
-        rtol=rtol_auto_vs_analytic_deriv,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(grad_ln_D_dn_analytic),
         np.asarray(grad_ln_D_dn_auto),
-        atol=atol_auto_vs_analytic_deriv,
-        rtol=rtol_auto_vs_analytic_deriv,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_up_analytic),
         np.asarray(lap_ln_D_up_auto),
-        atol=atol_auto_vs_analytic_deriv,
-        rtol=rtol_auto_vs_analytic_deriv,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_dn_analytic),
         np.asarray(lap_ln_D_dn_auto),
-        atol=atol_auto_vs_analytic_deriv,
-        rtol=rtol_auto_vs_analytic_deriv,
+        atol=atol,
+        rtol=rtol,
     )
 
     jax.clear_caches()
@@ -1402,18 +1419,16 @@ def test_ratio_determinant_rank1_update(pattern: str):
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
+    atol, rtol = get_tolerance("det_eval", "strict")
+    atol_c, rtol_c = atol, rtol
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_rank1)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(ratio_debug), np.asarray(ratio_rank1), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(np.asarray(ratio_debug), np.asarray(ratio_rank1), atol=atol, rtol=rtol)
 
     if pattern == "none_moved":
         assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
-        np.testing.assert_allclose(
-            np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), atol=atol_consistency, rtol=rtol_consistency
-        )
+        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), atol=atol_c, rtol=rtol_c)
 
     jax.clear_caches()
 
@@ -1429,6 +1444,7 @@ def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
+    atol, rtol = get_tolerance("det_eval", "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -1443,8 +1459,8 @@ def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
         np.testing.assert_allclose(
             val_fast,
             val_ref,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
             err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
         )
 
@@ -1465,6 +1481,11 @@ def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
     grad_ref_fn = jax.grad(compute_ln_det_geminal_all_elements, argnums=0)
     grad_fast_fn = jax.grad(compute_ln_det_geminal_all_elements_fast, argnums=0)
 
+    # Backward-AD comparison: ref uses SVD-pseudoinverse custom VJP, fast uses
+    # caller-supplied G_inv; both VJPs propagate through compute_geminal_all_elements
+    # which crosses ao_eval/mo_eval/det_eval. Tolerance is bounded by the
+    # loosest zone on the path.
+    atol, rtol = get_tolerance_min(("ao_eval", "mo_eval", "det_eval"), "strict")
     for _ in range(10):
         r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -1478,8 +1499,8 @@ def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
             lambda a, b: np.testing.assert_allclose(
                 np.asarray(a),
                 np.asarray(b),
-                rtol=rtol_debug_vs_production,
-                atol=atol_debug_vs_production,
+                rtol=rtol,
+                atol=atol,
                 err_msg="Backward mismatch in compute_ln_det_geminal_all_elements_fast",
             ),
             grad_ref,

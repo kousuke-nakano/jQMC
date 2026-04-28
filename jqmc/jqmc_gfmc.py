@@ -1,4 +1,10 @@
-"""QMC module."""
+"""QMC module (GFMC).
+
+Precision Zones:
+    - ``gfmc``: all GFMC propagation functions.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -51,6 +57,7 @@ from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
 from ._jqmc_utility import _generate_init_electron_configurations
+from ._precision import get_tolerance_min
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -58,8 +65,7 @@ from ._setting import (
     GFMC_ON_THE_FLY_BIN_BLOCKS,
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
-    EPS_rcond_SVD,
-    rtol_debug_vs_production,
+    get_eps,
 )
 from .coulomb_potential import (
     compute_bare_coulomb_potential_el_el,
@@ -273,8 +279,9 @@ class GFMC_t:
             logger.debug(f"  dn counts: {dn_counts}")
             logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -311,22 +318,25 @@ class GFMC_t:
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
+        # gfmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
+
         # stored weight (w_L)
-        self.__stored_w_L = np.zeros((0, 1))
+        self.__stored_w_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L)
-        self.__stored_e_L = np.zeros((0, 1))
+        self.__stored_e_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = np.zeros((0, 1))
+        self.__stored_e_L2 = np.zeros((0, 1), dtype=dtype_np)
 
         # average projection counter
-        self.__stored_average_projection_counter = np.zeros((0,))
+        self.__stored_average_projection_counter = np.zeros((0,), dtype=dtype_np)
 
         # stored force products (per-walker cross-correlation preserved)
-        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
 
     def __validate_stored_shapes(self):
         """Assert that all stored observable arrays have consistent shapes."""
@@ -484,8 +494,9 @@ class GFMC_t:
         obj._GFMC_t__jax_PRNG_key_list_init = jnp.array(rng["jax_PRNG_key_list_init"])
 
         # -- Walker state --
-        obj._GFMC_t__latest_r_up_carts = jnp.array(ws["latest_r_up_carts"])
-        obj._GFMC_t__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
+        dtype_jnp = jnp.float64
+        obj._GFMC_t__latest_r_up_carts = jnp.asarray(ws["latest_r_up_carts"], dtype=dtype_jnp)
+        obj._GFMC_t__latest_r_dn_carts = jnp.asarray(ws["latest_r_dn_carts"], dtype=dtype_jnp)
 
         # -- Observables --
         def _load_obs(obs_arr, default):
@@ -660,6 +671,9 @@ class GFMC_t:
         np.random.seed(self.__mpi_seed)
 
         # precompute geminal inverses per walker for fast kinetic updates
+        dtype_jnp = jnp.float64
+        eps_rcond = get_eps("rcond_svd", dtype_jnp)
+
         def _compute_initial_A_inv_t(r_up_carts, r_dn_carts):
             geminal = compute_geminal_all_elements(
                 geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -667,7 +681,7 @@ class GFMC_t:
                 r_dn_carts=r_dn_carts,
             )
             U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
-            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+            s_inv = jnp.where(s > eps_rcond * s[0], 1.0 / s, 0.0)
             return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
@@ -688,7 +702,8 @@ class GFMC_t:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=jnp.float64,
             )
             return R
 
@@ -1034,7 +1049,11 @@ class GFMC_t:
                 Ainv_u = A_old_inv @ u
                 vT_Ainv = v.T @ A_old_inv
                 det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                # Consumer-zone explicit cast: cast the rank-1 update to the
+                # local gfmc zone dtype so the result agrees with the
+                # _no_update_t lax.cond branch and never depends on
+                # A_old_inv's upstream dtype.
+                return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
             def _no_update_t(_):
                 return A_old_inv
@@ -1060,7 +1079,8 @@ class GFMC_t:
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                    # See note in _update_inv_up_t: consumer-zone explicit cast.
+                    return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
             if num_up_electrons == 0:
                 A_new_inv = A_old_inv
@@ -1089,8 +1109,8 @@ class GFMC_t:
         logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
         projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-        tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
-        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+        tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)], dtype=jnp.float64)
+        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
         (_, _, _, _, _, _, _, _, _) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
             projection_counter_list,
             tau_left_list,
@@ -1335,7 +1355,7 @@ class GFMC_t:
             start_init_force = time.perf_counter()
             logger.info("Start compilation of force gradient functions.")
             logger.info("  Compilation is in progress...")
-            _dummy_RTs = jnp.stack([jnp.eye(3)] * self.__num_walkers)
+            _dummy_RTs = jnp.stack([jnp.eye(3, dtype=jnp.float64)] * self.__num_walkers)
             _, _, _ = _jit_vmap_grad_e_L_t(
                 hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
@@ -1367,9 +1387,11 @@ class GFMC_t:
         num_mcmc_done = 0
 
         # -- Extend stored arrays with zero-padding for new steps --
+        # gfmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
         # average_projection_counter is stored on all ranks
         self.__stored_average_projection_counter = np.concatenate(
-            [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,))]
+            [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,), dtype=dtype_np)]
         )
         # other observables are stored on rank 0 only
         if mpi_rank == 0:
@@ -1377,14 +1399,18 @@ class GFMC_t:
             n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
             n_atoms = self.__hamiltonian_data.structure_data.natom
 
-            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
             if self.__comput_position_deriv:
-                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
-                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_force_HF = np.concatenate(
+                    [self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
+                self.__stored_force_PP = np.concatenate(
+                    [self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
                 self.__stored_E_L_force_PP = np.concatenate(
-                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
                 )
 
         for i_branching in range(num_mcmc_steps):
@@ -1397,8 +1423,8 @@ class GFMC_t:
 
             # Always set the initial weight list to 1.0
             projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-            tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)], dtype=jnp.float64)
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             start_projection = time.perf_counter()
             # projection loop
@@ -1524,10 +1550,10 @@ class GFMC_t:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
@@ -1681,6 +1707,9 @@ class GFMC_t:
             local_probabilities = w_L_latest / global_weight_sum
 
             # Compute the local cumulative probabilities.
+            # NOTE: MPI reductions for branching probabilities are kept float64
+            # unconditionally (regardless of the gfmc precision zone) to avoid
+            # population collapse from float32 round-off in the branching step.
             local_cumprob = np.cumsum(local_probabilities)
             local_sum_arr = np.array(np.sum(local_probabilities), dtype=np.float64)
             offset_arr = np.zeros(1, dtype=np.float64)
@@ -1916,8 +1945,8 @@ class GFMC_t:
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
             self.__stored_average_projection_counter[self.__mcmc_counter + num_mcmc_done] = ave_projection_counter
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
                 self.__latest_r_up_carts, self.__latest_r_dn_carts
             )
@@ -2637,8 +2666,9 @@ class _GFMC_t_debug:
             logger.debug(f"  dn counts: {dn_counts}")
             logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -2992,8 +3022,8 @@ class _GFMC_t_debug:
 
             # Always set the initial weight list to 1.0
             projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-            e_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            e_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             logger.devel("  Projection is on going....")
 
@@ -3036,7 +3066,7 @@ class _GFMC_t_debug:
 
                     # generate a random rotation matrix
                     jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    R = jnp.eye(3)  # Rotate in the order x -> y -> z
+                    R = jnp.eye(3, dtype=jnp.float64)  # Rotate in the order x -> y -> z
 
                     # compute discretized kinetic energy and mesh (with a random rotation)
                     mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -3300,10 +3330,10 @@ class _GFMC_t_debug:
 
             # projection ends
             projection_counter_list = jnp.array(projection_counter_list)
-            e_L_list = jnp.array(e_L_list)
-            w_L_list = jnp.array(w_L_list)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
+            e_L_list = jnp.asarray(e_L_list, dtype=jnp.float64)
+            w_L_list = jnp.asarray(w_L_list, dtype=jnp.float64)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts, dtype=jnp.float64)
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)
 
             logger.debug("  Projection ends.")
@@ -3311,7 +3341,7 @@ class _GFMC_t_debug:
             # atomic force related
             if self.__comput_position_deriv:
                 # RT is always eye(3) in _GFMC_t_debug (no random_discretized_mesh)
-                RT_eye = jnp.eye(3)
+                RT_eye = jnp.eye(3, dtype=jnp.float64)
 
                 _grad_e_L_fn = grad(_compute_local_energy_t_debug, argnums=(0, 1, 2))
                 _grad_e_L_results = [
@@ -3402,10 +3432,10 @@ class _GFMC_t_debug:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -3600,8 +3630,8 @@ class _GFMC_t_debug:
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
             self.__stored_average_projection_counter.append(ave_projection_counter)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
 
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
@@ -3944,8 +3974,9 @@ class GFMC_n:
             logger.debug(f"  dn counts: {dn_counts}")
             logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -3982,19 +4013,22 @@ class GFMC_n:
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
+        # gfmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
+
         # stored weight (w_L)
-        self.__stored_w_L = np.zeros((0, 1))
+        self.__stored_w_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L)
-        self.__stored_e_L = np.zeros((0, 1))
+        self.__stored_e_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = np.zeros((0, 1))
+        self.__stored_e_L2 = np.zeros((0, 1), dtype=dtype_np)
 
         # stored force products (per-walker cross-correlation preserved)
-        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
 
         # stored G_L and G_e_L for updating the E_scf (kept as lists — variable count per run)
         self.__G_L = []
@@ -4157,8 +4191,9 @@ class GFMC_n:
         obj._GFMC_n__jax_PRNG_key_list_init = jnp.array(rng["jax_PRNG_key_list_init"])
 
         # -- Walker state --
-        obj._GFMC_n__latest_r_up_carts = jnp.array(ws["latest_r_up_carts"])
-        obj._GFMC_n__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
+        dtype_jnp = jnp.float64
+        obj._GFMC_n__latest_r_up_carts = jnp.asarray(ws["latest_r_up_carts"], dtype=dtype_jnp)
+        obj._GFMC_n__latest_r_dn_carts = jnp.asarray(ws["latest_r_dn_carts"], dtype=dtype_jnp)
 
         # -- Observables --
         n_up = obj._GFMC_n__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
@@ -4339,6 +4374,9 @@ class GFMC_n:
         gfmc_total_start = time.perf_counter()
 
         # precompute geminal inverses per walker for fast updates across projections
+        dtype_jnp = jnp.float64
+        eps_rcond = get_eps("rcond_svd", dtype_jnp)
+
         def _compute_initial_A_inv_n(r_up_carts, r_dn_carts):
             geminal = compute_geminal_all_elements(
                 geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -4346,7 +4384,7 @@ class GFMC_n:
                 r_dn_carts=r_dn_carts,
             )
             U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
-            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+            s_inv = jnp.where(s > eps_rcond * s[0], 1.0 / s, 0.0)
             return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         _jit_vmap_A_inv_n = jit(vmap(_compute_initial_A_inv_n, in_axes=(0, 0)))
@@ -4366,7 +4404,8 @@ class GFMC_n:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=jnp.float64,
             )
             return R
 
@@ -4721,7 +4760,11 @@ class GFMC_n:
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                    # Consumer-zone explicit cast: cast the rank-1 update to the
+                    # local gfmc zone dtype so the result agrees with the
+                    # _no_update_n lax.cond branch and never depends on
+                    # A_old_inv's upstream dtype.
+                    return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
                 def _no_update_n(_):
                     return A_old_inv
@@ -4747,7 +4790,8 @@ class GFMC_n:
                         Ainv_u = A_old_inv @ u
                         vT_Ainv = v.T @ A_old_inv
                         det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                        return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                        # See note in _update_inv_up_n: consumer-zone explicit cast.
+                        return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
                 if num_up_electrons == 0:
                     A_new_inv = A_old_inv
@@ -4799,10 +4843,10 @@ class GFMC_n:
                     init_w_L,
                     init_r_up_carts,
                     init_r_dn_carts,
-                    jnp.eye(3),
+                    jnp.eye(3, dtype=jnp.float64),
                     init_A_old_inv,
-                    jnp.asarray(0.0),
-                    jnp.asarray(0.0),
+                    jnp.asarray(0.0, dtype=jnp.float64),
+                    jnp.asarray(0.0, dtype=jnp.float64),
                 ),
             )
 
@@ -4843,13 +4887,14 @@ class GFMC_n:
 
             if use_fast_update:
                 # precompute geminal inverse for fast updates (SVD-based, robust for near-singular G)
+                _eps_rcond = get_eps("rcond_svd", jnp.float64)
                 geminal = compute_geminal_all_elements(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
                 _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
-                _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+                _s_inv = jnp.where(_s > _eps_rcond * _s[0], 1.0 / _s, 0.0)
                 A_old_inv = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
@@ -5133,7 +5178,7 @@ class GFMC_n:
         start_init = time.perf_counter()
         logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
-        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
         (
             _,
             _,
@@ -5199,14 +5244,21 @@ class GFMC_n:
             n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
             n_atoms = self.__hamiltonian_data.structure_data.natom
 
-            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
+            # gfmc zone dtype for stored numpy arrays
+            dtype_np = np.float64
+
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
             if self.__comput_position_deriv:
-                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
-                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_force_HF = np.concatenate(
+                    [self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
+                self.__stored_force_PP = np.concatenate(
+                    [self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
                 self.__stored_E_L_force_PP = np.concatenate(
-                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
                 )
 
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -5225,7 +5277,7 @@ class GFMC_n:
                 )
 
             # Always set the initial weight list to 1.0
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             start_projection = time.perf_counter()
 
@@ -5371,10 +5423,10 @@ class GFMC_n:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             # Barrier before MPI operation
             start_mpi_barrier = time.perf_counter()
@@ -5526,6 +5578,9 @@ class GFMC_n:
             local_probabilities = w_L_latest / global_weight_sum
 
             # Compute the local cumulative probabilities.
+            # NOTE: MPI reductions for branching probabilities are kept float64
+            # unconditionally (regardless of the gfmc precision zone) to avoid
+            # population collapse from float32 round-off in the branching step.
             local_cumprob = np.cumsum(local_probabilities)
             local_sum_arr = np.array(np.sum(local_probabilities), dtype=np.float64)
             offset_arr = np.zeros(1, dtype=np.float64)
@@ -5756,8 +5811,8 @@ class GFMC_n:
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
             self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
 
             mpi_comm.Barrier()
@@ -6542,8 +6597,9 @@ class _GFMC_n_debug:
             logger.debug(f"  dn counts: {dn_counts}")
             logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -6683,7 +6739,8 @@ class _GFMC_n_debug:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=jnp.float64,
             )
             return R
 
@@ -7241,7 +7298,7 @@ class _GFMC_n_debug:
                 )
 
             # Always set the initial weight list to 1.0
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             logger.devel("  Projection is on going....")
 
@@ -7298,12 +7355,19 @@ class _GFMC_n_debug:
                         for i in range(self.__num_walkers)
                     ]
                 )
-                if np.max(np.abs(e_L_list - e_list_debug)) > rtol_debug_vs_production:
+                # e_L crosses ao_eval/jastrow_eval/det_eval/coulomb/
+                # local_energy; bound the agreement by the weakest zone (fp32 in
+                # mixed precision).
+                _atol_eL, _rtol_eL = get_tolerance_min(
+                    ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "local_energy"),
+                    "strict",
+                )
+                if np.max(np.abs(e_L_list - e_list_debug)) > _rtol_eL:
                     logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
                     logger.info(f"w_L_list = {w_L_list}.")
                     logger.info(f"e_L_list = {e_L_list}.")
                     logger.info(f"e_list_debug = {e_list_debug}.")
-                np.testing.assert_almost_equal(np.array(e_L_list), np.array(e_list_debug), decimal=6)
+                np.testing.assert_allclose(np.array(e_L_list), np.array(e_list_debug), atol=_atol_eL, rtol=_rtol_eL)
 
             # atomic force related
             if self.__comput_position_deriv:
@@ -7396,10 +7460,10 @@ class _GFMC_n_debug:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -7604,8 +7668,8 @@ class _GFMC_n_debug:
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
 
             # update E_scf
             eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
@@ -7642,8 +7706,8 @@ class _GFMC_n_debug:
             # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
             logger.devel("  Progress: Computing G_eq and G_e_L_eq.")
 
-            w_L_eq = jnp.array(w_L_eq)
-            e_L_eq = jnp.array(e_L_eq)
+            w_L_eq = jnp.asarray(w_L_eq, dtype=jnp.float64)
+            e_L_eq = jnp.asarray(e_L_eq, dtype=jnp.float64)
             G_eq = _compute_G_L_debug(w_L_eq, num_gfmc_collect_steps)
             G_e_L_eq = e_L_eq * G_eq
             G_eq = np.array(G_eq)

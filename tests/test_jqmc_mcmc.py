@@ -47,7 +47,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.determinant import Geminal_data  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
@@ -80,6 +80,12 @@ param_grid = [
 @pytest.mark.parametrize("trexio_file,with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", param_grid)
 def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow):
     """Test comparison with MCMC debug and MCMC production implementations."""
+    # e_L / w_L cross ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic zones; the
+    # achievable debug-vs-jax agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic"),
+        "strict",
+    )
     (
         structure_data,
         _,
@@ -173,21 +179,21 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     w_L_jax = mcmc_jax.w_L
     assert not np.any(np.isnan(np.asarray(w_L_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(w_L_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(w_L_debug, w_L_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(w_L_debug, w_L_jax, atol=atol, rtol=rtol)
 
     # e_L
     e_L_debug = mcmc_debug.e_L
     e_L_jax = mcmc_jax.e_L
     assert not np.any(np.isnan(np.asarray(e_L_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(e_L_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(e_L_debug, e_L_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(e_L_debug, e_L_jax, atol=atol, rtol=rtol)
 
     # e_L2
     e_L2_debug = mcmc_debug.e_L2
     e_L2_jax = mcmc_jax.e_L2
     assert not np.any(np.isnan(np.asarray(e_L2_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(e_L2_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol, rtol=rtol)
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = mcmc_debug.get_E(
@@ -208,16 +214,16 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     assert not np.any(np.isnan(Var_err_jax)), f"Var_err_jax contains NaN: {Var_err_jax}"
     assert not np.any(np.isnan(np.asarray(E_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(E_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(E_debug, E_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(E_debug, E_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(E_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(E_err_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(E_err_debug, E_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(E_err_debug, E_err_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(Var_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(Var_debug, Var_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(Var_debug, Var_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(Var_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_err_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(Var_err_debug, Var_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(Var_err_debug, Var_err_jax, atol=atol, rtol=rtol)
 
     # aF
     force_mean_debug, force_std_debug = mcmc_debug.get_aF(
@@ -234,10 +240,10 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     assert not np.any(np.isnan(force_std_jax)), f"force_std_jax contains NaN: {force_std_jax}"
     assert not np.any(np.isnan(np.asarray(force_mean_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(force_mean_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(force_mean_debug, force_mean_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(force_mean_debug, force_mean_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(force_std_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(force_std_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(force_std_debug, force_std_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(force_std_debug, force_std_jax, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -1028,9 +1034,14 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     ln_psi_mo = float(evaluate_ln_wavefunction(final_wf, r_up, r_dn))
     ln_psi_ao = float(evaluate_ln_wavefunction(wf_ao, r_up, r_dn))
 
+    # ln|Psi| crosses ao_eval/jastrow_eval/det_eval; bound by weakest zone.
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(ln_psi_mo))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ln_psi_ao))), "NaN detected in second argument"
-    np.testing.assert_allclose(ln_psi_mo, ln_psi_ao, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(ln_psi_mo, ln_psi_ao, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -1209,12 +1220,15 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
     lam_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix)
 
     # ── Assertions ───────────────────────────────────────────────────────────
+    # j3 / lambda_matrix live in jastrow_eval / det_eval zones; symmetry is a structural
+    # property of the matrix itself, so use those zones' tolerances.
+    atol, rtol = get_tolerance_min(("jastrow_eval", "det_eval"), "strict")
     if j3_type == "sym":
         np.testing.assert_allclose(
             j3_after[:, :-1],
             j3_after[:, :-1].T,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
             err_msg="j3 sub-block symmetry broken after VMC update",
         )
     else:
@@ -1225,8 +1239,8 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
         np.testing.assert_allclose(
             lam_after,
             lam_after.T,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
             err_msg="square lambda symmetry broken after VMC update",
         )
     elif lambda_type == "rect_paired_sym":
@@ -1234,8 +1248,8 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
         np.testing.assert_allclose(
             lam_after[:, :n_paired],
             lam_after[:, :n_paired].T,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
             err_msg="rectangular lambda paired sub-block symmetry broken after VMC update",
         )
     else:
@@ -1595,6 +1609,12 @@ def test_get_aH_and_solve_lm_debug_vs_production():
     # Get variational blocks
     blocks = hamiltonian_data.wavefunction_data.get_variational_blocks()
 
+    # H_0/f/S/K/B cross the full e_L path + optimization assembly; bound by weakest zone.
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "local_energy"),
+        "strict",
+    )
+
     # --- Test 1: get_aH in LM mode (return_matrices=True) ---
     H_0_d, f_d, S_d, K_d, B_d = mcmc_debug.get_aH(
         blocks=blocks,
@@ -1607,11 +1627,11 @@ def test_get_aH_and_solve_lm_debug_vs_production():
         return_matrices=True,
     )
 
-    np.testing.assert_allclose(H_0_d, H_0_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(f_d, f_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(S_d, S_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(K_d, K_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(B_d, B_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(H_0_d, H_0_p, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(f_d, f_p, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(S_d, S_p, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(K_d, K_p, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(B_d, B_p, atol=atol, rtol=rtol)
 
     # --- Test 2: get_aH in aSR mode (return_matrices=False) ---
     # Use a simple direction vector g for the aSR scalar projection test
@@ -1631,19 +1651,19 @@ def test_get_aH_and_solve_lm_debug_vs_production():
         return_matrices=False,
     )
 
-    np.testing.assert_allclose(H_0_d2, H_0_p2, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(H_1_d, H_1_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(H_2_d, H_2_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(S_2_d, S_2_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(H_0_d2, H_0_p2, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(H_1_d, H_1_p, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(H_2_d, H_2_p, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(S_2_d, S_2_p, atol=atol, rtol=rtol)
 
     # --- Test 3: aSR scalars should be consistent with LM matrices ---
     # H_1 = -1/2 g^T f,  S_2 = g^T S g,  H_2 = g^T (K+B) g
     H_1_from_mat = -0.5 * np.dot(g, f_d)
     S_2_from_mat = g @ S_d @ g
     H_2_from_mat = g @ (K_d + B_d) @ g
-    np.testing.assert_allclose(H_1_d, H_1_from_mat, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(S_2_d, S_2_from_mat, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(H_2_d, H_2_from_mat, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(H_1_d, H_1_from_mat, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(S_2_d, S_2_from_mat, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(H_2_d, H_2_from_mat, atol=atol, rtol=rtol)
 
     # --- Test 4: solve_linear_method with identical inputs ---
     # Use the production matrices for both to verify the two implementations
@@ -1651,8 +1671,8 @@ def test_get_aH_and_solve_lm_debug_vs_production():
     epsilon_lm = 1e-6
     c_debug, E_debug = _MCMC_debug.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
     c_prod, E_prod = MCMC.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
-    np.testing.assert_allclose(c_debug, c_prod, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
-    np.testing.assert_allclose(E_debug, E_prod, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(c_debug, c_prod, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(E_debug, E_prod, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 

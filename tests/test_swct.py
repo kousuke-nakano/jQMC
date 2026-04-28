@@ -44,10 +44,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import (  # noqa: E402
-    atol_debug_vs_production,
-    rtol_debug_vs_production,
-)
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.swct import (  # noqa: E402
     _evaluate_swct_domega_debug,
     _evaluate_swct_omega_debug,
@@ -64,6 +61,7 @@ jax.config.update("jax_traceback_filtering", "off")
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_debug_and_jax_SWCT_omega(trexio_file: str):
     """Test SWCT omega, compare debug and jax."""
+    atol, rtol = get_tolerance("swct", "strict")
     (
         structure_data,
         _,
@@ -88,10 +86,10 @@ def test_debug_and_jax_SWCT_omega(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(omega_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(omega_up_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(omega_up_debug, omega_up_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(omega_up_debug, omega_up_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(omega_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(omega_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(omega_dn_debug, omega_dn_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(omega_dn_debug, omega_dn_jax, atol=atol, rtol=rtol)
 
     domega_up_debug = _evaluate_swct_domega_debug(structure_data=structure_data, r_carts=r_up_carts)
     domega_dn_debug = _evaluate_swct_domega_debug(structure_data=structure_data, r_carts=r_dn_carts)
@@ -100,10 +98,10 @@ def test_debug_and_jax_SWCT_omega(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(domega_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(domega_up_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(domega_up_debug, domega_up_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(domega_up_debug, domega_up_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(domega_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(domega_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(domega_dn_debug, domega_dn_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(domega_dn_debug, domega_dn_jax, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 

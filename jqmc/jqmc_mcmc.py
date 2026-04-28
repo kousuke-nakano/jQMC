@@ -1,4 +1,11 @@
-"""QMC module."""
+"""QMC module (VMC / MCMC).
+
+Precision Zones:
+    - ``mcmc``: sampling, Sherman--Morrison updates, accept/reject, statistics.
+    - ``optimization``: SR matrix construction and parameter updates (run_optimize).
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -56,9 +63,9 @@ from ._jqmc_utility import _generate_init_electron_configurations
 from ._setting import (
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
-    EPS_rcond_SVD,
     EPS_zero_division,
     atol_consistency,
+    get_eps,
     min_S_diag_abs,
 )
 from .atomic_orbital import compute_overlap_matrix
@@ -224,8 +231,9 @@ class MCMC:
             logger.debug(f"  dn counts: {dn_counts}")
             logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -254,23 +262,26 @@ class MCMC:
         nw = self.__num_walkers
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
+        # mcmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
+
         # stored weight (w_L)
-        self.__stored_w_L = np.zeros((0, nw))
+        self.__stored_w_L = np.zeros((0, nw), dtype=dtype_np)
 
         # stored local energy (e_L)
-        self.__stored_e_L = np.zeros((0, nw))
+        self.__stored_e_L = np.zeros((0, nw), dtype=dtype_np)
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = np.zeros((0, nw))
+        self.__stored_e_L2 = np.zeros((0, nw), dtype=dtype_np)
 
         # stored force_HF per walker (HF force = de_L/dR + Omega . de_L/dr)
-        self.__stored_force_HF = np.zeros((0, nw, n_atoms, 3))
+        self.__stored_force_HF = np.zeros((0, nw, n_atoms, 3), dtype=dtype_np)
 
         # stored force_PP per walker (Pulay force = dln_Psi/dR + Omega . dln_Psi/dr + 1/2 * d_omega/dr)
-        self.__stored_force_PP = np.zeros((0, nw, n_atoms, 3))
+        self.__stored_force_PP = np.zeros((0, nw, n_atoms, 3), dtype=dtype_np)
 
         # stored E_L * force_PP per walker (for covariance in Pulay force)
-        self.__stored_E_L_force_PP = np.zeros((0, nw, n_atoms, 3))
+        self.__stored_E_L_force_PP = np.zeros((0, nw, n_atoms, 3), dtype=dtype_np)
 
         # stored parameter gradients keyed by block name
         self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
@@ -486,7 +497,10 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
-        RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
+        dtype_jnp = jnp.float64
+        dtype_np = np.float64
+
+        RTs = jnp.broadcast_to(jnp.eye(3, dtype=dtype_jnp), (len(self.__jax_PRNG_key_list), 3, 3))
 
         # Warm-up compilation: trigger JIT tracing on the first run() call
         # so that the MCMC loop does not stall on the first step.
@@ -620,14 +634,18 @@ class MCMC:
         nw = self.__num_walkers
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
-        self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw))])
-        self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw))])
-        self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw))])
+        self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw), dtype=dtype_np)])
+        self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw), dtype=dtype_np)])
+        self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw), dtype=dtype_np)])
         if self.__comput_position_deriv:
-            self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
-            self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
+            self.__stored_force_HF = np.concatenate(
+                [self.__stored_force_HF, np.zeros((num_mcmc_steps, nw, n_atoms, 3), dtype=dtype_np)]
+            )
+            self.__stored_force_PP = np.concatenate(
+                [self.__stored_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3), dtype=dtype_np)]
+            )
             self.__stored_E_L_force_PP = np.concatenate(
-                [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
+                [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3), dtype=dtype_np)]
             )
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
@@ -699,7 +717,7 @@ class MCMC:
             if self.__random_discretized_mesh:
                 RTs = _jit_vmap_generate_RTs(self.__jax_PRNG_key_list)
             else:
-                RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
+                RTs = jnp.broadcast_to(jnp.eye(3, dtype=dtype_jnp), (len(self.__jax_PRNG_key_list), 3, 3))
 
             # Evaluate observables each MCMC cycle
             start = time.perf_counter()
@@ -787,10 +805,10 @@ class MCMC:
                 else:
                     n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-                    omega_up_step = jnp.zeros((nw, n_atoms, n_up))
-                    omega_dn_step = jnp.zeros((nw, n_atoms, n_dn))
-                    grad_omega_dr_up_step = jnp.zeros((nw, n_atoms, 3))
-                    grad_omega_dr_dn_step = jnp.zeros((nw, n_atoms, 3))
+                    omega_up_step = jnp.zeros((nw, n_atoms, n_up), dtype=dtype_jnp)
+                    omega_dn_step = jnp.zeros((nw, n_atoms, n_dn), dtype=dtype_jnp)
+                    grad_omega_dr_up_step = jnp.zeros((nw, n_atoms, 3), dtype=dtype_jnp)
+                    grad_omega_dr_dn_step = jnp.zeros((nw, n_atoms, 3), dtype=dtype_jnp)
 
                 # Compute per-walker force products preserving cross-correlations
                 _grad_e_L_r_up_np = np.array(grad_e_L_r_up_step)  # (nw, n_up, 3)
@@ -1381,7 +1399,7 @@ class MCMC:
         # here, the third index indicates the flattened variational parameter index.
         O_matrix = np.empty((self.mcmc_counter, self.num_walkers, 0))
 
-        for dln_Psi_dc, block in zip(dln_Psi_dc_list, matched_blocks):
+        for dln_Psi_dc, _ in zip(dln_Psi_dc_list, matched_blocks):
             logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
             if dln_Psi_dc.ndim == 2:  # scalar variational param.
                 dln_Psi_dc_reshaped = dln_Psi_dc.reshape(dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], 1)
@@ -2190,10 +2208,11 @@ class MCMC:
         # ==================================================================
 
         # ---- Step 1: Remove parameters with near-zero diag(S) ----
+        dtype_mcmc_np = np.float64
         diag_S = np.diag(S_matrix)
         max_diag_S = np.max(np.abs(diag_S))
         # parcut2 ~ machine_precision^2, effectively only removes exact zeros
-        parcut2 = np.finfo(np.float64).eps ** 2
+        parcut2 = np.finfo(dtype_mcmc_np).eps ** 2
         alive = np.abs(diag_S) > parcut2 * max_diag_S
         n_removed_step1 = p - int(np.count_nonzero(alive))
         if n_removed_step1 > 0:
@@ -2201,11 +2220,11 @@ class MCMC:
 
         if not np.any(alive):
             logger.warning("  LM dgelscut: all parameters removed in Step 1; returning zero update.")
-            return np.zeros(p), H_0
+            return np.zeros(p, dtype=dtype_mcmc_np), H_0
 
         # ---- Step 2: Build correlation matrix for alive parameters ----
         alive_idx = np.where(alive)[0]
-        D_inv_sqrt = np.zeros(p)
+        D_inv_sqrt = np.zeros(p, dtype=dtype_mcmc_np)
         D_inv_sqrt[alive_idx] = 1.0 / np.sqrt(np.abs(diag_S[alive_idx]))
 
         # ---- Step 3: Iteratively remove parameters until well-conditioned ----
@@ -2214,7 +2233,7 @@ class MCMC:
             n_alive = len(idx)
             if n_alive == 0:
                 logger.warning("  LM dgelscut: all parameters removed; returning zero update.")
-                return np.zeros(p), H_0
+                return np.zeros(p, dtype=dtype_mcmc_np), H_0
 
             # Build correlation matrix for current alive set
             D_sub = D_inv_sqrt[idx]  # (n_alive,)
@@ -2274,7 +2293,7 @@ class MCMC:
 
         if p_prime == 0:
             logger.warning("  LM: no positive S eigenvalues after dgelscut; returning zero update.")
-            return np.zeros(p), H_0
+            return np.zeros(p, dtype=dtype_mcmc_np), H_0
 
         # P = U Λ^{-1/2} (S-orthonormal basis)
         inv_sqrt_Lambda = 1.0 / np.sqrt(Lambda)
@@ -2286,8 +2305,8 @@ class MCMC:
 
         # ---- Build extended matrices (p'+1) x (p'+1) ----
         dim = p_prime + 1
-        H_bar = np.zeros((dim, dim))
-        S_bar = np.eye(dim)  # identity (S-orthonormal basis)
+        H_bar = np.zeros((dim, dim), dtype=dtype_mcmc_np)
+        # S_bar = np.eye(dim, dtype=dtype_mcmc_np)  # identity (S-orthonormal basis)
 
         H_bar[0, 0] = H_0
         H_bar[0, 1:] = -0.5 * f_new
@@ -2324,7 +2343,7 @@ class MCMC:
 
         # ---- Back-transform: P @ c_new → alive parameter space → full space ----
         c_alive = P @ c_new  # (n_alive,)
-        c_vec = np.zeros(p)
+        c_vec = np.zeros(p, dtype=dtype_mcmc_np)
         c_vec[idx] = c_alive
 
         logger.info(
@@ -2540,9 +2559,10 @@ class MCMC:
             max_iter: int,
             tol: float,
         ) -> tuple[npt.NDArray[np.float64], float, int]:
-            x = np.array(x0, dtype=np.float64, copy=True)
-            r = np.array(b, dtype=np.float64, copy=False) - apply_A(x)
-            p = np.array(r, dtype=np.float64, copy=True)
+            dtype_mcmc_np = np.float64
+            x = np.array(x0, dtype=dtype_mcmc_np, copy=True)
+            r = np.array(b, dtype=dtype_mcmc_np, copy=False) - apply_A(x)
+            p = np.array(r, dtype=dtype_mcmc_np, copy=True)
             rs_old = float(np.dot(r, r))
 
             if not np.isfinite(rs_old):
@@ -2551,7 +2571,7 @@ class MCMC:
             if np.sqrt(rs_old) <= tol:
                 return x, np.sqrt(rs_old), 0
 
-            tiny = np.finfo(np.float64).tiny
+            tiny = np.finfo(dtype_mcmc_np).tiny
             num_iter = 0
             for i in range(int(max_iter)):
                 Ap = apply_A(p)
@@ -2677,6 +2697,9 @@ class MCMC:
             logger.info(f"Bin blocks = {num_mcmc_bin_blocks}.")
             logger.info("")
 
+            dtype_mcmc_jnp = jnp.float64
+            dtype_mcmc_np = np.float64
+
             lambda_projectors = None
             num_orb_projection = None
             if opt_with_projected_MOs:
@@ -2684,10 +2707,14 @@ class MCMC:
                 geminal_mo_current = wavefunction_data_step.geminal_data
                 num_orb_projection = int(geminal_mo_current.num_electron_dn)
 
-                mo_coefficients_up = np.asarray(geminal_mo_current.orb_data_up_spin.mo_coefficients, dtype=np.float64)
-                mo_coefficients_dn = np.asarray(geminal_mo_current.orb_data_dn_spin.mo_coefficients, dtype=np.float64)
-                overlap_up = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_up_spin.aos_data), dtype=np.float64)
-                overlap_dn = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_dn_spin.aos_data), dtype=np.float64)
+                mo_coefficients_up = np.asarray(geminal_mo_current.orb_data_up_spin.mo_coefficients, dtype=dtype_mcmc_np)
+                mo_coefficients_dn = np.asarray(geminal_mo_current.orb_data_dn_spin.mo_coefficients, dtype=dtype_mcmc_np)
+                overlap_up = np.asarray(
+                    compute_overlap_matrix(geminal_mo_current.orb_data_up_spin.aos_data), dtype=dtype_mcmc_np
+                )
+                overlap_dn = np.asarray(
+                    compute_overlap_matrix(geminal_mo_current.orb_data_dn_spin.aos_data), dtype=dtype_mcmc_np
+                )
                 overlap_up = 0.5 * (overlap_up + overlap_up.T)
                 overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
 
@@ -2723,7 +2750,7 @@ class MCMC:
                 # ------------------------------------------------------------------
                 # DEVEL: orthogonal complement-projector diagnostics  (I - L') and (I - R')
                 # ------------------------------------------------------------------
-                _I = np.eye(left_projector.shape[0], dtype=np.float64)
+                _I = np.eye(left_projector.shape[0], dtype=dtype_mcmc_np)
                 _comp_L = _I - left_projector  # (I - L')  — symmetric
                 _comp_R = _I - right_projector  # (I - R')  — symmetric
 
@@ -2843,13 +2870,15 @@ class MCMC:
 
             if not (use_sr or use_lm):
                 if blocks:
-                    flat_param_vector = np.concatenate([np.ravel(np.array(block.values, dtype=np.float64)) for block in blocks])
+                    flat_param_vector = np.concatenate(
+                        [np.ravel(np.array(block.values, dtype=dtype_mcmc_np)) for block in blocks]
+                    )
                 else:
-                    flat_param_vector = np.array([], dtype=np.float64)
+                    flat_param_vector = np.array([], dtype=dtype_mcmc_np)
 
                 if optax_state is None:
                     optax_param_size = flat_param_vector.size
-                    optax_state = optax_tx.init(jnp.array(flat_param_vector))
+                    optax_state = optax_tx.init(jnp.asarray(flat_param_vector, dtype=dtype_mcmc_jnp))
                 elif flat_param_vector.size != optax_param_size:
                     raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
 
@@ -3004,7 +3033,7 @@ class MCMC:
 
                 # compute X_w@F
                 X_F_local = X_local @ F_local  # shape (num_param, )
-                X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                X_F = np.empty(X_F_local.shape, dtype=dtype_mcmc_np)
                 mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
                 # compute f_argmax (index in reduced space)
@@ -3026,7 +3055,7 @@ class MCMC:
                 # make the SR matrix scale-invariant (i.e., normalize)
                 ## compute X_w@X.T
                 diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
-                diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
+                diag_S = np.empty(diag_S_local.shape, dtype=dtype_mcmc_np)
                 mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
                 logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
                 # ------------------------------------------------------------------
@@ -3087,7 +3116,7 @@ class MCMC:
                         logger.devel(f"X_X_T_local.shape = {X_X_T_local.shape}.")
                         # compute global sum of X * X^T
                         if mpi_rank == 0:
-                            X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                            X_X_T = np.empty(X_X_T_local.shape, dtype=dtype_mcmc_np)
                         else:
                             X_X_T = None
                         mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
@@ -3096,7 +3125,7 @@ class MCMC:
                         logger.devel(f"X_F_local.shape = {X_F_local.shape}.")
                         # compute global sum of X @ F
                         if mpi_rank == 0:
-                            X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                            X_F = np.empty(X_F_local.shape, dtype=dtype_mcmc_np)
                         else:
                             X_F = None
                         mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
@@ -3141,9 +3170,9 @@ class MCMC:
                             x0 = np.zeros_like(X_F)
 
                         theta_all, final_residual, num_steps = _conjugate_gradient_numpy(
-                            np.asarray(X_F, dtype=np.float64),
+                            np.asarray(X_F, dtype=dtype_mcmc_np),
                             apply_S_primal_numpy,
-                            np.asarray(x0, dtype=np.float64),
+                            np.asarray(x0, dtype=dtype_mcmc_np),
                             sr_cg_max_iter,
                             sr_cg_tol,
                         )
@@ -3213,7 +3242,7 @@ class MCMC:
                         logger.devel(f"X_T_X_local.shape = {X_T_X_local.shape}.")
                         # compute global sum of X^T * X
                         if mpi_rank == 0:
-                            X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
+                            X_T_X = np.empty(X_T_X_local.shape, dtype=dtype_mcmc_np)
                         else:
                             X_T_X = None
                         mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
@@ -3222,7 +3251,7 @@ class MCMC:
                         F_recvcounts = mpi_comm.gather(F_local_count, root=0)
                         if mpi_rank == 0:
                             F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
-                            F = np.empty(sum(F_recvcounts), dtype=np.float64)
+                            F = np.empty(sum(F_recvcounts), dtype=dtype_mcmc_np)
                         else:
                             F_displs = None
                             F = None
@@ -3244,7 +3273,7 @@ class MCMC:
                         # Broadcast K to all ranks so they know how big each chunk is
                         K = mpi_comm.bcast(K, root=0)
 
-                        X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
+                        X_T_X_inv_F_local = np.empty(K, dtype=dtype_mcmc_np)
 
                         mpi_comm.Scatter(
                             [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
@@ -3253,7 +3282,7 @@ class MCMC:
                         )
                         # theta = X_w (X^T X_w + eps*I)^{-1} F
                         theta_all_local = X_local @ X_T_X_inv_F_local
-                        theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
+                        theta_all = np.empty(theta_all_local.shape, dtype=dtype_mcmc_np)
                         mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
                         logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
                         logger.devel(
@@ -3275,7 +3304,7 @@ class MCMC:
                         F_local_count = F_local.shape[0]
                         F_recvcounts = mpi_comm.allgather(F_local_count)
                         F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
-                        F_total = np.empty(sum(F_recvcounts), dtype=np.float64)
+                        F_total = np.empty(sum(F_recvcounts), dtype=dtype_mcmc_np)
                         mpi_comm.Allgatherv(
                             [F_local, MPI.DOUBLE],
                             [F_total, (F_recvcounts, F_displs), MPI.DOUBLE],
@@ -3287,7 +3316,7 @@ class MCMC:
                         x_sol, final_residual, num_steps = _conjugate_gradient_numpy(
                             F_total,
                             apply_dual_S_numpy,
-                            np.asarray(x0, dtype=np.float64),
+                            np.asarray(x0, dtype=dtype_mcmc_np),
                             sr_cg_max_iter,
                             sr_cg_tol,
                         )
@@ -3378,10 +3407,10 @@ class MCMC:
             # optax optimizer
             #############################
             else:
-                params = jnp.array(flat_param_vector)
-                grads = -jnp.array(f)
+                params = jnp.asarray(flat_param_vector, dtype=dtype_mcmc_jnp)
+                grads = -jnp.asarray(f, dtype=dtype_mcmc_jnp)
                 updates, optax_state = optax_tx.update(grads, optax_state, params)
-                theta_all = np.array(updates, dtype=np.float64)
+                theta_all = np.array(updates, dtype=dtype_mcmc_np)
                 if optax_param_size is None:
                     optax_param_size = flat_param_vector.size
                 self.__set_optimizer_runtime(
@@ -3398,11 +3427,11 @@ class MCMC:
             # 1) Expand theta_all to full parameter space.
             # ------------------------------------------------------------------
             if use_sr:
-                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta = np.zeros(total_num_params, dtype=dtype_mcmc_np)
                 theta[:] = theta_all
             else:
                 # optax
-                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta = np.zeros(total_num_params, dtype=dtype_mcmc_np)
                 theta[:] = theta_all
 
             # ------------------------------------------------------------------
@@ -3485,7 +3514,7 @@ class MCMC:
                     theta = 0.1 * g_sr
                 else:
                     # Back-transform: c_vec[0] = c₀ (SR direction), c_vec[1:] = c_k (individual params)
-                    theta = np.zeros(total_num_params, dtype=np.float64)
+                    theta = np.zeros(total_num_params, dtype=dtype_mcmc_np)
                     theta[:] += c_vec[0] * g_sr  # SR collective variable (affects all params)
                     if lm_subspace_dim == -1 or lm_subspace_dim >= total_num_params:
                         theta[:] += c_vec[1:]
@@ -3532,7 +3561,7 @@ class MCMC:
             # ------------------------------------------------------------------
             if use_sr and lambda_projectors is not None and len(lambda_projectors) == 4:
                 _left_proj, _right_proj, _, _ = lambda_projectors
-                _identity_proj = np.eye(_left_proj.shape[0], dtype=np.float64)
+                _identity_proj = np.eye(_left_proj.shape[0], dtype=dtype_mcmc_np)
                 _comp_L = _identity_proj - _left_proj
                 _comp_R = _identity_proj - _right_proj
                 for _blk, _s, _e in offsets:
@@ -4190,6 +4219,7 @@ class MCMC:
 @jit
 def _generate_rotation_matrix(jax_PRNG_key):
     """Sample a random 3×3 rotation matrix (Euler angles)."""
+    dtype_jnp = jnp.float64
     _, subkey = jax.random.split(jax_PRNG_key)
     alpha, beta, gamma = jax.random.uniform(subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi)
     cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
@@ -4200,7 +4230,8 @@ def _generate_rotation_matrix(jax_PRNG_key):
             [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
             [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
             [-sin_b, cos_b * sin_a, cos_a * cos_b],
-        ]
+        ],
+        dtype=dtype_jnp,
     )
     return R.T
 
@@ -4208,13 +4239,15 @@ def _generate_rotation_matrix(jax_PRNG_key):
 @jit
 def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
     """Build G and invert via SVD-based pseudoinverse (single sample)."""
+    dtype_jnp = jnp.float64
+    eps_rcond = get_eps("rcond_svd", dtype_jnp)
     G = compute_geminal_all_elements(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
     U, s, Vt = jnp.linalg.svd(G, full_matrices=False)
-    s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+    s_inv = jnp.where(s > eps_rcond * s[0], 1.0 / s, 0.0)
     Ginv = (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
     return G, Ginv, jnp.zeros_like(G), jnp.zeros(G.shape[0], dtype=jnp.int32)
 
@@ -4222,8 +4255,9 @@ def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
 @jit
 def _geminal_inv_batched(geminal_data, r_up_batch, r_dn_batch):
     """Batched geminal inverse over walkers."""
+    dtype_jnp = jnp.float64
     N_up = r_up_batch.shape[-2]
-    I = jnp.eye(N_up)
+    I = jnp.eye(N_up, dtype=dtype_jnp)
     G_b, Ginv_b, lu_b, piv_b = vmap(
         _geminal_inv_single,
         in_axes=(None, None, 0, 0),
@@ -4262,10 +4296,11 @@ def _update_electron_positions(
         updated_r_up_cart (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
         updated_r_dn_cart (jnpt.ArrayLike): down electron position. dim: (N_e^down, 3)
     """
+    dtype_jnp = jnp.float64
     accepted_moves = 0
     rejected_moves = 0
-    r_up_carts = init_r_up_carts
-    r_dn_carts = init_r_dn_carts
+    r_up_carts = jnp.asarray(init_r_up_carts, dtype=dtype_jnp)
+    r_dn_carts = jnp.asarray(init_r_dn_carts, dtype=dtype_jnp)
     geminal = geminal_init
     geminal_inv = geminal_inv_init
 
@@ -4323,7 +4358,7 @@ def _update_electron_positions(
         random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 
         # plug g into g_vector
-        g_vector = jnp.zeros(3)
+        g_vector = jnp.zeros(3, dtype=dtype_jnp)
         g_vector = g_vector.at[random_index].set(g)
 
         new_r_cart = old_r_cart + g_vector
@@ -4365,41 +4400,57 @@ def _update_electron_positions(
             new_r_dn_carts_arr=jnp.expand_dims(proposed_r_dn_carts, axis=0),
         )[0]
 
-        # Determinant part, fast update using the matrix determinant lemma
+        # Determinant part, fast update using the matrix determinant lemma.
+        # Consumer-zone explicit cast: cast both lax.cond branches to the local
+        # mcmc zone dtype. The geminal-diff branch lives in the det_eval zone
+        # (fp64) while jax.nn.one_hot defaults to fp32, so without an explicit
+        # cast the cond branches disagree in mixed precision.
         v = lax.cond(
             is_up,
-            lambda _: (
-                compute_geminal_up_one_row_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    # inline "as_row3": force (1,3) even if source is (3,)
-                    r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
-                    r_dn_carts=r_dn_carts,
-                )
-                - compute_geminal_up_one_row_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
-                    r_dn_carts=r_dn_carts,
-                )
-            )[:, None],
-            lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+            lambda _: jnp.asarray(
+                (
+                    compute_geminal_up_one_row_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        # inline "as_row3": force (1,3) even if source is (3,)
+                        r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                    - compute_geminal_up_one_row_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                )[:, None],
+                dtype=dtype_jnp,
+            ),
+            lambda _: jnp.asarray(
+                jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+                dtype=dtype_jnp,
+            ),
             operand=None,
         )
 
         u = lax.cond(
             is_up,
-            lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
-            lambda _: (
-                compute_geminal_dn_one_column_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
-                )
-                - compute_geminal_dn_one_column_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
-                )
-            )[:, None],  # -> (N_up, 1)
+            lambda _: jnp.asarray(
+                jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
+                dtype=dtype_jnp,
+            ),
+            lambda _: jnp.asarray(
+                (
+                    compute_geminal_dn_one_column_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
+                    )
+                    - compute_geminal_dn_one_column_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
+                    )
+                )[:, None],  # -> (N_up, 1)
+                dtype=dtype_jnp,
+            ),
             operand=None,
         )
 
@@ -4434,7 +4485,7 @@ def _update_electron_positions(
         # compute R_ratio
         R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
-        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
+        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio], dtype=dtype_jnp))
 
         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
         b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
@@ -4486,10 +4537,11 @@ def _update_electron_positions_only_up_electron(
     geminal_init,
 ):
     """Update electron positions based on the MH method (up-spin electrons only)."""
+    dtype_jnp = jnp.float64
     accepted_moves = 0
     rejected_moves = 0
-    r_up_carts = init_r_up_carts
-    r_dn_carts = init_r_dn_carts
+    r_up_carts = jnp.asarray(init_r_up_carts, dtype=dtype_jnp)
+    r_dn_carts = jnp.asarray(init_r_dn_carts, dtype=dtype_jnp)
     geminal_inv = geminal_inv_init
     geminal = geminal_init
 
@@ -4539,7 +4591,7 @@ def _update_electron_positions_only_up_electron(
         random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 
         # plug g into g_vector
-        g_vector = jnp.zeros(3)
+        g_vector = jnp.zeros(3, dtype=dtype_jnp)
         g_vector = g_vector.at[random_index].set(g)
 
         new_r_cart = old_r_cart + g_vector
@@ -4573,6 +4625,8 @@ def _update_electron_positions_only_up_electron(
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
+        Jastrow_T_p = jnp.asarray(Jastrow_T_p, dtype=dtype_jnp)
+        Jastrow_T_o = jnp.asarray(Jastrow_T_o, dtype=dtype_jnp)
 
         # Determinant part, fast update using the matrix determinant lemma
         v = (
@@ -4598,7 +4652,10 @@ def _update_electron_positions_only_up_electron(
         Det_T_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]  # scalar
 
         # (A+uv^T)^{-1} = A^{-1} - (A^{-1} u v^T A^{-1}) / (1 + v^T A^{-1} u)
-        geminal_inv_new = geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio
+        # Consumer-zone explicit cast: cast the rank-1 update to the local mcmc
+        # zone dtype so the result agrees with the rejected lax.cond branch and
+        # never depends on geminal_inv's upstream dtype.
+        geminal_inv_new = jnp.asarray(geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio, dtype=dtype_jnp)
 
         geminal_new = geminal.at[selected_electron_index, :].add(v.squeeze(-1))
 
@@ -4611,12 +4668,13 @@ def _update_electron_positions_only_up_electron(
 
         # modified trial WFs
         R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
+        Det_T_ratio = jnp.asarray(Det_T_ratio, dtype=dtype_jnp)
         WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_ratio)
 
         # compute R_ratio
         R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
-        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
+        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio], dtype=dtype_jnp))
 
         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
         b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
@@ -4773,8 +4831,9 @@ class _MCMC_debug:
             logger.debug(f"  dn counts: {dn_counts}")
             logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -4858,6 +4917,9 @@ class _MCMC_debug:
         logger.info("")
         logger.info("This is a debugging class! It supposed to be very slow.")
         logger.info("")
+
+        dtype_jnp = jnp.float64
+        dtype_np = np.float64
 
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
@@ -4945,7 +5007,7 @@ class _MCMC_debug:
                     random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 
                     # plug g into g_vector
-                    g_vector = np.zeros(3)
+                    g_vector = np.zeros(3, dtype=dtype_np)
                     g_vector[random_index] = g
 
                     new_r_cart = old_r_cart + g_vector
@@ -5021,7 +5083,7 @@ class _MCMC_debug:
                     R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
                     logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
-                    acceptance_ratio = np.min(jnp.array([1.0, R_ratio * T_ratio]))
+                    acceptance_ratio = np.min(jnp.array([1.0, R_ratio * T_ratio], dtype=dtype_jnp))
                     logger.devel(f"acceptance_ratio = {acceptance_ratio}")
 
                     jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -5043,8 +5105,8 @@ class _MCMC_debug:
             # store vmapped outcomes
             self.__accepted_moves = self.__accepted_moves + np.sum(accepted_moves_nw)
             self.__rejected_moves = self.__rejected_moves + np.sum(rejected_moves_nw)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts, dtype=dtype_jnp)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts, dtype=dtype_jnp)
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)
 
             # generate rotation matrices (for non-local ECPs)
@@ -5065,11 +5127,12 @@ class _MCMC_debug:
                             [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                             [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                             [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                        ]
+                        ],
+                        dtype=dtype_jnp,
                     )
                     RTs.append(R.T)
                 else:
-                    RTs.append(jnp.eye(3))
+                    RTs.append(jnp.eye(3, dtype=dtype_jnp))
             RTs = jnp.array(RTs)
 
             # evaluate observables
@@ -5167,10 +5230,10 @@ class _MCMC_debug:
                     n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, n_atoms, n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, n_atoms, n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, n_atoms, n_up), dtype=dtype_jnp)
+                    omega_dn = jnp.zeros((self.__num_walkers, n_atoms, n_dn), dtype=dtype_jnp)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, n_atoms, 3), dtype=dtype_jnp)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, n_atoms, 3), dtype=dtype_jnp)
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)

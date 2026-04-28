@@ -45,10 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import (  # noqa: E402
-    atol_debug_vs_production,
-    rtol_debug_vs_production,
-)
+from jqmc._precision import get_tolerance  # noqa: E402
 from jqmc.coulomb_potential import (  # noqa: E402
     _compute_bare_coulomb_potential_debug,
     _compute_bare_coulomb_potential_el_ion_element_wise_debug,
@@ -108,6 +105,7 @@ Nv_params = [pytest.param(Nv, id=f"Nv={Nv}") for Nv in (4, 6, 12, 18)]
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_debug_and_jax_bare_coulomb(trexio_file: str):
     """Test the bare coulomb potential computation."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         _,
         _,
@@ -159,12 +157,13 @@ def test_debug_and_jax_bare_coulomb(trexio_file: str):
     # print(f"vpot_bare_debug = {vpot_bare_debug}")
     assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(vpot_bare_jax, vpot_bare_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(vpot_bare_jax, vpot_bare_debug, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_debug_and_jax_ecp_local(trexio_file: str):
     """Test the local ECP potential computation."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         _,
         _,
@@ -214,9 +213,7 @@ def test_debug_and_jax_ecp_local(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(vpot_ecp_local_full_NN_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(vpot_ecp_local_full_NN_debug))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, atol=atol, rtol=rtol)
 
 
 @pytest.mark.activate_if_skip_heavy
@@ -224,6 +221,7 @@ def test_debug_and_jax_ecp_local(trexio_file: str):
 @pytest.mark.parametrize("alpha, beta, gamma", angle_params)
 def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     """Test the non-local ECP potential computation with the full neibohrs."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         structure_data,
         _,
@@ -314,9 +312,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
 
     assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, atol=atol, rtol=rtol)
 
     mesh_non_local_r_up_carts_max_full_NN_jax = mesh_non_local_ecp_part_r_up_carts_full_NN_jax[
         np.argmax(V_nonlocal_full_NN_jax)
@@ -338,24 +334,24 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     np.testing.assert_allclose(
         V_ecp_non_local_max_full_NN_jax,
         V_ecp_non_local_max_full_NN_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_non_local_r_up_carts_max_full_NN_jax,
         mesh_non_local_r_up_carts_max_full_NN_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_non_local_r_dn_carts_max_full_NN_jax,
         mesh_non_local_r_dn_carts_max_full_NN_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
     # ecp non-local (NN, N=max)
@@ -395,16 +391,14 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     np.testing.assert_allclose(
         sum_V_nonlocal_full_NN_debug,
         sum_V_nonlocal_NN_check_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
     # jax, full-NN vs check-NN
     assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_check_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        sum_V_nonlocal_full_NN_jax, sum_V_nonlocal_NN_check_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(sum_V_nonlocal_full_NN_jax, sum_V_nonlocal_NN_check_jax, atol=atol, rtol=rtol)
 
     mesh_non_local_r_up_carts_max_NN_check_jax = mesh_non_local_ecp_part_r_up_carts_NN_check_jax[
         np.argmax(V_nonlocal_NN_check_jax)
@@ -427,24 +421,24 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     np.testing.assert_allclose(
         V_ecp_non_local_max_full_NN_debug,
         V_ecp_non_local_max_NN_check_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_check_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_non_local_r_up_carts_max_full_NN_debug,
         mesh_non_local_r_up_carts_max_NN_check_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_check_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_non_local_r_dn_carts_max_full_NN_debug,
         mesh_non_local_r_dn_carts_max_NN_check_debug,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
     # jax, full-NN vs check-NN
@@ -453,24 +447,24 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     np.testing.assert_allclose(
         V_ecp_non_local_max_full_NN_jax,
         V_ecp_non_local_max_NN_check_jax,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_check_jax))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_non_local_r_up_carts_max_full_NN_jax,
         mesh_non_local_r_up_carts_max_NN_check_jax,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_check_jax))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mesh_non_local_r_dn_carts_max_full_NN_jax,
         mesh_non_local_r_dn_carts_max_NN_check_jax,
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
 
@@ -479,6 +473,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
 @pytest.mark.parametrize("alpha, beta, gamma", angle_params)
 def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
     """Test the non-local ECP potential computation with partial neibohrs."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         structure_data,
         _,
@@ -572,9 +567,7 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
 
         assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_debug))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_jax))), "NaN detected in second argument"
-        np.testing.assert_allclose(
-            sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-        )
+        np.testing.assert_allclose(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, atol=atol, rtol=rtol)
 
         mesh_non_local_r_up_carts_max_NN_jax = mesh_non_local_ecp_part_r_up_carts_NN_jax[np.argmax(V_nonlocal_NN_jax)]
         mesh_non_local_r_up_carts_max_NN_debug = mesh_non_local_ecp_part_r_up_carts_NN_debug[np.argmax(V_nonlocal_NN_debug)]
@@ -588,24 +581,24 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
         np.testing.assert_allclose(
             V_ecp_non_local_max_NN_jax,
             V_ecp_non_local_max_NN_debug,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
         )
         assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_jax))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_debug))), "NaN detected in second argument"
         np.testing.assert_allclose(
             mesh_non_local_r_up_carts_max_NN_jax,
             mesh_non_local_r_up_carts_max_NN_debug,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
         )
         assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_jax))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_debug))), "NaN detected in second argument"
         np.testing.assert_allclose(
             mesh_non_local_r_dn_carts_max_NN_jax,
             mesh_non_local_r_dn_carts_max_NN_debug,
-            atol=atol_debug_vs_production,
-            rtol=rtol_debug_vs_production,
+            atol=atol,
+            rtol=rtol,
         )
 
 
@@ -638,6 +631,7 @@ def _build_full_jastrow_data(structure_data, geminal_mo_data, coulomb_potential_
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_fast_update_ecp_non_local_partial_NN(trexio_file: str):
     """Fast-update nearest-neighbor ECP matches reference with all Jastrow terms enabled."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         structure_data,
         _aos_data,
@@ -703,29 +697,22 @@ def test_fast_update_ecp_non_local_partial_NN(trexio_file: str):
 
         assert not np.any(np.isnan(np.asarray(np.asarray(sum_V_fast)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sum_V_ref)))), "NaN detected in second argument"
-        np.testing.assert_allclose(
-            np.asarray(sum_V_fast), np.asarray(sum_V_ref), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-        )
+        np.testing.assert_allclose(np.asarray(sum_V_fast), np.asarray(sum_V_ref), atol=atol, rtol=rtol)
         assert not np.any(np.isnan(np.asarray(np.asarray(V_fast)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(V_ref)))), "NaN detected in second argument"
-        np.testing.assert_allclose(
-            np.asarray(V_fast), np.asarray(V_ref), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-        )
+        np.testing.assert_allclose(np.asarray(V_fast), np.asarray(V_ref), atol=atol, rtol=rtol)
         assert not np.any(np.isnan(np.asarray(np.asarray(mesh_up_fast)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(mesh_up_ref)))), "NaN detected in second argument"
-        np.testing.assert_allclose(
-            np.asarray(mesh_up_fast), np.asarray(mesh_up_ref), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-        )
+        np.testing.assert_allclose(np.asarray(mesh_up_fast), np.asarray(mesh_up_ref), atol=atol, rtol=rtol)
         assert not np.any(np.isnan(np.asarray(np.asarray(mesh_dn_fast)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(mesh_dn_ref)))), "NaN detected in second argument"
-        np.testing.assert_allclose(
-            np.asarray(mesh_dn_fast), np.asarray(mesh_dn_ref), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-        )
+        np.testing.assert_allclose(np.asarray(mesh_dn_fast), np.asarray(mesh_dn_ref), atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_debug_and_jax_bare_el_ion_elements(trexio_file: str):
     """Test the bare couloumb potential computation."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         structure_data,
         _,
@@ -774,19 +761,16 @@ def test_debug_and_jax_bare_el_ion_elements(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(interactions_R_r_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(interactions_R_r_up_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        interactions_R_r_up_debug, interactions_R_r_up_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(interactions_R_r_up_debug, interactions_R_r_up_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        interactions_R_r_dn_debug, interactions_R_r_dn_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(interactions_R_r_dn_debug, interactions_R_r_dn_jax, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
 def test_debug_and_jax_discretized_bare_el_ion_elements(trexio_file: str):
     """Test the bare couloumb potential computation."""
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         structure_data,
         _,
@@ -841,14 +825,10 @@ def test_debug_and_jax_discretized_bare_el_ion_elements(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(interactions_R_r_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(interactions_R_r_up_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        interactions_R_r_up_debug, interactions_R_r_up_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(interactions_R_r_up_debug, interactions_R_r_up_jax, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        interactions_R_r_dn_debug, interactions_R_r_dn_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(interactions_R_r_dn_debug, interactions_R_r_dn_jax, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("Nv", Nv_params)
@@ -859,6 +839,7 @@ def test_compute_ecp_coulomb_potential_fast(Nv, alpha, beta, gamma):
     With a freshly computed LU inverse both functions must agree to full double
     precision because the only difference is which code path owns the LU solve.
     """
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         _structure_data,
         _aos_data,
@@ -915,9 +896,7 @@ def test_compute_ecp_coulomb_potential_fast(Nv, alpha, beta, gamma):
 
     assert not np.any(np.isnan(np.asarray(V_ref))), "NaN detected in V_ref"
     assert not np.any(np.isnan(np.asarray(V_fast))), "NaN detected in V_fast"
-    np.testing.assert_allclose(
-        np.asarray(V_fast), np.asarray(V_ref), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(np.asarray(V_fast), np.asarray(V_ref), atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("Nv", Nv_params)
@@ -929,6 +908,7 @@ def test_compute_coulomb_potential_fast(Nv, alpha, beta, gamma):
     Psi(r')/Psi(r) ratios must be identical between the two paths because the
     same A_old_inv (exact LU inverse) is used.
     """
+    atol, rtol = get_tolerance("coulomb", "strict")
     (
         _structure_data,
         _aos_data,
@@ -985,9 +965,7 @@ def test_compute_coulomb_potential_fast(Nv, alpha, beta, gamma):
 
     assert not np.any(np.isnan(np.asarray(V_ref))), "NaN detected in V_ref"
     assert not np.any(np.isnan(np.asarray(V_fast))), "NaN detected in V_fast"
-    np.testing.assert_allclose(
-        np.asarray(V_fast), np.asarray(V_ref), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
-    )
+    np.testing.assert_allclose(np.asarray(V_fast), np.asarray(V_ref), atol=atol, rtol=rtol)
 
 
 if __name__ == "__main__":

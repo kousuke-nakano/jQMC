@@ -311,6 +311,8 @@ class VMC_Workflow(Workflow):
         energy_slope_sigma_threshold: Optional[float] = None,
         energy_slope_window_size: int = 5,
         cleanup_patterns: Optional[list] = None,
+        # -- [precision] section --
+        precision_mode: str = "full",
     ):
         super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
@@ -353,6 +355,8 @@ class VMC_Workflow(Workflow):
         self.snr_avg_window = snr_avg_window
         self.energy_slope_sigma_threshold = energy_slope_sigma_threshold
         self.energy_slope_window_size = energy_slope_window_size
+        # [precision] section
+        self.precision_mode = precision_mode
 
     # ── Input generation ──────────────────────────────────────────
 
@@ -420,6 +424,8 @@ class VMC_Workflow(Workflow):
             "control": control_ov,
             "vmc": vmc_ov,
         }
+        # Add [precision] section
+        overrides["precision"] = {"mode": self.precision_mode}
         generate_input_toml(
             job_type="vmc",
             overrides=overrides,

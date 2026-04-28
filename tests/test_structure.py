@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production
+from jqmc._precision import get_tolerance
 from jqmc.structure import (
     Structure_data,
     _find_nearest_index_jnp,
@@ -54,6 +54,7 @@ def _make_non_pbc_structure():
 
 def test_reciprocal_lattice_dot_2pi():
     """Test that the dot product of the cell and reciprocal cell gives 2pi delta_ij."""
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_pbc_structure()
     recip = structure.recip_cell
     cell = structure.cell
@@ -63,11 +64,12 @@ def test_reciprocal_lattice_dot_2pi():
             expected = 2.0 * np.pi if i == j else 0.0
             assert not np.any(np.isnan(np.asarray(dot))), "NaN detected in first argument"
             assert not np.any(np.isnan(np.asarray(expected))), "NaN detected in second argument"
-            np.testing.assert_allclose(dot, expected, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+            np.testing.assert_allclose(dot, expected, atol=atol, rtol=rtol)
 
 
 def test_np_jnp_consistency_non_pbc():
     """Test consistency between NumPy and JAX implementations for non-PBC structures."""
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_non_pbc_structure()
     r_cart = np.array([0.2, 0.0, 0.0])
 
@@ -76,8 +78,8 @@ def test_np_jnp_consistency_non_pbc():
     np.testing.assert_allclose(
         structure._positions_cart_np,
         np.asarray(structure._positions_cart_jnp),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
     idx_np = _find_nearest_index_np(structure, r_cart)
@@ -93,11 +95,12 @@ def test_np_jnp_consistency_non_pbc():
         rel_jnp = np.asarray(_get_min_dist_rel_R_cart_jnp(structure, r_cart, i_atom))
         assert not np.any(np.isnan(np.asarray(rel_np))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(rel_jnp))), "NaN detected in second argument"
-        np.testing.assert_allclose(rel_np, rel_jnp, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(rel_np, rel_jnp, atol=atol, rtol=rtol)
 
 
 def test_pbc_minimum_image_and_nearest():
     """Test PBC minimum image convention and nearest nucleus finding."""
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_pbc_structure()
     r_cart = np.array([9.1, 0.0, 0.0])
 
@@ -117,31 +120,32 @@ def test_pbc_minimum_image_and_nearest():
     np.testing.assert_allclose(
         rel_atom0,
         np.array([0.9, 0.0, 0.0]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(rel_atom1))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.array([-0.1, 0.0, 0.0])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         rel_atom1,
         np.array([-0.1, 0.0, 0.0]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
     rel_atom0_jnp = np.asarray(_get_min_dist_rel_R_cart_jnp(structure, r_cart, 0))
     rel_atom1_jnp = np.asarray(_get_min_dist_rel_R_cart_jnp(structure, r_cart, 1))
     assert not np.any(np.isnan(np.asarray(rel_atom0_jnp))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(rel_atom0))), "NaN detected in second argument"
-    np.testing.assert_allclose(rel_atom0_jnp, rel_atom0, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(rel_atom0_jnp, rel_atom0, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(rel_atom1_jnp))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(rel_atom1))), "NaN detected in second argument"
-    np.testing.assert_allclose(rel_atom1_jnp, rel_atom1, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(rel_atom1_jnp, rel_atom1, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("use_pbc", [False, True])
 def test_find_nearest_index_matches_min_dist_jnp(use_pbc):
     """Test that the nearest index found matches the minimum distance calculation."""
+    atol, rtol = get_tolerance("local_energy", "strict")
     structure = _make_pbc_structure() if use_pbc else _make_non_pbc_structure()
     r_cart = np.array([9.1, 0.0, 0.0]) if use_pbc else np.array([1.8, 0.1, 0.0])
 
@@ -160,4 +164,4 @@ def test_find_nearest_index_matches_min_dist_jnp(use_pbc):
 
     assert not np.any(np.isnan(np.asarray(dist_idx))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.min(dist_all)))), "NaN detected in second argument"
-    np.testing.assert_allclose(dist_idx, np.min(dist_all), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(dist_idx, np.min(dist_all), atol=atol, rtol=rtol)

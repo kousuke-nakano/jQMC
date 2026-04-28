@@ -1,6 +1,6 @@
-# A full test of jqmc.
+# An rc test of jqmc.
 
-name: jqmc full test
+name: jqmc rc test
 
 on:
   push:
@@ -16,6 +16,15 @@ on:
       - 'jqmc_workflow/**'
   pull_request:
     branches: [ "rc" ]
+    paths-ignore:
+      - '.gitignore'
+      - '.github/**'
+      - 'doc/**'
+      - 'examples/**'
+      - 'benchmarks/**'
+      - 'README.md'
+      - '.pre-commit-config.yaml'
+      - 'jqmc_workflow/**'
 
 jobs:
   run:
@@ -49,18 +58,33 @@ jobs:
         python -m pip install flake8 pytest pytest-cov
         python -m pip install .
 
-    - name: Test jqmc (QMC kernels without MPI)
+    - name: Test jqmc command-line
       run: |
         pytest -s -v tests/test_jqmc_command_lines.py
+
+    - name: Test jqmc FP64 (QMC kernels without MPI, FP64)
+      run: |
         pytest -s -v tests/test_jqmc_mcmc.py
         pytest -s -v tests/test_jqmc_gfmc_tau.py
         pytest -s -v tests/test_jqmc_gfmc_bra.py
 
-    - name: Test jqmc (QMC kernels with 2MPIs)
+    - name: Test jqmc FP64 (QMC kernels with 2MPIs, FP64)
       run: |
         mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
         mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_tau.py
         mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_bra.py
+
+    - name: Test jqmc FP32+FP64 (QMC kernels without MPI, FP32+FP64)
+      run: |
+        pytest -s -v tests/test_jqmc_mcmc.py --precision-mode=mixed
+        pytest -s -v tests/test_jqmc_gfmc_tau.py --precision-mode=mixed
+        pytest -s -v tests/test_jqmc_gfmc_bra.py --precision-mode=mixed
+
+    - name: Test jqmc FP32+FP64 (QMC kernels with 2MPIs, FP32+FP64)
+      run: |
+        mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py --precision-mode=mixed
+        mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_tau.py --precision-mode=mixed
+        mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_bra.py --precision-mode=mixed
 
     - name: Test jqmc-tool (toolset for jqmc)
       run: |
