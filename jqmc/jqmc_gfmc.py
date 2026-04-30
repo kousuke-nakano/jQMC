@@ -92,6 +92,10 @@ from .jastrow_factor import (
 )
 from .swct import evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
+    Kinetic_streaming_state,
+    _advance_kinetic_energy_all_elements_streaming_state,
+    _init_kinetic_energy_all_elements_streaming_state,
+    _kinetic_energy_from_streaming_state,
     compute_discretized_kinetic_energy,
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy_all_elements,
@@ -4456,29 +4460,36 @@ class GFMC_n:
             """
 
             @jit
-            def _body_fun_n(i, carry):
-                (
-                    w_L,
-                    r_up_carts,
-                    r_dn_carts,
-                    RT,
-                    A_old_inv,
-                    _,
-                    _,
-                ) = carry
+            def _body_step_core(
+                i,
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                A_old_inv,
+                diagonal_kinetic_continuum_elements_up,
+                diagonal_kinetic_continuum_elements_dn,
+                j3_state=None,
+            ):
+                """Single GFMC projection step, parameterized by per-electron continuum kinetic energy.
+
+                Extracted from the original ``_body_fun_n`` so that both the legacy path
+                (which recomputes ``compute_kinetic_energy_all_elements_fast_update`` from
+                scratch every step) and the streaming path (which reads the kinetic
+                energy from a maintained ``Kinetic_streaming_state``) can share the
+                identical post-kinetic logic. Returns the carry components plus the
+                ``(moved_spin_is_up, moved_index)`` pair that the streaming path needs
+                to advance its auxiliary state.
+
+                The optional ``j3_state`` (a ``Jastrow_three_body_streaming_state``
+                consistent with the current ``r_{up,dn}_carts``) lets the streaming
+                path avoid re-evaluating J3 AOs / W,U / cross-vec auxiliaries inside
+                the discretized-mesh kinetic ratio and the ECP non-local ratio. Pass
+                ``None`` (default) on the legacy path; the callees fall back to fresh
+                AO evaluation when ``j3_state is None``.
+                """
 
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
-
-                # compute continuum kinetic energy
-                diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements_fast_update(
-                        wavefunction_data=hamiltonian_data.wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                        geminal_inverse=A_old_inv,
-                    )
-                )
 
                 # generate a random rotation matrix
                 rot_key = rotation_keys[i]
@@ -4499,6 +4510,7 @@ class GFMC_n:
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                         RT=R.T,
+                        j3_state=j3_state,
                     )
                 )
                 # spin-filp
@@ -4632,6 +4644,7 @@ class GFMC_n:
                                 flag_determinant_only=False,
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
+                                j3_state=j3_state,
                             )
                         )
 
@@ -4658,6 +4671,7 @@ class GFMC_n:
                                 flag_determinant_only=True,
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
+                                j3_state=j3_state,
                             )
                         )
 
@@ -4670,6 +4684,7 @@ class GFMC_n:
                             old_r_dn_carts=r_dn_carts,
                             new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
                             new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                            j3_state=j3_state,
                         )
 
                         V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
@@ -4812,7 +4827,17 @@ class GFMC_n:
                 r_up_carts = proposed_r_up_carts
                 r_dn_carts = proposed_r_dn_carts
 
-                carry = (
+                # ``moved_index`` is whichever of (up_index, dn_index) is the
+                # one whose spin actually moved this step. Used by the streaming
+                # path to identify the column-changed by the rank-1 update.
+                # If neither moved (no_move case), ``moved_spin_is_up`` and
+                # ``moved_index`` are still well-defined arrays and the
+                # streaming advance handles the no-op robustly via
+                # ``r_up_carts`` / ``r_dn_carts`` which haven't actually changed.
+                moved_spin_is_up = has_up_move
+                moved_index = jnp.where(has_up_move, up_index, dn_index)
+
+                return (
                     w_L,
                     r_up_carts,
                     r_dn_carts,
@@ -4820,8 +4845,116 @@ class GFMC_n:
                     A_new_inv,
                     diagonal_sum_hamiltonian,
                     non_diagonal_sum_hamiltonian,
+                    moved_spin_is_up,
+                    moved_index,
                 )
-                return carry
+
+            @jit
+            def _body_fun_n(i, carry):
+                """Legacy GFMC projection body — recomputes kinetic energies fresh per step."""
+                (
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    RT,
+                    A_old_inv,
+                    _,
+                    _,
+                ) = carry
+
+                # compute continuum kinetic energy from scratch (legacy path).
+                ke_up, ke_dn = compute_kinetic_energy_all_elements_fast_update(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                    geminal_inverse=A_old_inv,
+                )
+
+                (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                    _moved_spin_is_up,
+                    _moved_index,
+                ) = _body_step_core(i, w_L, r_up_carts, r_dn_carts, A_old_inv, ke_up, ke_dn)
+
+                return (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                )
+
+            @jit
+            def _body_fun_n_streaming(i, carry):
+                """Streaming GFMC projection body — reads kinetic energies from a maintained
+                ``Kinetic_streaming_state`` (J3 incrementally; J1/J2/det fresh in PR1) and
+                advances the state at the end of each step.
+
+                Only valid when ``jastrow_nn_data is None`` (NN J3 has no streaming path).
+                Dispatch is Python-static at the ``_projection_n`` entry point.
+                """
+                (
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    RT,
+                    A_old_inv,
+                    kinetic_state,
+                    _,
+                    _,
+                ) = carry
+
+                ke_up, ke_dn = _kinetic_energy_from_streaming_state(kinetic_state)
+
+                (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                    moved_spin_is_up,
+                    moved_index,
+                ) = _body_step_core(
+                    i,
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    A_old_inv,
+                    ke_up,
+                    ke_dn,
+                    j3_state=kinetic_state.j3_state,
+                )
+
+                kinetic_state_new = _advance_kinetic_energy_all_elements_streaming_state(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    state=kinetic_state,
+                    moved_spin_is_up=moved_spin_is_up,
+                    moved_index=moved_index,
+                    r_up_carts_new=r_up_new,
+                    r_dn_carts_new=r_dn_new,
+                    A_new_inv=A_new_inv,
+                )
+
+                return (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    kinetic_state_new,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                )
 
             def _split_step_keys(key, num_steps):
                 def _split_body(current_key, _):
@@ -4833,28 +4966,69 @@ class GFMC_n:
 
             latest_jax_PRNG_key, (rotation_keys, move_keys) = _split_step_keys(init_jax_PRNG_key, num_mcmc_per_measurement)
 
-            (
-                latest_w_L,
-                latest_r_up_carts,
-                latest_r_dn_carts,
-                latest_RT,
-                latest_A_old_inv,
-                latest_diagonal_sum_hamiltonian,
-                latest_non_diagonal_sum_hamiltonian,
-            ) = jax.lax.fori_loop(
-                0,
-                num_mcmc_per_measurement,
-                _body_fun_n,
+            # Python-static dispatch: the streaming path is incompatible with
+            # the NN three-body Jastrow (J_NN has no rank-1 advance — see
+            # lrdmc_refactoring.md 1-4). When NN J3 is present, fall back to
+            # the legacy path that recomputes kinetic energies fresh each step.
+            # The streaming path is also compatible only when J3 is present;
+            # otherwise the gain over legacy is zero, so we still use legacy.
+            jastrow_data = hamiltonian_data.wavefunction_data.jastrow_data
+            use_streaming = jastrow_data.jastrow_nn_data is None and jastrow_data.jastrow_three_body_data is not None
+
+            if use_streaming:
+                init_kinetic_state = _init_kinetic_energy_all_elements_streaming_state(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    r_up_carts=init_r_up_carts,
+                    r_dn_carts=init_r_dn_carts,
+                    geminal_inverse=init_A_old_inv,
+                )
                 (
-                    init_w_L,
-                    init_r_up_carts,
-                    init_r_dn_carts,
-                    jnp.eye(3, dtype=jnp.float64),
-                    init_A_old_inv,
-                    jnp.asarray(0.0, dtype=jnp.float64),
-                    jnp.asarray(0.0, dtype=jnp.float64),
-                ),
-            )
+                    latest_w_L,
+                    latest_r_up_carts,
+                    latest_r_dn_carts,
+                    latest_RT,
+                    latest_A_old_inv,
+                    _latest_kinetic_state,
+                    latest_diagonal_sum_hamiltonian,
+                    latest_non_diagonal_sum_hamiltonian,
+                ) = jax.lax.fori_loop(
+                    0,
+                    num_mcmc_per_measurement,
+                    _body_fun_n_streaming,
+                    (
+                        init_w_L,
+                        init_r_up_carts,
+                        init_r_dn_carts,
+                        jnp.eye(3, dtype=jnp.float64),
+                        init_A_old_inv,
+                        init_kinetic_state,
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                    ),
+                )
+            else:
+                (
+                    latest_w_L,
+                    latest_r_up_carts,
+                    latest_r_dn_carts,
+                    latest_RT,
+                    latest_A_old_inv,
+                    latest_diagonal_sum_hamiltonian,
+                    latest_non_diagonal_sum_hamiltonian,
+                ) = jax.lax.fori_loop(
+                    0,
+                    num_mcmc_per_measurement,
+                    _body_fun_n,
+                    (
+                        init_w_L,
+                        init_r_up_carts,
+                        init_r_dn_carts,
+                        jnp.eye(3, dtype=jnp.float64),
+                        init_A_old_inv,
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                    ),
+                )
 
             return (
                 latest_w_L,

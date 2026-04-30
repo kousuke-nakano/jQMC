@@ -1576,6 +1576,239 @@ def test_apply_block_update_nonsymmetric_j3_free():
     np.testing.assert_allclose(new_j3, updated_values)
 
 
+@pytest.mark.parametrize("j1b_type", ["exp", "pade"])
+@pytest.mark.parametrize("n_up,n_dn", [(5, 4), (1, 0), (3, 3)])
+def test_streaming_J1_state_against_full(j1b_type, n_up, n_dn):
+    """K random single-electron moves advanced via the J1 streaming state must
+    match a fresh init at the resulting configuration (and the existing analytic
+    full computation) within strict tolerance.
+
+    J1 is per-electron independent (no electron-electron coupling), so the
+    advance only re-evaluates one row of the cached arrays.
+    """
+    from jqmc.jastrow_factor import (
+        _advance_grads_laplacian_Jastrow_one_body_streaming_state,
+        _init_grads_laplacian_Jastrow_one_body_streaming_state,
+    )
+
+    rng = np.random.RandomState(0)
+    num_R_cart_samples = 5
+    R_carts = 4.0 * rng.rand(num_R_cart_samples, 3) - 2.0
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([6] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    core_electrons = tuple([2] * num_R_cart_samples)
+
+    jastrow_one_body_data = Jastrow_one_body_data(
+        jastrow_1b_param=1.0,
+        jastrow_1b_type=j1b_type,
+        structure_data=structure_data,
+        core_electrons=core_electrons,
+    )
+
+    r_up = (4.0 * rng.rand(n_up, 3) - 2.0) if n_up > 0 else np.zeros((0, 3))
+    r_dn = (4.0 * rng.rand(n_dn, 3) - 2.0) if n_dn > 0 else np.zeros((0, 3))
+
+    state = _init_grads_laplacian_Jastrow_one_body_streaming_state(
+        jastrow_one_body_data, jax.numpy.asarray(r_up), jax.numpy.asarray(r_dn)
+    )
+
+    K = 32
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    for _ in range(K):
+        spin_choices = []
+        if n_up > 0:
+            spin_choices.append(0)
+        if n_dn > 0:
+            spin_choices.append(1)
+        spin = spin_choices[rng.randint(0, len(spin_choices))]
+        if spin == 0:
+            idx = rng.randint(0, n_up)
+            r_up = np.asarray(r_up).copy()
+            r_up[idx] = r_up[idx] + 0.1 * rng.randn(3)
+            moved_spin_is_up = True
+            moved_index = idx
+        else:
+            idx = rng.randint(0, n_dn)
+            r_dn = np.asarray(r_dn).copy()
+            r_dn[idx] = r_dn[idx] + 0.1 * rng.randn(3)
+            moved_spin_is_up = False
+            moved_index = idx
+
+        state = _advance_grads_laplacian_Jastrow_one_body_streaming_state(
+            jastrow_one_body_data,
+            state,
+            jax.numpy.asarray(moved_spin_is_up),
+            jax.numpy.asarray(moved_index, dtype=jax.numpy.int32),
+            jax.numpy.asarray(r_up),
+            jax.numpy.asarray(r_dn),
+        )
+
+    g_up_full, g_dn_full, l_up_full, l_dn_full = compute_grads_and_laplacian_Jastrow_one_body(
+        jastrow_one_body_data, jax.numpy.asarray(r_up), jax.numpy.asarray(r_dn)
+    )
+    np.testing.assert_allclose(np.asarray(state.grad_J1_up), np.asarray(g_up_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.grad_J1_dn), np.asarray(g_dn_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J1_up), np.asarray(l_up_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J1_dn), np.asarray(l_dn_full), atol=atol, rtol=rtol)
+
+
+@pytest.mark.parametrize("j2b_type", ["pade", "exp"])
+@pytest.mark.parametrize("n_up,n_dn", [(5, 4), (1, 0), (3, 3)])
+def test_streaming_J2_state_against_full(j2b_type, n_up, n_dn):
+    """K random single-electron moves advanced via the J2 streaming state must
+    match a fresh init at the resulting configuration (and the existing analytic
+    full computation) within strict tolerance.
+
+    J2 is electron-pair coupled, so the advance updates the moved electron's
+    same-spin row (i ≠ k) and the cross-spin partners. Sign asymmetry between
+    σ=up and σ=dn cross branches makes this the most error-prone of the
+    streaming kernels — exercise both branches with K=32 alternating moves.
+    """
+    from jqmc.jastrow_factor import (
+        _advance_grads_laplacian_Jastrow_two_body_streaming_state,
+        _init_grads_laplacian_Jastrow_two_body_streaming_state,
+    )
+
+    rng = np.random.RandomState(0)
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type=j2b_type)
+
+    r_up = (4.0 * rng.rand(n_up, 3) - 2.0) if n_up > 0 else np.zeros((0, 3))
+    r_dn = (4.0 * rng.rand(n_dn, 3) - 2.0) if n_dn > 0 else np.zeros((0, 3))
+
+    state = _init_grads_laplacian_Jastrow_two_body_streaming_state(
+        jastrow_two_body_data, jax.numpy.asarray(r_up), jax.numpy.asarray(r_dn)
+    )
+
+    K = 32
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    for _ in range(K):
+        spin_choices = []
+        if n_up > 0:
+            spin_choices.append(0)
+        if n_dn > 0:
+            spin_choices.append(1)
+        spin = spin_choices[rng.randint(0, len(spin_choices))]
+        if spin == 0:
+            idx = rng.randint(0, n_up)
+            r_up = np.asarray(r_up).copy()
+            r_up[idx] = r_up[idx] + 0.1 * rng.randn(3)
+            moved_spin_is_up = True
+            moved_index = idx
+        else:
+            idx = rng.randint(0, n_dn)
+            r_dn = np.asarray(r_dn).copy()
+            r_dn[idx] = r_dn[idx] + 0.1 * rng.randn(3)
+            moved_spin_is_up = False
+            moved_index = idx
+
+        state = _advance_grads_laplacian_Jastrow_two_body_streaming_state(
+            jastrow_two_body_data,
+            state,
+            jax.numpy.asarray(moved_spin_is_up),
+            jax.numpy.asarray(moved_index, dtype=jax.numpy.int32),
+            jax.numpy.asarray(r_up),
+            jax.numpy.asarray(r_dn),
+        )
+
+    # Cached r_up/r_dn inside the streaming state must track the moves.
+    np.testing.assert_allclose(np.asarray(state.r_up_carts), np.asarray(r_up), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.r_dn_carts), np.asarray(r_dn), atol=atol, rtol=rtol)
+
+    g_up_full, g_dn_full, l_up_full, l_dn_full = compute_grads_and_laplacian_Jastrow_two_body(
+        jastrow_two_body_data, jax.numpy.asarray(r_up), jax.numpy.asarray(r_dn)
+    )
+    np.testing.assert_allclose(np.asarray(state.grad_J2_up), np.asarray(g_up_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.grad_J2_dn), np.asarray(g_dn_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J2_up), np.asarray(l_up_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J2_dn), np.asarray(l_dn_full), atol=atol, rtol=rtol)
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"],
+)
+def test_streaming_J3_state_against_full(trexio_file):
+    """K random single-electron moves advanced via the J3 streaming state must
+    match a fresh init at the resulting configuration (and the existing analytic
+    full computation) within strict tolerance."""
+    import os
+
+    from jqmc.jastrow_factor import (
+        _advance_grads_laplacian_Jastrow_three_body_streaming_state,
+        _init_grads_laplacian_Jastrow_three_body_streaming_state,
+    )
+    from jqmc.trexio_wrapper import read_trexio_file
+
+    (_, aos_data, _, _, geminal_mo_data, _) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    rng = np.random.RandomState(0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    n_up = geminal_mo_data.num_electron_up
+    n_dn = geminal_mo_data.num_electron_dn
+
+    r_up = 4.0 * rng.rand(n_up, 3) - 2.0
+    r_dn = 4.0 * rng.rand(n_dn, 3) - 2.0
+
+    state = _init_grads_laplacian_Jastrow_three_body_streaming_state(jastrow_threebody_data, r_up, r_dn)
+
+    K = 32
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    for _ in range(K):
+        # pick a random single-electron move (alternating spins when available)
+        spin_choices = []
+        if n_up > 0:
+            spin_choices.append(0)
+        if n_dn > 0:
+            spin_choices.append(1)
+        spin = spin_choices[rng.randint(0, len(spin_choices))]
+        if spin == 0:
+            idx = rng.randint(0, n_up)
+            r_up = np.asarray(r_up).copy()
+            r_up[idx] = r_up[idx] + 0.1 * rng.randn(3)
+            moved_spin_is_up = True
+            moved_index = idx
+        else:
+            idx = rng.randint(0, n_dn)
+            r_dn = np.asarray(r_dn).copy()
+            r_dn[idx] = r_dn[idx] + 0.1 * rng.randn(3)
+            moved_spin_is_up = False
+            moved_index = idx
+
+        state = _advance_grads_laplacian_Jastrow_three_body_streaming_state(
+            jastrow_threebody_data,
+            state,
+            jax.numpy.asarray(moved_spin_is_up),
+            jax.numpy.asarray(moved_index, dtype=jax.numpy.int32),
+            jax.numpy.asarray(r_up),
+            jax.numpy.asarray(r_dn),
+        )
+
+    fresh = _init_grads_laplacian_Jastrow_three_body_streaming_state(jastrow_threebody_data, r_up, r_dn)
+    np.testing.assert_allclose(np.asarray(state.grad_J3_up), np.asarray(fresh.grad_J3_up), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.grad_J3_dn), np.asarray(fresh.grad_J3_dn), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J3_up), np.asarray(fresh.lap_J3_up), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J3_dn), np.asarray(fresh.lap_J3_dn), atol=atol, rtol=rtol)
+
+    # cross-check against the existing analytic full computation
+    g3u_full, g3d_full, l3u_full, l3d_full = compute_grads_and_laplacian_Jastrow_three_body(
+        jastrow_threebody_data, jax.numpy.asarray(r_up), jax.numpy.asarray(r_dn)
+    )
+    np.testing.assert_allclose(np.asarray(state.grad_J3_up), np.asarray(g3u_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.grad_J3_dn), np.asarray(g3d_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J3_up), np.asarray(l3u_full), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(state.lap_J3_dn), np.asarray(l3d_full), atol=atol, rtol=rtol)
+
+
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 

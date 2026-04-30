@@ -2199,6 +2199,354 @@ def compute_grads_and_laplacian_ln_Det_fast(
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
+# ---------------------------------------------------------------------------
+# Streaming variant of ``compute_grads_and_laplacian_ln_Det_fast``.
+#
+# Maintains (a) AO/grad/lap tables, (b) λ_p ⨯ ao_dn intermediates, and
+# (c) the full geminal grad/lap matrices, all consistent with the current
+# (r_up, r_dn). A single-electron move advances them in O(n_ao² + n_ao·N_e
+# + N_e²) per call, vs. O(n_ao²·N_e + n_ao·N_e²) for fresh recompute.
+#
+# See ``lrdmc_refactoring.md`` § 1-3 for the field list / advance derivation.
+# ---------------------------------------------------------------------------
+
+
+@struct.dataclass
+class Det_streaming_state:
+    """Auxiliary tables required to evaluate ``∇ln|Det|`` / ``∇²ln|Det|``
+    incrementally under single-electron moves.
+
+    See ``lrdmc_refactoring.md`` § 1-3 for the per-field rationale.
+    """
+
+    ao_up: jax.Array
+    ao_dn: jax.Array
+    ao_up_grads: jax.Array
+    ao_dn_grads: jax.Array
+    ao_up_lap: jax.Array
+    ao_dn_lap: jax.Array
+    paired_dn: jax.Array
+    paired_dn_grads: jax.Array
+    paired_dn_lap: jax.Array
+    geminal_grad_up: jax.Array
+    geminal_grad_dn: jax.Array
+    geminal_lap_up: jax.Array
+    geminal_lap_dn: jax.Array
+    grad_ln_D_up: jax.Array
+    grad_ln_D_dn: jax.Array
+    lap_ln_D_up: jax.Array
+    lap_ln_D_dn: jax.Array
+
+
+def _det_streaming_finalize(
+    geminal_grad_up: jax.Array,
+    geminal_grad_dn: jax.Array,
+    geminal_lap_up: jax.Array,
+    geminal_lap_dn: jax.Array,
+    G_inv: jax.Array,
+    n_dn: int,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Phase 3 of the fast path: contract ``geminal_*`` with ``G_inv``.
+
+    Mirrors the tail of ``compute_grads_and_laplacian_ln_Det_fast`` so the
+    streaming and fresh paths produce bit-comparable results when fed
+    identical ``geminal_*`` and ``G_inv``.
+    """
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, G_inv)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", G_inv, geminal_grad_dn)
+
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn_full = grad_ln_D_dn_stack.T
+
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
+
+    lap_ln_D_up = -(
+        grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
+    ) + jnp.einsum("ij,ji->i", geminal_lap_up, G_inv)
+    lap_ln_D_dn_full = -(
+        grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
+    ) + jnp.einsum("ij,ji->i", G_inv, geminal_lap_dn)
+
+    grad_ln_D_dn = grad_ln_D_dn_full[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn_full[:n_dn]
+    return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
+
+
+@jit
+def _init_grads_laplacian_ln_Det_streaming_state(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inverse: jax.Array,
+) -> Det_streaming_state:
+    """Initialize the det streaming state at ``(r_up, r_dn)``.
+
+    Cost is dominated by the same ``λ_p ⨯ ao_dn`` and AO einsums as
+    :func:`compute_grads_and_laplacian_ln_Det_fast`; the streaming path
+    additionally retains the Phase-1/2 intermediates needed by the rank-1
+    advance.
+    """
+    if geminal_inverse is None:
+        raise ValueError("geminal_inverse must be provided for streaming init")
+
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
+
+    # Phase 0: AO/grad/lap evaluation (forward r_*_carts unchanged so the
+    # underlying kernels reconstruct r-R in fp64 — Principle 3b).
+    ao_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
+    ao_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
+
+    ao_up_gx, ao_up_gy, ao_up_gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_dn_gx, ao_dn_gy, ao_dn_gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_up_grads = jnp.asarray(jnp.stack([ao_up_gx, ao_up_gy, ao_up_gz], axis=0), dtype=dtype_jnp)
+    ao_dn_grads = jnp.asarray(jnp.stack([ao_dn_gx, ao_dn_gy, ao_dn_gz], axis=0), dtype=dtype_jnp)
+
+    ao_up_lap = jnp.asarray(geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts), dtype=dtype_jnp)
+    ao_dn_lap = jnp.asarray(geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts), dtype=dtype_jnp)
+
+    # Phase 1: λ_p ⨯ ao_dn family (depends on dn only).
+    paired_dn = lambda_matrix_paired @ ao_dn
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
+    paired_dn_lap = lambda_matrix_paired @ ao_dn_lap
+
+    # Phase 2: full geminal grad/lap matrices (paired ‖ unpaired hstack'd).
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
+
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=dtype_jnp,
+    )
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
+
+    geminal_lap_up_paired = ao_up_lap.T @ paired_dn
+    geminal_lap_up_unpaired = ao_up_lap.T @ lambda_matrix_unpaired
+    geminal_lap_up = jnp.hstack([geminal_lap_up_paired, geminal_lap_up_unpaired])
+
+    geminal_lap_dn_paired = ao_up.T @ paired_dn_lap
+    geminal_lap_dn_unpaired = jnp.zeros(
+        (geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=dtype_jnp,
+    )
+    geminal_lap_dn = jnp.hstack([geminal_lap_dn_paired, geminal_lap_dn_unpaired])
+
+    # Phase 3: contract with G_inv to expose per-electron grad/lap.
+    G_inv = geminal_inverse.astype(dtype_jnp)
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _det_streaming_finalize(
+        geminal_grad_up,
+        geminal_grad_dn,
+        geminal_lap_up,
+        geminal_lap_dn,
+        G_inv,
+        geminal_data.num_electron_dn,
+    )
+
+    return Det_streaming_state(
+        ao_up=ao_up,
+        ao_dn=ao_dn,
+        ao_up_grads=ao_up_grads,
+        ao_dn_grads=ao_dn_grads,
+        ao_up_lap=ao_up_lap,
+        ao_dn_lap=ao_dn_lap,
+        paired_dn=paired_dn,
+        paired_dn_grads=paired_dn_grads,
+        paired_dn_lap=paired_dn_lap,
+        geminal_grad_up=geminal_grad_up,
+        geminal_grad_dn=geminal_grad_dn,
+        geminal_lap_up=geminal_lap_up,
+        geminal_lap_dn=geminal_lap_dn,
+        grad_ln_D_up=grad_ln_D_up,
+        grad_ln_D_dn=grad_ln_D_dn,
+        lap_ln_D_up=lap_ln_D_up,
+        lap_ln_D_dn=lap_ln_D_dn,
+    )
+
+
+@jit
+def _advance_grads_laplacian_ln_Det_streaming_state(
+    geminal_data: Geminal_data,
+    state: Det_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+    A_new_inv: jax.Array,
+) -> Det_streaming_state:
+    """Advance the det streaming state after a single-electron move.
+
+    The new ``(r_up_carts_new, r_dn_carts_new)`` differ from the configuration
+    represented by ``state`` in *exactly one* electron position, identified by
+    ``(moved_spin_is_up, moved_index)``. ``A_new_inv`` is the Sherman-Morrison
+    inverse of ``G(r_up_new, r_dn_new)`` provided by the caller (typically
+    ``_body_step_core`` in ``jqmc_gfmc.py``).
+
+    Cost: ``O(n_ao² + n_ao · N_e + N_e²)`` per call.
+    """
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
+
+    num_up = state.ao_up.shape[1]
+    num_dn = state.ao_dn.shape[1]
+    G_inv = A_new_inv.astype(dtype_jnp)
+
+    def _branch_up(_):
+        # --- Phase 0: single-point AO eval at r_up_new[k] -----------------
+        r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
+        ao_col = jnp.asarray(
+            geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_new)[:, 0],
+            dtype=dtype_jnp,
+        )  # (n_ao_up,)
+        gx, gy, gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_new)
+        grad_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=0), dtype=dtype_jnp)  # (3, n_ao_up)
+        lap_col = jnp.asarray(
+            geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_new)[:, 0],
+            dtype=dtype_jnp,
+        )  # (n_ao_up,)
+
+        new_ao_up = state.ao_up.at[:, moved_index].set(ao_col)
+        new_ao_up_grads = state.ao_up_grads.at[:, :, moved_index].set(grad_col)
+        new_ao_up_lap = state.ao_up_lap.at[:, moved_index].set(lap_col)
+
+        # --- Phase 2: row k of geminal_* (paired ‖ unpaired) --------------
+        # row of geminal_grad_up: einsum("ga,aj->gj", grad_col, paired_dn) ‖
+        #                        einsum("ga,ak->gk", grad_col, λ_u)
+        row_grad_up_paired = jnp.einsum("ga,aj->gj", grad_col, state.paired_dn)
+        row_grad_up_unpaired = jnp.einsum("ga,ak->gk", grad_col, lambda_matrix_unpaired)
+        row_grad_up = jnp.concatenate([row_grad_up_paired, row_grad_up_unpaired], axis=1)
+        new_geminal_grad_up = state.geminal_grad_up.at[:, moved_index, :].set(row_grad_up)
+
+        # row of geminal_grad_dn: paired = einsum("a,gaj->gj", ao_col, paired_dn_grads),
+        # unpaired = zeros.
+        row_grad_dn_paired = jnp.einsum("a,gaj->gj", ao_col, state.paired_dn_grads)
+        row_grad_dn_unpaired = jnp.zeros((3, num_up - num_dn), dtype=dtype_jnp)
+        row_grad_dn = jnp.concatenate([row_grad_dn_paired, row_grad_dn_unpaired], axis=1)
+        new_geminal_grad_dn = state.geminal_grad_dn.at[:, moved_index, :].set(row_grad_dn)
+
+        # row of geminal_lap_up: lap_col @ paired_dn ‖ lap_col @ λ_u
+        row_lap_up_paired = lap_col @ state.paired_dn
+        row_lap_up_unpaired = lap_col @ lambda_matrix_unpaired
+        row_lap_up = jnp.concatenate([row_lap_up_paired, row_lap_up_unpaired], axis=0)
+        new_geminal_lap_up = state.geminal_lap_up.at[moved_index, :].set(row_lap_up)
+
+        # row of geminal_lap_dn: ao_col @ paired_dn_lap ‖ zeros
+        row_lap_dn_paired = ao_col @ state.paired_dn_lap
+        row_lap_dn_unpaired = jnp.zeros((num_up - num_dn,), dtype=dtype_jnp)
+        row_lap_dn = jnp.concatenate([row_lap_dn_paired, row_lap_dn_unpaired], axis=0)
+        new_geminal_lap_dn = state.geminal_lap_dn.at[moved_index, :].set(row_lap_dn)
+
+        grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _det_streaming_finalize(
+            new_geminal_grad_up,
+            new_geminal_grad_dn,
+            new_geminal_lap_up,
+            new_geminal_lap_dn,
+            G_inv,
+            num_dn,
+        )
+
+        return state.replace(
+            ao_up=new_ao_up,
+            ao_up_grads=new_ao_up_grads,
+            ao_up_lap=new_ao_up_lap,
+            geminal_grad_up=new_geminal_grad_up,
+            geminal_grad_dn=new_geminal_grad_dn,
+            geminal_lap_up=new_geminal_lap_up,
+            geminal_lap_dn=new_geminal_lap_dn,
+            grad_ln_D_up=grad_ln_D_up,
+            grad_ln_D_dn=grad_ln_D_dn,
+            lap_ln_D_up=lap_ln_D_up,
+            lap_ln_D_dn=lap_ln_D_dn,
+        )
+
+    def _branch_dn(_):
+        # --- Phase 0: single-point AO eval at r_dn_new[k] -----------------
+        r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
+        ao_col = jnp.asarray(
+            geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_new)[:, 0],
+            dtype=dtype_jnp,
+        )  # (n_ao_dn,)
+        gx, gy, gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_new)
+        grad_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=0), dtype=dtype_jnp)  # (3, n_ao_dn)
+        lap_col = jnp.asarray(
+            geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_new)[:, 0],
+            dtype=dtype_jnp,
+        )  # (n_ao_dn,)
+
+        new_ao_dn = state.ao_dn.at[:, moved_index].set(ao_col)
+        new_ao_dn_grads = state.ao_dn_grads.at[:, :, moved_index].set(grad_col)
+        new_ao_dn_lap = state.ao_dn_lap.at[:, moved_index].set(lap_col)
+
+        # --- Phase 1: column k of paired_dn family ------------------------
+        new_paired_dn_col = lambda_matrix_paired @ ao_col  # (n_ao_up,)
+        new_paired_dn = state.paired_dn.at[:, moved_index].set(new_paired_dn_col)
+
+        new_paired_dn_grads_col = jnp.einsum("ab,gb->ga", lambda_matrix_paired, grad_col)  # (3, n_ao_up)
+        new_paired_dn_grads = state.paired_dn_grads.at[:, :, moved_index].set(new_paired_dn_grads_col)
+
+        new_paired_dn_lap_col = lambda_matrix_paired @ lap_col  # (n_ao_up,)
+        new_paired_dn_lap = state.paired_dn_lap.at[:, moved_index].set(new_paired_dn_lap_col)
+
+        # --- Phase 2: column k of geminal_* (paired block only; unpaired
+        #              columns are independent of dn). --------------------
+        # geminal_grad_up[:, :, k] paired-block update:
+        col_grad_up = jnp.einsum("gia,a->gi", jnp.swapaxes(state.ao_up_grads, 1, 2), new_paired_dn_col)
+        new_geminal_grad_up = state.geminal_grad_up.at[:, :, moved_index].set(col_grad_up)
+
+        # geminal_grad_dn[:, :, k] paired-block update:
+        col_grad_dn = jnp.einsum("ai,ga->gi", state.ao_up, new_paired_dn_grads_col)
+        new_geminal_grad_dn = state.geminal_grad_dn.at[:, :, moved_index].set(col_grad_dn)
+
+        # geminal_lap_up[:, k] paired-block update:
+        col_lap_up = state.ao_up_lap.T @ new_paired_dn_col
+        new_geminal_lap_up = state.geminal_lap_up.at[:, moved_index].set(col_lap_up)
+
+        # geminal_lap_dn[:, k] paired-block update:
+        col_lap_dn = state.ao_up.T @ new_paired_dn_lap_col
+        new_geminal_lap_dn = state.geminal_lap_dn.at[:, moved_index].set(col_lap_dn)
+
+        grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _det_streaming_finalize(
+            new_geminal_grad_up,
+            new_geminal_grad_dn,
+            new_geminal_lap_up,
+            new_geminal_lap_dn,
+            G_inv,
+            num_dn,
+        )
+
+        return state.replace(
+            ao_dn=new_ao_dn,
+            ao_dn_grads=new_ao_dn_grads,
+            ao_dn_lap=new_ao_dn_lap,
+            paired_dn=new_paired_dn,
+            paired_dn_grads=new_paired_dn_grads,
+            paired_dn_lap=new_paired_dn_lap,
+            geminal_grad_up=new_geminal_grad_up,
+            geminal_grad_dn=new_geminal_grad_dn,
+            geminal_lap_up=new_geminal_lap_up,
+            geminal_lap_dn=new_geminal_lap_dn,
+            grad_ln_D_up=grad_ln_D_up,
+            grad_ln_D_dn=grad_ln_D_dn,
+            lap_ln_D_up=lap_ln_D_up,
+            lap_ln_D_dn=lap_ln_D_dn,
+        )
+
+    # Edge case: zero-electron spin sectors collapse the cond.
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
+
+
 def _compute_grads_and_laplacian_ln_Det_fast_debug(
     geminal_data: Geminal_data,
     r_up_carts: jax.Array,

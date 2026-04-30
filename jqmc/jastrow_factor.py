@@ -1027,6 +1027,79 @@ def compute_grads_and_laplacian_Jastrow_one_body(
     return grad_up, grad_dn, lap_up, lap_dn
 
 
+# ---------------------------------------------------------------------------
+# J1 streaming state (PR3).
+#
+# J1 is a per-electron sum over atoms with no inter-electron coupling, so a
+# single-electron move only affects one row of the per-electron grad/lap.
+# The state simply caches those rows; advance recomputes the moved row in
+# ``O(n_atom)`` rather than the fresh O(N_e * n_atom).
+# ---------------------------------------------------------------------------
+
+
+@struct.dataclass
+class Jastrow_one_body_streaming_state:
+    """Cached per-electron J1 grad/lap consistent with current ``(r_up, r_dn)``."""
+
+    grad_J1_up: jax.Array  # (N_up, 3)
+    grad_J1_dn: jax.Array  # (N_dn, 3)
+    lap_J1_up: jax.Array  # (N_up,)
+    lap_J1_dn: jax.Array  # (N_dn,)
+
+
+@jit
+def _init_grads_laplacian_Jastrow_one_body_streaming_state(
+    jastrow_one_body_data: Jastrow_one_body_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> Jastrow_one_body_streaming_state:
+    """One-shot init equivalent in cost to ``compute_grads_and_laplacian_Jastrow_one_body``."""
+    g_up, g_dn, l_up, l_dn = compute_grads_and_laplacian_Jastrow_one_body(jastrow_one_body_data, r_up_carts, r_dn_carts)
+    return Jastrow_one_body_streaming_state(grad_J1_up=g_up, grad_J1_dn=g_dn, lap_J1_up=l_up, lap_J1_dn=l_dn)
+
+
+@jit
+def _advance_grads_laplacian_Jastrow_one_body_streaming_state(
+    jastrow_one_body_data: Jastrow_one_body_data,
+    state: Jastrow_one_body_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+) -> Jastrow_one_body_streaming_state:
+    """Advance J1 state after a single-electron move.
+
+    Recomputes one electron's row by re-running the existing one-spin kernel
+    on a single-row slice. Cost: ``O(n_atom)``.
+    """
+    num_up = state.grad_J1_up.shape[0]
+    num_dn = state.grad_J1_dn.shape[0]
+
+    def _branch_up(_):
+        # Reuse the full-batch kernel on a length-1 slice — gives one row that
+        # we slot back into the cached state.
+        r_slice = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
+        g_row, _, l_row, _ = compute_grads_and_laplacian_Jastrow_one_body(jastrow_one_body_data, r_slice, r_slice[:0])
+        new_grad = state.grad_J1_up.at[moved_index].set(g_row[0])
+        new_lap = state.lap_J1_up.at[moved_index].set(l_row[0])
+        return state.replace(grad_J1_up=new_grad, lap_J1_up=new_lap)
+
+    def _branch_dn(_):
+        r_slice = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
+        # Pass empty up so only the dn branch contributes (J1 is per-spin
+        # independent — feeding empty up has zero effect on dn output).
+        _, g_row, _, l_row = compute_grads_and_laplacian_Jastrow_one_body(jastrow_one_body_data, r_slice[:0], r_slice)
+        new_grad = state.grad_J1_dn.at[moved_index].set(g_row[0])
+        new_lap = state.lap_J1_dn.at[moved_index].set(l_row[0])
+        return state.replace(grad_J1_dn=new_grad, lap_J1_dn=new_lap)
+
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
+
+
 @struct.dataclass
 class Jastrow_two_body_data:
     r"""Two-body Jastrow parameter container.
@@ -2153,6 +2226,7 @@ def _compute_ratio_Jastrow_part_rank1_update(
     old_r_dn_carts: jax.Array,
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
+    j3_state: "Jastrow_three_body_streaming_state | None" = None,
 ) -> jax.Array:
     r"""Compute :math:`\exp(J(\mathbf r'))/\exp(J(\mathbf r))` for batched moves.
 
@@ -2166,6 +2240,12 @@ def _compute_ratio_Jastrow_part_rank1_update(
         old_r_dn_carts: Reference spin-down coordinates with shape ``(N_dn, 3)``.
         new_r_up_carts_arr: Proposed spin-up coordinates with shape ``(N_grid, N_up, 3)``.
         new_r_dn_carts_arr: Proposed spin-down coordinates with shape ``(N_grid, N_dn, 3)``.
+        j3_state: Optional cached J3 auxiliaries consistent with
+            ``(old_r_up_carts, old_r_dn_carts)``. When provided, the J3 block
+            reuses ``aos_*``, ``j3_mat @ aos_*``, ``j3_mat.T @ aos_*`` from the
+            state instead of recomputing them — saves per-call ``O(n_ao^2 * N_e)``
+            in matmul work. Pass ``None`` (default) to recompute from scratch
+            (the original 1-shot path used outside the projection loop).
 
     Returns:
         jax.Array: Jastrow ratios per grid with shape ``(N_grid,)`` (includes ``exp``).
@@ -2485,9 +2565,17 @@ def _compute_ratio_Jastrow_part_rank1_update(
         j3_mat = j3d._j_matrix_jnp[:, :-1]  # (n_ao, n_ao)  shared for up-up / dn-dn / up-dn
         j1_vec = j3d._j_matrix_jnp[:, -1]  # (n_ao,)
 
-        # Old AOs evaluated once
-        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts), dtype=dtype_jnp)  # (n_ao, N_up)
-        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts), dtype=dtype_jnp)  # (n_ao, N_dn)
+        # Old AOs evaluated once.
+        # When ``j3_state`` is supplied, the cached AOs/W/U/cross_vec from the
+        # streaming state are consistent with ``(old_r_up_carts, old_r_dn_carts)``
+        # by contract — we just dtype-cast into the jastrow_ratio zone and skip
+        # the recomputation. Python-static dispatch (j3_state is None vs not).
+        if j3_state is None:
+            aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts), dtype=dtype_jnp)  # (n_ao, N_up)
+            aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts), dtype=dtype_jnp)  # (n_ao, N_dn)
+        else:
+            aos_up_old = j3_state.aos_up.astype(dtype_jnp)
+            aos_dn_old = j3_state.aos_dn.astype(dtype_jnp)
 
         N_batch = new_r_up_carts_arr.shape[0]
 
@@ -2511,13 +2599,29 @@ def _compute_ratio_Jastrow_part_rank1_update(
         aos_old_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_old_moved), dtype=dtype_jnp)  # (n_ao, N)
         aos_p_batch = aos_new_batch - aos_old_batch  # (n_ao, N)
 
-        # Precompute constant products (independent of config)
-        W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)  = j3_mat @ A_up
-        U_up = jnp.dot(aos_up_old.T, j3_mat)  # (N_up, n_ao)  = A_up.T @ j3_mat
-        W_dn = jnp.dot(j3_mat, aos_dn_old)  # (n_ao, N_dn)
-        U_dn = jnp.dot(aos_dn_old.T, j3_mat)  # (N_dn, n_ao)
-        dn_cross_vec = j3_mat @ jnp.sum(aos_dn_old, axis=1)  # (n_ao,): UP cross term constant
-        up_cross_vec = jnp.sum(aos_up_old, axis=1) @ j3_mat  # (n_ao,): DN cross term constant
+        # Precompute constant products (independent of config). With a
+        # streaming state, all four matmuls are read directly from the cache
+        # — that's the main per-step ``O(n_ao^2 * N_e)`` saving. Note that
+        # ``j3_state.j3_mat_T_aos_*`` stores ``j3_mat.T @ aos_*`` of shape
+        # ``(n_ao, N_*)``, while we want ``U_* = aos_*.T @ j3_mat`` of shape
+        # ``(N_*, n_ao)`` — these are transposes of each other.
+        if j3_state is None:
+            W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)  = j3_mat @ A_up
+            U_up = jnp.dot(aos_up_old.T, j3_mat)  # (N_up, n_ao)  = A_up.T @ j3_mat
+            W_dn = jnp.dot(j3_mat, aos_dn_old)  # (n_ao, N_dn)
+            U_dn = jnp.dot(aos_dn_old.T, j3_mat)  # (N_dn, n_ao)
+            dn_cross_vec = j3_mat @ jnp.sum(aos_dn_old, axis=1)  # (n_ao,): UP cross term constant
+            up_cross_vec = jnp.sum(aos_up_old, axis=1) @ j3_mat  # (n_ao,): DN cross term constant
+        else:
+            W_up = j3_state.j3_mat_aos_up.astype(dtype_jnp)
+            W_dn = j3_state.j3_mat_aos_dn.astype(dtype_jnp)
+            U_up = j3_state.j3_mat_T_aos_up.astype(dtype_jnp).T
+            U_dn = j3_state.j3_mat_T_aos_dn.astype(dtype_jnp).T
+            # cross_vec equivalences:
+            #   j3_mat @ sum(aos_dn, axis=1) = sum(j3_mat @ aos_dn, axis=1) = sum(W_dn, axis=1)
+            #   sum(aos_up, axis=1) @ j3_mat = sum(j3_mat.T @ aos_up, axis=1) = sum(j3_mat_T_aos_up, axis=1)
+            dn_cross_vec = jnp.sum(W_dn, axis=1)
+            up_cross_vec = jnp.sum(j3_state.j3_mat_T_aos_up.astype(dtype_jnp), axis=1)
 
         # Q index: idx_up for UP configs, idx_dn for DN configs
         idx_for_Q = jnp.where(up_moved_batch, idx_up, idx_dn)  # (N,)
@@ -2581,6 +2685,7 @@ def _compute_ratio_Jastrow_part_split_spin(
     old_r_dn_carts: jax.Array,
     new_r_up_shifted: jax.Array,
     new_r_dn_shifted: jax.Array,
+    j3_state: "Jastrow_three_body_streaming_state | None" = None,
 ) -> jax.Array:
     r"""Jastrow ratio for a block-structured mesh where up and dn electrons move separately.
 
@@ -2592,6 +2697,11 @@ def _compute_ratio_Jastrow_part_split_spin(
     J3 the old AOs of the moved electron are obtained by column-slicing the
     already-computed ``aos_up_old`` / ``aos_dn_old`` matrices, avoiding two
     extra ``compute_orb_api`` calls.
+
+    When called from the projection streaming path, the caller may pass
+    ``j3_state`` to skip recomputing ``aos_*_old`` and the ``W``/``U``/cross_vec
+    products — see ``_compute_ratio_Jastrow_part_rank1_update`` for the exact
+    correspondence.
 
     Args:
         jastrow_data: Active Jastrow components.
@@ -2637,7 +2747,14 @@ def _compute_ratio_Jastrow_part_split_spin(
             [jnp.broadcast_to(old_r_dn_carts[None], (g_up, num_dn, 3)), new_r_dn_shifted],
             axis=0,
         )
-        return _compute_ratio_Jastrow_part_rank1_update(jastrow_data, old_r_up_carts, old_r_dn_carts, combined_up, combined_dn)
+        return _compute_ratio_Jastrow_part_rank1_update(
+            jastrow_data,
+            old_r_up_carts,
+            old_r_dn_carts,
+            combined_up,
+            combined_dn,
+            j3_state=j3_state,
+        )
 
     g_up = new_r_up_shifted.shape[0]
     g_dn = new_r_dn_shifted.shape[0]
@@ -2746,16 +2863,27 @@ def _compute_ratio_Jastrow_part_split_spin(
         j1_vec = j3d._j_matrix_jnp[:, -1]  # (n_ao,)
 
         # Old AOs evaluated once; column slices give old AO at each moved position.
-        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts), dtype=dtype_jnp)  # (n_ao, N_up)
-        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts), dtype=dtype_jnp)  # (n_ao, N_dn)
-
-        # Precompute constant products (shared between blocks).
-        W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)
-        U_up = jnp.dot(aos_up_old.T, j3_mat)  # (N_up, n_ao)
-        W_dn = jnp.dot(j3_mat, aos_dn_old)  # (n_ao, N_dn)
-        U_dn = jnp.dot(aos_dn_old.T, j3_mat)  # (N_dn, n_ao)
-        dn_cross_vec = j3_mat @ jnp.sum(aos_dn_old, axis=1)  # (n_ao,): UP cross term constant
-        up_cross_vec = jnp.sum(aos_up_old, axis=1) @ j3_mat  # (n_ao,): DN cross term constant
+        # When the streaming state is provided, all four matmuls and both
+        # cross_vec products come from the cache (Python-static dispatch).
+        if j3_state is None:
+            aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts), dtype=dtype_jnp)  # (n_ao, N_up)
+            aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts), dtype=dtype_jnp)  # (n_ao, N_dn)
+            # Precompute constant products (shared between blocks).
+            W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)
+            U_up = jnp.dot(aos_up_old.T, j3_mat)  # (N_up, n_ao)
+            W_dn = jnp.dot(j3_mat, aos_dn_old)  # (n_ao, N_dn)
+            U_dn = jnp.dot(aos_dn_old.T, j3_mat)  # (N_dn, n_ao)
+            dn_cross_vec = j3_mat @ jnp.sum(aos_dn_old, axis=1)  # (n_ao,): UP cross term constant
+            up_cross_vec = jnp.sum(aos_up_old, axis=1) @ j3_mat  # (n_ao,): DN cross term constant
+        else:
+            aos_up_old = j3_state.aos_up.astype(dtype_jnp)
+            aos_dn_old = j3_state.aos_dn.astype(dtype_jnp)
+            W_up = j3_state.j3_mat_aos_up.astype(dtype_jnp)
+            W_dn = j3_state.j3_mat_aos_dn.astype(dtype_jnp)
+            U_up = j3_state.j3_mat_T_aos_up.astype(dtype_jnp).T
+            U_dn = j3_state.j3_mat_T_aos_dn.astype(dtype_jnp).T
+            dn_cross_vec = jnp.sum(W_dn, axis=1)
+            up_cross_vec = jnp.sum(j3_state.j3_mat_T_aos_up.astype(dtype_jnp), axis=1)
 
         # ── UP BLOCK ─────────────────────────────────────────────────────────
         # New AOs at the moved up-electron positions; old AOs by column-slice.
@@ -3354,6 +3482,194 @@ def compute_grads_and_laplacian_Jastrow_two_body(
     return grad_up, grad_dn, lap_up, lap_dn
 
 
+# ---------------------------------------------------------------------------
+# J2 streaming state (PR3).
+#
+# When a single electron k of spin σ moves, only pair contributions involving
+# k change. The state caches per-electron grad/lap and the previous (r_up,
+# r_dn) so the advance can compute the per-pair delta for that electron.
+# Cost: O(N_e) per advance, vs O(N_e²) fresh.
+# ---------------------------------------------------------------------------
+
+
+@struct.dataclass
+class Jastrow_two_body_streaming_state:
+    """Cached J2 grad/lap and electron coordinates consistent with the state."""
+
+    r_up_carts: jax.Array  # (N_up, 3) — config used for the cached J2 quantities
+    r_dn_carts: jax.Array  # (N_dn, 3)
+    grad_J2_up: jax.Array  # (N_up, 3)
+    grad_J2_dn: jax.Array  # (N_dn, 3)
+    lap_J2_up: jax.Array  # (N_up,)
+    lap_J2_dn: jax.Array  # (N_dn,)
+
+
+def _j2_pair_terms(j2b_type: str, a: jax.Array, eps: jax.Array, diff: jax.Array):
+    """Single-pair grad / lap contributions for the two-body Jastrow.
+
+    Mirrors the closures inside ``compute_grads_and_laplacian_Jastrow_two_body``
+    so init and advance share the exact arithmetic. ``j2b_type`` is JIT-static
+    (Jastrow_two_body_data marks it ``pytree_node=False``).
+    """
+    r = jnp.sqrt(jnp.sum(diff * diff, axis=-1))
+    r = jnp.maximum(r, eps)
+    if j2b_type == "pade":
+        denom = 1.0 + a * r
+        f_prime = 0.5 / (denom * denom)
+        grad_coeff = f_prime / r
+        lap = -a / (denom * denom * denom) + (2.0 * f_prime) / r
+    elif j2b_type == "exp":
+        exp_term = jnp.exp(-a * r)
+        f_prime = 0.5 * exp_term
+        grad_coeff = f_prime / r
+        lap = -(a / 2.0) * exp_term + (2.0 * f_prime) / r
+    else:
+        raise ValueError(f"Unknown jastrow_2b_type: {j2b_type}")
+    return grad_coeff[..., None] * diff, lap
+
+
+@jit
+def _init_grads_laplacian_Jastrow_two_body_streaming_state(
+    jastrow_two_body_data: Jastrow_two_body_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> Jastrow_two_body_streaming_state:
+    """Build a J2 state at ``(r_up, r_dn)`` via the existing fresh kernel."""
+    g_up, g_dn, l_up, l_dn = compute_grads_and_laplacian_Jastrow_two_body(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    return Jastrow_two_body_streaming_state(
+        r_up_carts=jnp.asarray(r_up_carts, dtype=dtype_jnp),
+        r_dn_carts=jnp.asarray(r_dn_carts, dtype=dtype_jnp),
+        grad_J2_up=g_up,
+        grad_J2_dn=g_dn,
+        lap_J2_up=l_up,
+        lap_J2_dn=l_dn,
+    )
+
+
+@jit
+def _advance_grads_laplacian_Jastrow_two_body_streaming_state(
+    jastrow_two_body_data: Jastrow_two_body_data,
+    state: Jastrow_two_body_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+) -> Jastrow_two_body_streaming_state:
+    """Advance J2 state after a single-electron move.
+
+    Computes only the pair-contribution deltas that involve the moved
+    electron: ``O(N_e)`` operations per call.
+    """
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    j2b_type = jastrow_two_body_data.jastrow_2b_type
+    a = jnp.asarray(jastrow_two_body_data.jastrow_2b_param, dtype=dtype_jnp)
+    eps = jnp.asarray(EPS_safe_distance, dtype=dtype_jnp)
+
+    num_up = state.r_up_carts.shape[0]
+    num_dn = state.r_dn_carts.shape[0]
+
+    def _branch_up(_):
+        r_old = state.r_up_carts[moved_index]
+        r_new = r_up_carts_new[moved_index]
+
+        # --- Same-spin (up-up) pairs (k, i) for i ≠ k --------------------
+        # Old & new diffs both place 0 at i=k (state.r_up_carts[k]=r_old vs r_old,
+        # r_up_carts_new[k]=r_new vs r_new), so masking is implicit at i=k for new
+        # but not for old. Mask out the i=k row explicitly to avoid contaminating k
+        # via the eps-clamped self-pair value.
+        diff_old_uu = r_old - state.r_up_carts  # (N_up, 3); k-th = 0
+        diff_new_uu = r_new - r_up_carts_new  # (N_up, 3); k-th = 0
+        grad_old_uu, lap_old_uu = _j2_pair_terms(j2b_type, a, eps, diff_old_uu)
+        grad_new_uu, lap_new_uu = _j2_pair_terms(j2b_type, a, eps, diff_new_uu)
+        delta_grad_uu = grad_new_uu - grad_old_uu  # (N_up, 3)
+        delta_lap_uu = lap_new_uu - lap_old_uu  # (N_up,)
+        mask_uu = (jnp.arange(num_up) != moved_index).astype(dtype_jnp)
+        delta_grad_uu = delta_grad_uu * mask_uu[:, None]
+        delta_lap_uu = delta_lap_uu * mask_uu
+
+        # i ≠ k: grad_up[i] -= delta_grad_uu[i], lap_up[i] += delta_lap_uu[i]
+        new_grad_up = state.grad_J2_up - delta_grad_uu
+        new_lap_up = state.lap_J2_up + delta_lap_uu
+        # k:   grad_up[k] += sum delta_grad_uu, lap_up[k] += sum delta_lap_uu
+        new_grad_up = new_grad_up.at[moved_index].add(jnp.sum(delta_grad_uu, axis=0))
+        new_lap_up = new_lap_up.at[moved_index].add(jnp.sum(delta_lap_uu, axis=0))
+
+        # --- Cross-spin (up-dn) pairs (k, j) for all j -------------------
+        diff_old_ud = r_old[None, :] - state.r_dn_carts  # (N_dn, 3)
+        diff_new_ud = r_new[None, :] - state.r_dn_carts  # (N_dn, 3) (r_dn unchanged)
+        grad_old_ud, lap_old_ud = _j2_pair_terms(j2b_type, a, eps, diff_old_ud)
+        grad_new_ud, lap_new_ud = _j2_pair_terms(j2b_type, a, eps, diff_new_ud)
+        delta_grad_ud = grad_new_ud - grad_old_ud
+        delta_lap_ud = lap_new_ud - lap_old_ud
+
+        new_grad_up = new_grad_up.at[moved_index].add(jnp.sum(delta_grad_ud, axis=0))
+        new_lap_up = new_lap_up.at[moved_index].add(jnp.sum(delta_lap_ud, axis=0))
+        new_grad_dn = state.grad_J2_dn - delta_grad_ud
+        new_lap_dn = state.lap_J2_dn + delta_lap_ud
+
+        new_r_up = state.r_up_carts.at[moved_index].set(r_new)
+        return state.replace(
+            r_up_carts=new_r_up,
+            grad_J2_up=new_grad_up,
+            grad_J2_dn=new_grad_dn,
+            lap_J2_up=new_lap_up,
+            lap_J2_dn=new_lap_dn,
+        )
+
+    def _branch_dn(_):
+        r_old = state.r_dn_carts[moved_index]
+        r_new = r_dn_carts_new[moved_index]
+
+        # --- Same-spin (dn-dn) -------------------------------------------
+        diff_old_dd = r_old - state.r_dn_carts
+        diff_new_dd = r_new - r_dn_carts_new
+        grad_old_dd, lap_old_dd = _j2_pair_terms(j2b_type, a, eps, diff_old_dd)
+        grad_new_dd, lap_new_dd = _j2_pair_terms(j2b_type, a, eps, diff_new_dd)
+        delta_grad_dd = grad_new_dd - grad_old_dd
+        delta_lap_dd = lap_new_dd - lap_old_dd
+        mask_dd = (jnp.arange(num_dn) != moved_index).astype(dtype_jnp)
+        delta_grad_dd = delta_grad_dd * mask_dd[:, None]
+        delta_lap_dd = delta_lap_dd * mask_dd
+
+        new_grad_dn = state.grad_J2_dn - delta_grad_dd
+        new_lap_dn = state.lap_J2_dn + delta_lap_dd
+        new_grad_dn = new_grad_dn.at[moved_index].add(jnp.sum(delta_grad_dd, axis=0))
+        new_lap_dn = new_lap_dn.at[moved_index].add(jnp.sum(delta_lap_dd, axis=0))
+
+        # --- Cross-spin (up-dn): grad_up[i] receives +grad_pair(r_up[i] - r_dn[k])
+        # so for dn-k moving, the deltas flip signs vs the up branch:
+        #   diff = r_up[i] - r_dn_*  →  diff_new for r_dn[k]=r_new is r_up[i] - r_new
+        diff_old_du = state.r_up_carts - r_old[None, :]  # (N_up, 3)
+        diff_new_du = state.r_up_carts - r_new[None, :]  # (N_up, 3)
+        grad_old_du, lap_old_du = _j2_pair_terms(j2b_type, a, eps, diff_old_du)
+        grad_new_du, lap_new_du = _j2_pair_terms(j2b_type, a, eps, diff_new_du)
+        delta_grad_du = grad_new_du - grad_old_du
+        delta_lap_du = lap_new_du - lap_old_du
+
+        # grad_up[i] += delta_grad_du[i]  (sign +)
+        new_grad_up = state.grad_J2_up + delta_grad_du
+        new_lap_up = state.lap_J2_up + delta_lap_du
+        # grad_dn[k] -= sum_i delta_grad_du[i]  (sign − accumulated at k)
+        new_grad_dn = new_grad_dn.at[moved_index].add(-jnp.sum(delta_grad_du, axis=0))
+        new_lap_dn = new_lap_dn.at[moved_index].add(jnp.sum(delta_lap_du, axis=0))
+
+        new_r_dn = state.r_dn_carts.at[moved_index].set(r_new)
+        return state.replace(
+            r_dn_carts=new_r_dn,
+            grad_J2_up=new_grad_up,
+            grad_J2_dn=new_grad_dn,
+            lap_J2_up=new_lap_up,
+            lap_J2_dn=new_lap_dn,
+        )
+
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
+
+
 def _compute_grads_and_laplacian_Jastrow_two_body_debug(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: np.ndarray,
@@ -3744,6 +4060,306 @@ def compute_grads_and_laplacian_Jastrow_three_body(
     lap_dn_contrib = jnp.einsum("on,on->n", g_dn, lap_dn)
 
     return grad_J3_up, grad_J3_dn, lap_up_contrib, lap_dn_contrib
+
+
+# ---------------------------------------------------------------------------
+# J3 streaming state (single-electron rank-1 advance for projection loops)
+# ---------------------------------------------------------------------------
+#
+# The functions below maintain a per-walker auxiliary state that lets us
+# advance the per-electron J3 gradients/Laplacians by O(n_ao^2 + n_ao*N_e)
+# per single-electron move, instead of recomputing them from scratch at
+# O(n_ao^2 * N_e + n_ao * N_e^2). Used by the GFMC projection inner loop
+# (jqmc_gfmc.py:_body_fun_n_streaming).
+#
+# Design references: lrdmc_refactoring.md sections 1-1, 1-2, 1-4.
+#
+# Lifetime: the state is freshly initialized at each branching boundary
+# (when _projection_n is re-entered) and advanced for at most
+# `num_mcmc_per_measurement` steps inside the fori_loop, mirroring the
+# Sherman-Morrison `A_old_inv`. No persistence across branchings.
+
+
+@struct.dataclass
+class Jastrow_three_body_streaming_state:
+    """Auxiliary state for streaming J3 grad/Laplacian updates.
+
+    All fields are evaluated at the current ``(r_up_carts, r_dn_carts)``.
+    Advancing the state via :func:`_advance_grads_laplacian_Jastrow_three_body_streaming_state`
+    after a single-electron move keeps every field consistent with the new
+    configuration, with cost ``O(n_ao^2 + n_ao * N_e)`` per step.
+
+    Fields (shapes use ``n_orb`` for the orbital dimension; for MO-based
+    three-body the same ``n_orb`` is used, since orbitals are evaluated by
+    ``compute_MOs`` to dimension ``orb_data._num_orb``):
+
+    - ``aos_up`` / ``aos_dn``: ``(n_orb, N_up)`` / ``(n_orb, N_dn)`` orbital values.
+    - ``grad_aos_up`` / ``grad_aos_dn``: ``(n_orb, N_up, 3)`` / ``(n_orb, N_dn, 3)``.
+    - ``lap_aos_up`` / ``lap_aos_dn``: ``(n_orb, N_up)`` / ``(n_orb, N_dn)``.
+    - ``j3_mat_aos_up`` / ``j3_mat_aos_dn``: ``j3_mat @ aos_*`` (shapes match aos_*).
+    - ``j3_mat_T_aos_up`` / ``j3_mat_T_aos_dn``: ``j3_mat.T @ aos_*``.
+    - ``g_up`` / ``g_dn``: ``(n_orb, N_up)`` / ``(n_orb, N_dn)`` ``dJ/dA`` per electron.
+    - ``grad_J3_up`` / ``grad_J3_dn``: ``(N_up, 3)`` / ``(N_dn, 3)`` per-electron grad.
+    - ``lap_J3_up`` / ``lap_J3_dn``: ``(N_up,)`` / ``(N_dn,)`` per-electron lap.
+    """
+
+    aos_up: jax.Array = struct.field(pytree_node=True)
+    aos_dn: jax.Array = struct.field(pytree_node=True)
+    grad_aos_up: jax.Array = struct.field(pytree_node=True)
+    grad_aos_dn: jax.Array = struct.field(pytree_node=True)
+    lap_aos_up: jax.Array = struct.field(pytree_node=True)
+    lap_aos_dn: jax.Array = struct.field(pytree_node=True)
+    j3_mat_aos_up: jax.Array = struct.field(pytree_node=True)
+    j3_mat_aos_dn: jax.Array = struct.field(pytree_node=True)
+    j3_mat_T_aos_up: jax.Array = struct.field(pytree_node=True)
+    j3_mat_T_aos_dn: jax.Array = struct.field(pytree_node=True)
+    g_up: jax.Array = struct.field(pytree_node=True)
+    g_dn: jax.Array = struct.field(pytree_node=True)
+    grad_J3_up: jax.Array = struct.field(pytree_node=True)
+    grad_J3_dn: jax.Array = struct.field(pytree_node=True)
+    lap_J3_up: jax.Array = struct.field(pytree_node=True)
+    lap_J3_dn: jax.Array = struct.field(pytree_node=True)
+
+
+def _three_body_orb_apis(jastrow_three_body_data: Jastrow_three_body_data):
+    """Pick the correct orbital evaluation backends (AO or MO).
+
+    Returned as a Python tuple so callers can dispatch statically (the
+    orb_data type is JIT-static via the @struct.dataclass).
+    """
+    orb_data = jastrow_three_body_data.orb_data
+    if isinstance(orb_data, MOs_data):
+        return compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+    if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+        return compute_AOs, compute_AOs_grad, compute_AOs_laplacian
+    raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+
+
+@jit
+def _init_grads_laplacian_Jastrow_three_body_streaming_state(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> Jastrow_three_body_streaming_state:
+    """Initialize the J3 streaming state from a configuration ``(r_up, r_dn)``.
+
+    This is a one-shot evaluation equivalent in cost to
+    :func:`compute_grads_and_laplacian_Jastrow_three_body`; it additionally
+    materializes the auxiliary tables required by the rank-1 advance.
+    """
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    orb_data = jastrow_three_body_data.orb_data
+    compute_orb, compute_orb_grad, compute_orb_lapl = _three_body_orb_apis(jastrow_three_body_data)
+
+    # AO/MO tables (forward r_*_carts unchanged so the underlying kernels can
+    # reconstruct r-R in float64 — Principle 3b).
+    aos_up = jnp.asarray(compute_orb(orb_data, r_up_carts), dtype=dtype_jnp)
+    aos_dn = jnp.asarray(compute_orb(orb_data, r_dn_carts), dtype=dtype_jnp)
+
+    grad_up_x, grad_up_y, grad_up_z = compute_orb_grad(orb_data, r_up_carts)
+    grad_dn_x, grad_dn_y, grad_dn_z = compute_orb_grad(orb_data, r_dn_carts)
+    grad_aos_up = jnp.asarray(jnp.stack([grad_up_x, grad_up_y, grad_up_z], axis=-1), dtype=dtype_jnp)
+    grad_aos_dn = jnp.asarray(jnp.stack([grad_dn_x, grad_dn_y, grad_dn_z], axis=-1), dtype=dtype_jnp)
+
+    lap_aos_up = jnp.asarray(compute_orb_lapl(orb_data, r_up_carts), dtype=dtype_jnp)
+    lap_aos_dn = jnp.asarray(compute_orb_lapl(orb_data, r_dn_carts), dtype=dtype_jnp)
+
+    j_matrix = jastrow_three_body_data._j_matrix_jnp.astype(dtype_jnp)
+    j1_vec = j_matrix[:, -1]
+    j3_mat = j_matrix[:, :-1]
+
+    num_up = aos_up.shape[1]
+    num_dn = aos_dn.shape[1]
+
+    j3_mat_aos_up = j3_mat @ aos_up
+    j3_mat_T_aos_up = j3_mat.T @ aos_up
+    j3_mat_aos_dn = j3_mat @ aos_dn
+    j3_mat_T_aos_dn = j3_mat.T @ aos_dn
+
+    upper_up = jnp.triu(jnp.ones((num_up, num_up), dtype=dtype_jnp), k=1)
+    lower_up = jnp.tril(jnp.ones((num_up, num_up), dtype=dtype_jnp), k=-1)
+    upper_dn = jnp.triu(jnp.ones((num_dn, num_dn), dtype=dtype_jnp), k=1)
+    lower_dn = jnp.tril(jnp.ones((num_dn, num_dn), dtype=dtype_jnp), k=-1)
+
+    g_up = (
+        j1_vec[:, None]
+        + j3_mat_aos_up @ lower_up
+        + j3_mat_T_aos_up @ upper_up
+        + j3_mat_aos_dn @ jnp.ones((num_dn, 1), dtype=dtype_jnp)
+    )
+    g_dn = (
+        j1_vec[:, None]
+        + j3_mat_aos_dn @ lower_dn
+        + j3_mat_T_aos_dn @ upper_dn
+        + j3_mat_T_aos_up @ jnp.ones((num_up, 1), dtype=dtype_jnp)
+    )
+
+    grad_J3_up = jnp.einsum("on,onj->nj", g_up, grad_aos_up)
+    grad_J3_dn = jnp.einsum("on,onj->nj", g_dn, grad_aos_dn)
+    lap_J3_up = jnp.einsum("on,on->n", g_up, lap_aos_up)
+    lap_J3_dn = jnp.einsum("on,on->n", g_dn, lap_aos_dn)
+
+    return Jastrow_three_body_streaming_state(
+        aos_up=aos_up,
+        aos_dn=aos_dn,
+        grad_aos_up=grad_aos_up,
+        grad_aos_dn=grad_aos_dn,
+        lap_aos_up=lap_aos_up,
+        lap_aos_dn=lap_aos_dn,
+        j3_mat_aos_up=j3_mat_aos_up,
+        j3_mat_aos_dn=j3_mat_aos_dn,
+        j3_mat_T_aos_up=j3_mat_T_aos_up,
+        j3_mat_T_aos_dn=j3_mat_T_aos_dn,
+        g_up=g_up,
+        g_dn=g_dn,
+        grad_J3_up=grad_J3_up,
+        grad_J3_dn=grad_J3_dn,
+        lap_J3_up=lap_J3_up,
+        lap_J3_dn=lap_J3_dn,
+    )
+
+
+@jit
+def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    state: Jastrow_three_body_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+) -> Jastrow_three_body_streaming_state:
+    """Advance the J3 streaming state after a single-electron move.
+
+    The new ``(r_up_carts_new, r_dn_carts_new)`` differ from the configuration
+    represented by ``state`` in *exactly one* electron position, identified by
+    ``(moved_spin_is_up, moved_index)``. If neither spin actually moved (e.g. a
+    no-op step), the state should still be passed through unchanged by the
+    caller — this routine assumes a real one-electron displacement.
+
+    Cost: ``O(n_ao^2 + n_ao * N_e)`` per call, dominated by two ``n_ao``-sized
+    matvecs ``j3_mat @ delta_aos`` and one full einsum over ``g``.
+    """
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    orb_data = jastrow_three_body_data.orb_data
+    compute_orb, compute_orb_grad, compute_orb_lapl = _three_body_orb_apis(jastrow_three_body_data)
+
+    j_matrix = jastrow_three_body_data._j_matrix_jnp.astype(dtype_jnp)
+    j3_mat = j_matrix[:, :-1]
+
+    num_up = state.aos_up.shape[1]
+    num_dn = state.aos_dn.shape[1]
+
+    def _branch_up(_):
+        # Single-point AO eval at the moved electron's new position.
+        # NB: forward r_up_carts_new unchanged (Principle 3b — fp64 r-R
+        # reconstruction inside the kernels).
+        r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
+        aos_new_col = jnp.asarray(compute_orb(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+        gx, gy, gz = compute_orb_grad(orb_data, r_new)
+        grad_aos_new_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=-1), dtype=dtype_jnp)
+        lap_aos_new_col = jnp.asarray(compute_orb_lapl(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+
+        delta_aos = aos_new_col - state.aos_up[:, moved_index]
+        d_J = j3_mat @ delta_aos  # (n_orb,)
+        d_JT = j3_mat.T @ delta_aos  # (n_orb,)
+
+        # Update auxiliary matmuls at the moved column.
+        new_j3_mat_aos_up = state.j3_mat_aos_up.at[:, moved_index].add(d_J)
+        new_j3_mat_T_aos_up = state.j3_mat_T_aos_up.at[:, moved_index].add(d_JT)
+        # j3_mat_aos_dn / j3_mat_T_aos_dn unchanged (depend on aos_dn).
+
+        # g_up update:
+        #   term A (j3_mat_aos_up @ lower_up): col j gets +d_J for j < k.
+        #   term B (j3_mat_T_aos_up @ upper_up): col j gets +d_JT for j > k.
+        #   term C (cross-spin via aos_dn): unchanged.
+        #   col k itself: unchanged (strict triangulars set k-th col to 0).
+        col_idx_up = jnp.arange(num_up)
+        mask_lt = (col_idx_up < moved_index).astype(dtype_jnp)
+        mask_gt = (col_idx_up > moved_index).astype(dtype_jnp)
+        new_g_up = state.g_up + d_J[:, None] * mask_lt[None, :] + d_JT[:, None] * mask_gt[None, :]
+
+        # g_dn update: term C is (j3_mat.T @ aos_up) @ ones_up, so the change
+        # is sum_k Δ(j3_mat.T @ aos_up)[:, k] = d_JT (single column changed).
+        # Same vector added to every dn column.
+        new_g_dn = state.g_dn + d_JT[:, None]
+
+        # Update aos/grad_aos/lap_aos at the moved column.
+        new_aos_up = state.aos_up.at[:, moved_index].set(aos_new_col)
+        new_grad_aos_up = state.grad_aos_up.at[:, moved_index, :].set(grad_aos_new_col)
+        new_lap_aos_up = state.lap_aos_up.at[:, moved_index].set(lap_aos_new_col)
+
+        # Recompute per-electron grad_J3_*, lap_J3_* via einsum on updated
+        # tables. Cost: O(n_ao * N_e * 3) — within target asymptotics.
+        grad_J3_up = jnp.einsum("on,onj->nj", new_g_up, new_grad_aos_up)
+        grad_J3_dn = jnp.einsum("on,onj->nj", new_g_dn, state.grad_aos_dn)
+        lap_J3_up = jnp.einsum("on,on->n", new_g_up, new_lap_aos_up)
+        lap_J3_dn = jnp.einsum("on,on->n", new_g_dn, state.lap_aos_dn)
+
+        return state.replace(
+            aos_up=new_aos_up,
+            grad_aos_up=new_grad_aos_up,
+            lap_aos_up=new_lap_aos_up,
+            j3_mat_aos_up=new_j3_mat_aos_up,
+            j3_mat_T_aos_up=new_j3_mat_T_aos_up,
+            g_up=new_g_up,
+            g_dn=new_g_dn,
+            grad_J3_up=grad_J3_up,
+            grad_J3_dn=grad_J3_dn,
+            lap_J3_up=lap_J3_up,
+            lap_J3_dn=lap_J3_dn,
+        )
+
+    def _branch_dn(_):
+        r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
+        aos_new_col = jnp.asarray(compute_orb(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+        gx, gy, gz = compute_orb_grad(orb_data, r_new)
+        grad_aos_new_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=-1), dtype=dtype_jnp)
+        lap_aos_new_col = jnp.asarray(compute_orb_lapl(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+
+        delta_aos = aos_new_col - state.aos_dn[:, moved_index]
+        d_J = j3_mat @ delta_aos
+        d_JT = j3_mat.T @ delta_aos
+
+        new_j3_mat_aos_dn = state.j3_mat_aos_dn.at[:, moved_index].add(d_J)
+        new_j3_mat_T_aos_dn = state.j3_mat_T_aos_dn.at[:, moved_index].add(d_JT)
+
+        col_idx_dn = jnp.arange(num_dn)
+        mask_lt = (col_idx_dn < moved_index).astype(dtype_jnp)
+        mask_gt = (col_idx_dn > moved_index).astype(dtype_jnp)
+        new_g_dn = state.g_dn + d_J[:, None] * mask_lt[None, :] + d_JT[:, None] * mask_gt[None, :]
+
+        # g_up term C is (j3_mat @ aos_dn) @ ones_dn, change = d_J for every up col.
+        new_g_up = state.g_up + d_J[:, None]
+
+        new_aos_dn = state.aos_dn.at[:, moved_index].set(aos_new_col)
+        new_grad_aos_dn = state.grad_aos_dn.at[:, moved_index, :].set(grad_aos_new_col)
+        new_lap_aos_dn = state.lap_aos_dn.at[:, moved_index].set(lap_aos_new_col)
+
+        grad_J3_up = jnp.einsum("on,onj->nj", new_g_up, state.grad_aos_up)
+        grad_J3_dn = jnp.einsum("on,onj->nj", new_g_dn, new_grad_aos_dn)
+        lap_J3_up = jnp.einsum("on,on->n", new_g_up, state.lap_aos_up)
+        lap_J3_dn = jnp.einsum("on,on->n", new_g_dn, new_lap_aos_dn)
+
+        return state.replace(
+            aos_dn=new_aos_dn,
+            grad_aos_dn=new_grad_aos_dn,
+            lap_aos_dn=new_lap_aos_dn,
+            j3_mat_aos_dn=new_j3_mat_aos_dn,
+            j3_mat_T_aos_dn=new_j3_mat_T_aos_dn,
+            g_up=new_g_up,
+            g_dn=new_g_dn,
+            grad_J3_up=grad_J3_up,
+            grad_J3_dn=grad_J3_dn,
+            lap_J3_up=lap_J3_up,
+            lap_J3_dn=lap_J3_dn,
+        )
+
+    # Edge case: zero-electron spin sector — no advance possible, just no-op.
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
 
 
 def _compute_grads_and_laplacian_Jastrow_three_body_debug(

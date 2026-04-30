@@ -69,7 +69,11 @@ from .determinant import (
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
 )
-from .jastrow_factor import _compute_ratio_Jastrow_part_split_spin, compute_Jastrow_part
+from .jastrow_factor import (
+    Jastrow_three_body_streaming_state,
+    _compute_ratio_Jastrow_part_split_spin,
+    compute_Jastrow_part,
+)
 from .structure import (
     Structure_data,
     _find_nearest_nucleus_indices_jnp,
@@ -1476,6 +1480,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     NN: int = NN_default,
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
+    j3_state: "Jastrow_three_body_streaming_state | None" = None,
 ) -> tuple[list, list, list, float]:
     """Fast-update variant of non-local ECP contributions (nearest neighbors).
 
@@ -1492,6 +1497,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         NN (int): Number of nearest nuclei to include for each electron.
         Nv (int): Number of quadrature points on the sphere.
         flag_determinant_only (bool): If True, ignore Jastrow in the wavefunction ratio.
+        j3_state: Optional cached J3 streaming auxiliaries consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to the split-spin Jastrow
+            ratio kernel so it can skip per-call ``aos_*_old``/``W``/``U``/cross_vec
+            recomputation. Use the value carried in the projection's
+            ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
+            the original 1-shot path used by observation/MCMC code.
 
     Returns:
         tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
@@ -1657,6 +1668,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             old_r_dn_carts=r_dn_carts,
             new_r_up_shifted=up_mesh_r_up,
             new_r_dn_shifted=dn_mesh_r_dn,
+            j3_state=j3_state,
         )
         jastrow_ratio = jnp.asarray(jastrow_ratio, dtype=dtype_jnp)
         wf_ratio_all = det_ratio * jastrow_ratio

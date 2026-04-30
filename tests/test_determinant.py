@@ -50,6 +50,7 @@ from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
+    _advance_grads_laplacian_ln_Det_streaming_state,
     _compute_AS_regularization_factor_debug,
     _compute_det_geminal_all_elements_debug,
     _compute_geminal_all_elements,
@@ -59,6 +60,7 @@ from jqmc.determinant import (  # noqa: E402
     _compute_grads_and_laplacian_ln_Det_fast_debug,
     _compute_ratio_determinant_part_debug,
     _compute_ratio_determinant_part_rank1_update,
+    _init_grads_laplacian_ln_Det_streaming_state,
     compute_AS_regularization_factor,
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
@@ -1736,6 +1738,100 @@ def test_collect_param_grads_walker_shapes(num_walkers):
     np.testing.assert_array_equal(grads["lambda_basis_exp"][:, num_prim_up:], grad_exp_dn)
     np.testing.assert_array_equal(grads["lambda_basis_coeff"][:, :num_prim_up], grad_coeff_up)
     np.testing.assert_array_equal(grads["lambda_basis_coeff"][:, num_prim_up:], grad_coeff_dn)
+
+
+# ---------------------------------------------------------------------------
+# Det streaming state (PR2)
+# ---------------------------------------------------------------------------
+
+
+def _build_geminal_inverse(geminal_data, r_up_carts, r_dn_carts):
+    """Compute G(r_up, r_dn)^{-1} for a freshly-arrived configuration."""
+    A = compute_geminal_all_elements(
+        geminal_data=geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+    return jnp.linalg.inv(A)
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"],
+)
+def test_streaming_det_state_against_full(trexio_file: str):
+    """Det streaming state, after K random single-electron moves, must
+    reproduce ``compute_grads_and_laplacian_ln_Det_fast`` at the resulting
+    configuration."""
+    (
+        _,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    n_up = geminal_mo_data.num_electron_up
+    n_dn = geminal_mo_data.num_electron_dn
+
+    rng = np.random.RandomState(13)
+    r_up = jnp.asarray(4.0 * rng.rand(n_up, 3) - 2.0)
+    r_dn = jnp.asarray(4.0 * rng.rand(n_dn, 3) - 2.0)
+
+    A_inv = _build_geminal_inverse(geminal_mo_data, r_up, r_dn)
+    state = _init_grads_laplacian_ln_Det_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+        geminal_inverse=A_inv,
+    )
+
+    K = 32
+    for k in range(K):
+        # alternate spin choices, but skip the spin if it has 0 electrons
+        if n_dn == 0:
+            spin_is_up = True
+        elif n_up == 0:
+            spin_is_up = False
+        else:
+            spin_is_up = bool(rng.randint(0, 2))
+
+        if spin_is_up:
+            idx = int(rng.randint(0, n_up))
+            r_up = r_up.at[idx].set(jnp.asarray(rng.normal(size=(3,)) * 0.4 + np.asarray(r_up[idx])))
+        else:
+            idx = int(rng.randint(0, n_dn))
+            r_dn = r_dn.at[idx].set(jnp.asarray(rng.normal(size=(3,)) * 0.4 + np.asarray(r_dn[idx])))
+
+        A_new_inv = _build_geminal_inverse(geminal_mo_data, r_up, r_dn)
+        state = _advance_grads_laplacian_ln_Det_streaming_state(
+            geminal_data=geminal_mo_data,
+            state=state,
+            moved_spin_is_up=jnp.bool_(spin_is_up),
+            moved_index=jnp.int32(idx),
+            r_up_carts_new=r_up,
+            r_dn_carts_new=r_dn,
+            A_new_inv=A_new_inv,
+        )
+
+    # Reference: fresh fast call at the final configuration.
+    A_inv_final = _build_geminal_inverse(geminal_mo_data, r_up, r_dn)
+    grad_up_ref, grad_dn_ref, lap_up_ref, lap_dn_ref = compute_grads_and_laplacian_ln_Det_fast(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+        geminal_inverse=A_inv_final,
+    )
+
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
+    np.testing.assert_allclose(state.grad_ln_D_up, grad_up_ref, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.grad_ln_D_dn, grad_dn_ref, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.lap_ln_D_up, lap_up_ref, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.lap_ln_D_dn, lap_dn_ref, atol=atol, rtol=rtol)
 
 
 if __name__ == "__main__":
