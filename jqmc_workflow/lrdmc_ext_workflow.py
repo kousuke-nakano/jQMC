@@ -47,7 +47,7 @@ import os
 import re
 import subprocess
 from logging import getLogger
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
@@ -246,7 +246,7 @@ class LRDMC_Ext_Workflow(Workflow):
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
         time_projection_tau: Optional[float] = 0.10,
         target_survived_walkers_ratio: Optional[float] = None,
-        num_projection_per_measurement: Optional[int] = None,
+        num_projection_per_measurement: Optional[Union[int, Dict[float, int]]] = None,
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
@@ -292,6 +292,18 @@ class LRDMC_Ext_Workflow(Workflow):
         # [lrdmc-bra / lrdmc-tau] section
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
+        # num_projection_per_measurement may be:
+        #   None    — GFMC_t mode (uses time_projection_tau)
+        #   int     — same value for every alat
+        #   dict    — per-alat values; keys must cover every alat in alat_list
+        if isinstance(num_projection_per_measurement, dict):
+            missing = [a for a in self.alat_list if a not in num_projection_per_measurement]
+            if missing:
+                raise ValueError(
+                    f"num_projection_per_measurement dict is missing entries "
+                    f"for alat values: {missing}. dict keys must match "
+                    f"alat_list ({self.alat_list}) exactly."
+                )
         self.num_projection_per_measurement = num_projection_per_measurement
         self.non_local_move = non_local_move
         self.E_scf = E_scf
@@ -325,6 +337,12 @@ class LRDMC_Ext_Workflow(Workflow):
         label = f"lrdmc-a{alat:.3f}"
         dirname = f"lrdmc_alat_{alat:.3f}"
 
+        # Resolve per-alat num_projection_per_measurement if a dict was supplied.
+        if isinstance(self.num_projection_per_measurement, dict):
+            nmpm_for_alat = self.num_projection_per_measurement[alat]
+        else:
+            nmpm_for_alat = self.num_projection_per_measurement
+
         wf = LRDMC_Workflow(
             server_machine_name=self.server_machine_name,
             alat=alat,
@@ -339,7 +357,7 @@ class LRDMC_Ext_Workflow(Workflow):
             num_gfmc_collect_steps=self.num_gfmc_collect_steps,
             time_projection_tau=self.time_projection_tau,
             target_survived_walkers_ratio=self.target_survived_walkers_ratio,
-            num_projection_per_measurement=self.num_projection_per_measurement,
+            num_projection_per_measurement=nmpm_for_alat,
             non_local_move=self.non_local_move,
             E_scf=self.E_scf,
             atomic_force=self.atomic_force,
