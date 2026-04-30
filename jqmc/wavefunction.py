@@ -1320,6 +1320,17 @@ def _init_kinetic_energy_all_elements_streaming_state(
         r_dn_carts=r_dn_carts,
     )
 
+    # Cast totals to the jastrow_grad_lap zone so init and advance store
+    # ``grad_J_*`` / ``lap_J_*`` in the same dtype (Principle 3b — required
+    # for fori_loop carry-shape stability under mixed precision, where
+    # ``advance`` reassembles the totals from streaming sub-states that
+    # live in the jastrow_grad_lap zone).
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+
     # Determinant streaming state — drives grad_ln_D_*/lap_ln_D_* fields.
     det_state = _init_grads_laplacian_ln_Det_streaming_state(
         geminal_data=wavefunction_data.geminal_data,

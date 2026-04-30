@@ -72,8 +72,15 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_AOs_value_grad_lap,
 )
-from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+from .molecular_orbital import (
+    MOs_data,
+    compute_MOs,
+    compute_MOs_grad,
+    compute_MOs_laplacian,
+    compute_MOs_value_grad_lap,
+)
 from .structure import Structure_data
 
 if TYPE_CHECKING:  # typing-only import to avoid circular dependency
@@ -3510,8 +3517,21 @@ def _j2_pair_terms(j2b_type: str, a: jax.Array, eps: jax.Array, diff: jax.Array)
     Mirrors the closures inside ``compute_grads_and_laplacian_Jastrow_two_body``
     so init and advance share the exact arithmetic. ``j2b_type`` is JIT-static
     (Jastrow_two_body_data marks it ``pytree_node=False``).
+
+    Callers may construct ``diff`` in caller-supplied precision (e.g. fp64
+    walker coords for ``r - r_new``); cast at the arithmetic use site here so
+    pair-term outputs always live in this function's own zone
+    (``jastrow_grad_lap``) regardless of input dtype (Principle 3b — and
+    required for fori_loop carry-shape stability under mixed precision,
+    where state.r_up_carts is stored in fp64 but state.grad_J2_up lives in
+    the grad/lap zone). The cast target is fetched via
+    ``get_dtype_jnp("jastrow_grad_lap")`` rather than reading ``a.dtype``,
+    so the function declares its own zone explicitly instead of inheriting
+    it from a caller-supplied argument.
     """
-    r = jnp.sqrt(jnp.sum(diff * diff, axis=-1))
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    d = diff.astype(dtype_jnp)
+    r = jnp.sqrt(jnp.sum(d * d, axis=-1))
     r = jnp.maximum(r, eps)
     if j2b_type == "pade":
         denom = 1.0 + a * r
@@ -3525,7 +3545,7 @@ def _j2_pair_terms(j2b_type: str, a: jax.Array, eps: jax.Array, diff: jax.Array)
         lap = -(a / 2.0) * exp_term + (2.0 * f_prime) / r
     else:
         raise ValueError(f"Unknown jastrow_2b_type: {j2b_type}")
-    return grad_coeff[..., None] * diff, lap
+    return grad_coeff[..., None] * d, lap
 
 
 @jit
@@ -3534,12 +3554,21 @@ def _init_grads_laplacian_Jastrow_two_body_streaming_state(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> Jastrow_two_body_streaming_state:
-    """Build a J2 state at ``(r_up, r_dn)`` via the existing fresh kernel."""
+    """Build a J2 state at ``(r_up, r_dn)`` via the existing fresh kernel.
+
+    Stores ``r_up_carts`` / ``r_dn_carts`` in caller-supplied precision
+    (Principle 3a — no rebind). Under mixed precision the carry-shape
+    must match what ``advance`` writes back via
+    ``state.r_*.at[moved_index].set(r_up_carts_new[moved_index])``;
+    ``r_up_carts_new`` arrives in fp64 (walker state), so the cached
+    coords must be fp64 too. Diffs are downcast to the jastrow_grad_lap
+    zone at the arithmetic use site inside ``_j2_pair_terms``
+    (Principle 3b).
+    """
     g_up, g_dn, l_up, l_dn = compute_grads_and_laplacian_Jastrow_two_body(jastrow_two_body_data, r_up_carts, r_dn_carts)
-    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
     return Jastrow_two_body_streaming_state(
-        r_up_carts=jnp.asarray(r_up_carts, dtype=dtype_jnp),
-        r_dn_carts=jnp.asarray(r_dn_carts, dtype=dtype_jnp),
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
         grad_J2_up=g_up,
         grad_J2_dn=g_dn,
         lap_J2_up=l_up,
@@ -4001,30 +4030,26 @@ def compute_grads_and_laplacian_Jastrow_three_body(
     orb_data = jastrow_three_body_data.orb_data
 
     if isinstance(orb_data, MOs_data):
-        compute_orb = compute_MOs
-        compute_orb_grad = compute_MOs_grad
-        compute_orb_lapl = compute_MOs_laplacian
+        compute_orb_vgl = compute_MOs_value_grad_lap
     elif isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
-        compute_orb = compute_AOs
-        compute_orb_grad = compute_AOs_grad
-        compute_orb_lapl = compute_AOs_laplacian
+        compute_orb_vgl = compute_AOs_value_grad_lap
     else:
         raise NotImplementedError
 
-    # r_*_carts forwarded unchanged to ``compute_orb`` / ``compute_orb_grad`` /
-    # ``compute_orb_lapl``; do not pre-cast (the AO/MO kernels reconstruct
-    # ``r - R`` in float64 internally).
-    aos_up = jnp.asarray(compute_orb(orb_data, r_up_carts), dtype=dtype_jnp)  # (n_orb, n_up)
-    aos_dn = jnp.asarray(compute_orb(orb_data, r_dn_carts), dtype=dtype_jnp)  # (n_orb, n_dn)
-
-    grad_up_x, grad_up_y, grad_up_z = compute_orb_grad(orb_data, r_up_carts)
-    grad_dn_x, grad_dn_y, grad_dn_z = compute_orb_grad(orb_data, r_dn_carts)
+    # r_*_carts forwarded unchanged to ``compute_orb_vgl``; do not pre-cast
+    # (the AO/MO kernels reconstruct ``r - R`` in float64 internally). Single
+    # fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap.
+    aos_up, grad_up_x, grad_up_y, grad_up_z, lap_up = compute_orb_vgl(orb_data, r_up_carts)
+    aos_dn, grad_dn_x, grad_dn_y, grad_dn_z, lap_dn = compute_orb_vgl(orb_data, r_dn_carts)
+    aos_up = jnp.asarray(aos_up, dtype=dtype_jnp)  # (n_orb, n_up)
+    aos_dn = jnp.asarray(aos_dn, dtype=dtype_jnp)  # (n_orb, n_dn)
 
     grad_up = jnp.stack([grad_up_x, grad_up_y, grad_up_z], axis=-1)  # (n_orb, n_up, 3)
     grad_dn = jnp.stack([grad_dn_x, grad_dn_y, grad_dn_z], axis=-1)  # (n_orb, n_dn, 3)
 
-    lap_up = jnp.asarray(compute_orb_lapl(orb_data, r_up_carts), dtype=dtype_jnp)  # (n_orb, n_up)
-    lap_dn = jnp.asarray(compute_orb_lapl(orb_data, r_dn_carts), dtype=dtype_jnp)  # (n_orb, n_dn)
+    lap_up = jnp.asarray(lap_up, dtype=dtype_jnp)  # (n_orb, n_up)
+    lap_dn = jnp.asarray(lap_dn, dtype=dtype_jnp)  # (n_orb, n_dn)
 
     j1_vec = jastrow_three_body_data._j_matrix_jnp[:, -1].astype(dtype_jnp)  # (n_orb,)
     j3_mat = jastrow_three_body_data._j_matrix_jnp[:, :-1].astype(dtype_jnp)  # (n_orb, n_orb)
@@ -4125,13 +4150,26 @@ def _three_body_orb_apis(jastrow_three_body_data: Jastrow_three_body_data):
     """Pick the correct orbital evaluation backends (AO or MO).
 
     Returned as a Python tuple so callers can dispatch statically (the
-    orb_data type is JIT-static via the @struct.dataclass).
+    orb_data type is JIT-static via the @struct.dataclass). Includes the
+    fused ``(val, gx, gy, gz, lap)`` dispatcher used by the streaming advance
+    hot path so the heavy block (exp / poly / S_l_m) is shared across
+    val/grad/lap.
     """
     orb_data = jastrow_three_body_data.orb_data
     if isinstance(orb_data, MOs_data):
-        return compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+        return (
+            compute_MOs,
+            compute_MOs_grad,
+            compute_MOs_laplacian,
+            compute_MOs_value_grad_lap,
+        )
     if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
-        return compute_AOs, compute_AOs_grad, compute_AOs_laplacian
+        return (
+            compute_AOs,
+            compute_AOs_grad,
+            compute_AOs_laplacian,
+            compute_AOs_value_grad_lap,
+        )
     raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
 
@@ -4149,20 +4187,19 @@ def _init_grads_laplacian_Jastrow_three_body_streaming_state(
     """
     dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
     orb_data = jastrow_three_body_data.orb_data
-    compute_orb, compute_orb_grad, compute_orb_lapl = _three_body_orb_apis(jastrow_three_body_data)
+    compute_orb, compute_orb_grad, compute_orb_lapl, compute_orb_vgl = _three_body_orb_apis(jastrow_three_body_data)
 
     # AO/MO tables (forward r_*_carts unchanged so the underlying kernels can
-    # reconstruct r-R in float64 — Principle 3b).
-    aos_up = jnp.asarray(compute_orb(orb_data, r_up_carts), dtype=dtype_jnp)
-    aos_dn = jnp.asarray(compute_orb(orb_data, r_dn_carts), dtype=dtype_jnp)
-
-    grad_up_x, grad_up_y, grad_up_z = compute_orb_grad(orb_data, r_up_carts)
-    grad_dn_x, grad_dn_y, grad_dn_z = compute_orb_grad(orb_data, r_dn_carts)
+    # reconstruct r-R in float64 — Principle 3b). Single fused dispatch shares
+    # the heavy block (exp / poly / S_l_m) across val/grad/lap.
+    aos_up, grad_up_x, grad_up_y, grad_up_z, lap_aos_up = compute_orb_vgl(orb_data, r_up_carts)
+    aos_dn, grad_dn_x, grad_dn_y, grad_dn_z, lap_aos_dn = compute_orb_vgl(orb_data, r_dn_carts)
+    aos_up = jnp.asarray(aos_up, dtype=dtype_jnp)
+    aos_dn = jnp.asarray(aos_dn, dtype=dtype_jnp)
     grad_aos_up = jnp.asarray(jnp.stack([grad_up_x, grad_up_y, grad_up_z], axis=-1), dtype=dtype_jnp)
     grad_aos_dn = jnp.asarray(jnp.stack([grad_dn_x, grad_dn_y, grad_dn_z], axis=-1), dtype=dtype_jnp)
-
-    lap_aos_up = jnp.asarray(compute_orb_lapl(orb_data, r_up_carts), dtype=dtype_jnp)
-    lap_aos_dn = jnp.asarray(compute_orb_lapl(orb_data, r_dn_carts), dtype=dtype_jnp)
+    lap_aos_up = jnp.asarray(lap_aos_up, dtype=dtype_jnp)
+    lap_aos_dn = jnp.asarray(lap_aos_dn, dtype=dtype_jnp)
 
     j_matrix = jastrow_three_body_data._j_matrix_jnp.astype(dtype_jnp)
     j1_vec = j_matrix[:, -1]
@@ -4241,7 +4278,7 @@ def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
     """
     dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
     orb_data = jastrow_three_body_data.orb_data
-    compute_orb, compute_orb_grad, compute_orb_lapl = _three_body_orb_apis(jastrow_three_body_data)
+    compute_orb, compute_orb_grad, compute_orb_lapl, compute_orb_vgl = _three_body_orb_apis(jastrow_three_body_data)
 
     j_matrix = jastrow_three_body_data._j_matrix_jnp.astype(dtype_jnp)
     j3_mat = j_matrix[:, :-1]
@@ -4252,12 +4289,13 @@ def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
     def _branch_up(_):
         # Single-point AO eval at the moved electron's new position.
         # NB: forward r_up_carts_new unchanged (Principle 3b — fp64 r-R
-        # reconstruction inside the kernels).
+        # reconstruction inside the kernels). Single fused dispatch shares
+        # the heavy block (exp / poly / S_l_m) across val/grad/lap.
         r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
-        aos_new_col = jnp.asarray(compute_orb(orb_data, r_new)[:, 0], dtype=dtype_jnp)
-        gx, gy, gz = compute_orb_grad(orb_data, r_new)
+        ao_v, gx, gy, gz, ao_lap = compute_orb_vgl(orb_data, r_new)
+        aos_new_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)
         grad_aos_new_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=-1), dtype=dtype_jnp)
-        lap_aos_new_col = jnp.asarray(compute_orb_lapl(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+        lap_aos_new_col = jnp.asarray(ao_lap[:, 0], dtype=dtype_jnp)
 
         delta_aos = aos_new_col - state.aos_up[:, moved_index]
         d_J = j3_mat @ delta_aos  # (n_orb,)
@@ -4310,11 +4348,12 @@ def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
         )
 
     def _branch_dn(_):
+        # Single fused dispatch (see _branch_up).
         r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
-        aos_new_col = jnp.asarray(compute_orb(orb_data, r_new)[:, 0], dtype=dtype_jnp)
-        gx, gy, gz = compute_orb_grad(orb_data, r_new)
+        ao_v, gx, gy, gz, ao_lap = compute_orb_vgl(orb_data, r_new)
+        aos_new_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)
         grad_aos_new_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=-1), dtype=dtype_jnp)
-        lap_aos_new_col = jnp.asarray(compute_orb_lapl(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+        lap_aos_new_col = jnp.asarray(ao_lap[:, 0], dtype=dtype_jnp)
 
         delta_aos = aos_new_col - state.aos_dn[:, moved_index]
         d_J = j3_mat @ delta_aos

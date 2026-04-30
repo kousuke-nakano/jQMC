@@ -5,6 +5,11 @@ Precision Zones:
     - ``mo_grad``: MO gradient (compute_MOs_grad).
     - ``mo_lap``: MO Laplacian (compute_MOs_laplacian).
 
+The fused :func:`compute_MOs_value_grad_lap` API returns all three at
+once and casts each output into its corresponding zone at the matmul
+use site. Use it when value, gradient, and Laplacian are all needed at
+the same call site; otherwise prefer the standalone APIs.
+
 See :mod:`jqmc._precision` for details.
 """
 
@@ -67,6 +72,7 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_AOs_value_grad_lap,
 )
 
 # set logger
@@ -242,7 +248,7 @@ def compute_MOs(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: MO values with shape ``(num_mo, N_e)``.
     """
-    # Heavy AO evaluation runs in ``orb_eval`` precision (e.g. fp32 in mixed mode),
+    # Heavy AO evaluation runs in ``ao_eval`` precision (e.g. fp32 in mixed mode),
     # but the (small) MO matmul and the returned MO matrix are kept in the
     # ``determinant`` precision (fp64 by default).  This avoids amplifying fp32
     # round-off through downstream determinant / kinetic / energy paths while
@@ -289,7 +295,7 @@ def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     dtype_jnp = get_dtype_jnp("mo_lap")
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
-    # ao_lap lives in the ao_lap zone; cast to mo_lap at the use site
+    # ao_lap lives in the ao_grad_lap zone; cast to mo_lap at the use site
     # (Principle 3b — cast operands to this function's own zone immediately
     # before consuming them as arithmetic operands).
     return jnp.dot(mo_coefficients, ao_lap.astype(dtype_jnp))
@@ -356,7 +362,7 @@ def compute_MOs_grad(
     dtype_jnp = get_dtype_jnp("mo_grad")
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
-    # AO gradient outputs live in the ao_grad zone; cast to mo_grad at the
+    # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad at the
     # use site (Principle 3b — cast operands to this function's own zone immediately
     # before consuming them as arithmetic operands).
     mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
@@ -364,6 +370,49 @@ def compute_MOs_grad(
     mo_matrix_grad_z = jnp.dot(mo_coefficients, mo_matrix_grad_z.astype(dtype_jnp))
 
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
+
+
+@jit
+def compute_MOs_value_grad_lap(
+    mos_data: MOs_data, r_carts: jax.Array
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Fused evaluation of MO values, Cartesian gradients, and Laplacians.
+
+    Calls :func:`compute_AOs_value_grad_lap` once and applies
+    ``mo_coefficients @ ·`` to each AO output. Each MO output is cast
+    into its own zone (Principle 3b) at the matmul use site:
+
+    * ``val`` → ``mo_eval`` (fp32 in mixed mode, fp64 in full)
+    * ``gx`` / ``gy`` / ``gz`` → ``mo_grad`` (fp64)
+    * ``lap`` → ``mo_lap`` (fp64)
+
+    For value-only / grad-only / lap-only call sites, prefer the
+    standalone APIs (``compute_MOs`` / ``compute_MOs_grad`` /
+    ``compute_MOs_laplacian``) — JAX DCE does not reliably eliminate
+    unused outputs across this function's ``@jit`` boundary.
+
+    Returns:
+        tuple: ``(val, gx, gy, gz, lap)``, each of shape ``(num_mo, N_e)``.
+    """
+    dtype_eval = get_dtype_jnp("mo_eval")
+    dtype_grad = get_dtype_jnp("mo_grad")
+    dtype_lap = get_dtype_jnp("mo_lap")
+
+    ao_val, ao_gx, ao_gy, ao_gz, ao_lap = compute_AOs_value_grad_lap(aos_data=mos_data.aos_data, r_carts=r_carts)
+    # AO outputs live in their own zones (ao_val: ao_eval; ao_g*/ao_lap: ao_grad_lap).
+    # Cast each into the matching MO zone at the matmul use site (Principle 3b).
+    C = mos_data._mo_coefficients_jnp
+    C_eval = C.astype(dtype_eval)
+    C_grad = C.astype(dtype_grad)
+    C_lap = C.astype(dtype_lap)
+
+    mo_val = jnp.dot(C_eval, ao_val.astype(dtype_eval))
+    mo_gx = jnp.dot(C_grad, ao_gx.astype(dtype_grad))
+    mo_gy = jnp.dot(C_grad, ao_gy.astype(dtype_grad))
+    mo_gz = jnp.dot(C_grad, ao_gz.astype(dtype_grad))
+    mo_lap = jnp.dot(C_lap, ao_lap.astype(dtype_lap))
+
+    return mo_val, mo_gx, mo_gy, mo_gz, mo_lap
 
 
 @jit
@@ -378,7 +427,7 @@ def _compute_MOs_grad_autodiff(
     dtype_jnp = get_dtype_jnp("mo_grad")
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = _compute_AOs_grad_autodiff(mos_data.aos_data, r_carts)
-    # AO gradient outputs live in the ao_grad zone; cast to mo_grad at the
+    # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad at the
     # use site (Principle 3b).
     mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
     mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y.astype(dtype_jnp))

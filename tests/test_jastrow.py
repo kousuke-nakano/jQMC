@@ -43,7 +43,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.atomic_orbital import AOs_sphe_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -1104,7 +1104,9 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 @pytest.mark.activate_if_skip_heavy
 def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (AOs)."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
+    # J3 grad/lap crosses two zones: jastrow_grad_lap (fp32 mixed) + ao_grad_lap (fp64).
+    # Use the looser of the two — under mixed precision, jastrow_grad_lap dominates.
+    atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap"], "strict")
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
     num_R_cart_samples = 5
@@ -1176,7 +1178,9 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 @pytest.mark.activate_if_skip_heavy
 def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (MOs)."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
+    # J3-with-MOs crosses jastrow_grad_lap (fp32 mixed) + ao_grad_lap + mo_grad + mo_lap.
+    # All non-jastrow zones are fp64; jastrow_grad_lap dominates as the loosest.
+    atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap", "mo_grad", "mo_lap"], "strict")
     num_el = 8
     num_mo = 4
     num_ao = 3
@@ -1382,7 +1386,9 @@ def test_numerical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
 @pytest.mark.parametrize("j1b_type,j2b_type,include_nn", _JASTROW_COMBOS)
 def test_analytical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
     """Analytic vs auto-diff gradients/laplacian for J1+J2+J3(+NN)."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
+    # Combined J1+J2+J3(+NN) grad/lap crosses jastrow_grad_lap (fp32 mixed) and the
+    # AO/MO grad/lap zones via the J3 path. jastrow_grad_lap is the loosest under mixed.
+    atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap", "mo_grad", "mo_lap"], "strict")
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(j1b_type, j2b_type, include_nn)
 
     grad_up_an, grad_dn_an, lap_up_an, lap_dn_an = compute_grads_and_laplacian_Jastrow_part(
@@ -1418,7 +1424,10 @@ def test_analytical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
 @pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
 def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern: str):
     """Compare ratio Jastrow part: debug vs rank-1 update implementation."""
-    atol, rtol = get_tolerance("jastrow_eval", "strict")
+    # Both _compute_ratio_Jastrow_part_rank1_update and _compute_ratio_Jastrow_part_debug
+    # operate in the jastrow_ratio zone (J(R')/J(R) log-ratio). Use that zone's tolerance
+    # to honor the 1-zone-1-module principle.
+    atol, rtol = get_tolerance("jastrow_ratio", "strict")
     np.random.seed(0)
     jastrow_data, old_r_up_carts, old_r_dn_carts = _build_jastrow_data_for_part_tests(j1b_type, j2b_type, include_nn)
 
@@ -1618,7 +1627,11 @@ def test_streaming_J1_state_against_full(j1b_type, n_up, n_dn):
     )
 
     K = 32
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # J1 streaming exercises only the jastrow_grad_lap zone (electron-nucleus,
+    # no AO/MO involvement). Tolerance must follow that zone, NOT wf_kinetic
+    # (the latter is fp64-only and incorrectly tightens the bound under mixed
+    # precision where jastrow_grad_lap = fp32).
+    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
     for _ in range(K):
         spin_choices = []
         if n_up > 0:
@@ -1685,7 +1698,11 @@ def test_streaming_J2_state_against_full(j2b_type, n_up, n_dn):
     )
 
     K = 32
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # J2 streaming exercises only the jastrow_grad_lap zone (electron-electron
+    # pair coupling, no AO/MO involvement). Under mixed precision the pair
+    # delta path additionally accumulates fp32 cancellation error over K steps;
+    # the jastrow_grad_lap fp32 strict tolerance (1e-5, 1e-3) covers this.
+    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
     for _ in range(K):
         spin_choices = []
         if n_up > 0:
@@ -1762,7 +1779,10 @@ def test_streaming_J3_state_against_full(trexio_file):
     state = _init_grads_laplacian_Jastrow_three_body_streaming_state(jastrow_threebody_data, r_up, r_dn)
 
     K = 32
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # J3 streaming crosses two zones: jastrow_grad_lap (J3 grad/lap arithmetic)
+    # and ao_grad_lap (AO grad/lap consumed inside J3). Use the looser of the
+    # two — under mixed precision, jastrow_grad_lap (fp32) dominates.
+    atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap"], "strict")
     for _ in range(K):
         # pick a random single-electron move (alternating spins when available)
         spin_choices = []

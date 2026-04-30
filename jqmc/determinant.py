@@ -67,9 +67,16 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_AOs_value_grad_lap,
     compute_overlap_matrix,
 )
-from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+from .molecular_orbital import (
+    MOs_data,
+    compute_MOs,
+    compute_MOs_grad,
+    compute_MOs_laplacian,
+    compute_MOs_value_grad_lap,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -515,6 +522,24 @@ class Geminal_data:
             return compute_AOs_laplacian
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_laplacian
+        else:
+            raise NotImplementedError
+
+    @property
+    def compute_orb_value_grad_lap_api(self) -> Callable[..., tuple]:
+        """Fused (value, grad, laplacian) api for AOs or MOs.
+
+        Returns a callable that yields ``(val, gx, gy, gz, lap)`` in a single
+        dispatch — used by the streaming advance hot path so the heavy block
+        (``exp``, polynomial chain, ``S_l_m``) is shared across val/grad/lap
+        instead of being recomputed three times.
+        """
+        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+            return compute_AOs_value_grad_lap
+        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
+            return compute_AOs_value_grad_lap
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+            return compute_MOs_value_grad_lap
         else:
             raise NotImplementedError
 
@@ -1363,9 +1388,9 @@ def _compute_geminal_all_elements(
     lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    # orb_matrix_* may be produced in the orb_eval zone (potentially float32).
-    # Explicitly upcast to the geminal zone here so the matmul does not rely
-    # on JAX implicit type promotion (fp32 x fp64 -> fp64).
+    # orb_matrix_* may be produced in the ao_eval / mo_eval zone (potentially
+    # float32). Explicitly upcast to the geminal zone here so the matmul does
+    # not rely on JAX implicit type promotion (fp32 x fp64 -> fp64).
     orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
     orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
 
@@ -1433,8 +1458,8 @@ def compute_geminal_up_one_row_elements(
     # - up: single position -> 1D vector (n_orb_up,)
     # - dn: batched positions -> (n_orb_dn, N_dn)
     # Explicitly upcast to the geminal zone (compute_orb_api may return
-    # orb_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX implicit
-    # type promotion in the lambda matmul below.
+    # ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX
+    # implicit type promotion in the lambda matmul below.
     orb_up_vec = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_cart).astype(dtype_jnp)
     orb_up_vec = jnp.reshape(orb_up_vec, (-1,))  # ensure (n_orb_up,)
     orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
@@ -1484,8 +1509,8 @@ def compute_geminal_dn_one_column_elements(
     # - up: batched positions -> (n_orb_up, N_up)
     # - dn: single position -> 1D vector (n_orb_dn,)
     # Explicitly upcast to the geminal zone (compute_orb_api may return
-    # orb_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX implicit
-    # type promotion in the lambda matmul below.
+    # ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX
+    # implicit type promotion in the lambda matmul below.
     orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
     orb_matrix_up = jnp.asarray(orb_matrix_up, dtype=dtype_jnp)  # (n_orb_up, N_up)
 
@@ -1581,7 +1606,7 @@ def _compute_ratio_determinant_part_rank1_update(
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Precompute old AO matrices once. Explicitly upcast to the geminal zone
-    # (compute_orb_api may return orb_eval dtype, e.g. fp32 for AGP) to avoid
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
     # relying on JAX implicit type promotion in the lambda matmuls below.
     orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts).astype(dtype_jnp)
     orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts).astype(dtype_jnp)
@@ -1686,7 +1711,7 @@ def _compute_ratio_determinant_part_split_spin(
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Precompute old AO matrices once. Explicitly upcast to the geminal zone
-    # (compute_orb_api may return orb_eval dtype, e.g. fp32 for AGP) to avoid
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
     # relying on JAX implicit type promotion in the lambda matmuls below.
     orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts).astype(dtype_jnp)
     orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts).astype(dtype_jnp)
@@ -1843,7 +1868,7 @@ def compute_grads_and_laplacian_ln_Det(
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Explicitly upcast AO/MO forward values to the kinetic zone
-    # (compute_orb_api may return orb_eval dtype, e.g. fp32 for AGP) to avoid
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
     # relying on JAX implicit type promotion in the lambda/gradient matmuls below.
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
@@ -1932,19 +1957,18 @@ def _grads_lap_body(
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Explicitly upcast AO/MO forward values to the kinetic zone
-    # (compute_orb_api may return orb_eval dtype, e.g. fp32 for AGP) to avoid
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
     # relying on JAX implicit type promotion in the lambda/gradient matmuls below.
-    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
-    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
-
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_up_spin, r_up_carts
+    # Single fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap.
+    ao_matrix_up, ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z, ao_matrix_laplacian_up = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts
+    ao_matrix_dn, ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z, ao_matrix_laplacian_dn = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_matrix_up = ao_matrix_up.astype(dtype_jnp)
+    ao_matrix_dn = ao_matrix_dn.astype(dtype_jnp)
 
     ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
     ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
@@ -2130,19 +2154,18 @@ def compute_grads_and_laplacian_ln_Det_fast(
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Explicitly upcast AO/MO forward values to the kinetic zone
-    # (compute_orb_api may return orb_eval dtype, e.g. fp32 for AGP) to avoid
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
     # relying on JAX implicit type promotion in the lambda/gradient matmuls below.
-    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
-    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
-
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_up_spin, r_up_carts
+    # Single fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap.
+    ao_matrix_up, ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z, ao_matrix_laplacian_up = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts
+    ao_matrix_dn, ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z, ao_matrix_laplacian_dn = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_matrix_up = ao_matrix_up.astype(dtype_jnp)
+    ao_matrix_dn = ao_matrix_dn.astype(dtype_jnp)
 
     ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
     ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
@@ -2297,17 +2320,20 @@ def _init_grads_laplacian_ln_Det_streaming_state(
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Phase 0: AO/grad/lap evaluation (forward r_*_carts unchanged so the
-    # underlying kernels reconstruct r-R in fp64 — Principle 3b).
-    ao_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
-    ao_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
-
-    ao_up_gx, ao_up_gy, ao_up_gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_dn_gx, ao_dn_gy, ao_dn_gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    # underlying kernels reconstruct r-R in fp64 — Principle 3b). Single fused
+    # dispatch shares the heavy block (exp / poly / S_l_m) across val/grad/lap.
+    ao_up, ao_up_gx, ao_up_gy, ao_up_gz, ao_up_lap = geminal_data.compute_orb_value_grad_lap_api(
+        geminal_data.orb_data_up_spin, r_up_carts
+    )
+    ao_dn, ao_dn_gx, ao_dn_gy, ao_dn_gz, ao_dn_lap = geminal_data.compute_orb_value_grad_lap_api(
+        geminal_data.orb_data_dn_spin, r_dn_carts
+    )
+    ao_up = ao_up.astype(dtype_jnp)
+    ao_dn = ao_dn.astype(dtype_jnp)
     ao_up_grads = jnp.asarray(jnp.stack([ao_up_gx, ao_up_gy, ao_up_gz], axis=0), dtype=dtype_jnp)
     ao_dn_grads = jnp.asarray(jnp.stack([ao_dn_gx, ao_dn_gy, ao_dn_gz], axis=0), dtype=dtype_jnp)
-
-    ao_up_lap = jnp.asarray(geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts), dtype=dtype_jnp)
-    ao_dn_lap = jnp.asarray(geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts), dtype=dtype_jnp)
+    ao_up_lap = jnp.asarray(ao_up_lap, dtype=dtype_jnp)
+    ao_dn_lap = jnp.asarray(ao_dn_lap, dtype=dtype_jnp)
 
     # Phase 1: λ_p ⨯ ao_dn family (depends on dn only).
     paired_dn = lambda_matrix_paired @ ao_dn
@@ -2401,17 +2427,13 @@ def _advance_grads_laplacian_ln_Det_streaming_state(
 
     def _branch_up(_):
         # --- Phase 0: single-point AO eval at r_up_new[k] -----------------
+        # Single fused dispatch shares the heavy block (exp / poly / S_l_m)
+        # across val/grad/lap — replaces three separate compute_orb_* calls.
         r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
-        ao_col = jnp.asarray(
-            geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_new)[:, 0],
-            dtype=dtype_jnp,
-        )  # (n_ao_up,)
-        gx, gy, gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_new)
+        ao_v, gx, gy, gz, ao_lap = geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_new)
+        ao_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)  # (n_ao_up,)
         grad_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=0), dtype=dtype_jnp)  # (3, n_ao_up)
-        lap_col = jnp.asarray(
-            geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_new)[:, 0],
-            dtype=dtype_jnp,
-        )  # (n_ao_up,)
+        lap_col = jnp.asarray(ao_lap[:, 0], dtype=dtype_jnp)  # (n_ao_up,)
 
         new_ao_up = state.ao_up.at[:, moved_index].set(ao_col)
         new_ao_up_grads = state.ao_up_grads.at[:, :, moved_index].set(grad_col)
@@ -2469,17 +2491,12 @@ def _advance_grads_laplacian_ln_Det_streaming_state(
 
     def _branch_dn(_):
         # --- Phase 0: single-point AO eval at r_dn_new[k] -----------------
+        # Single fused dispatch (see _branch_up).
         r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
-        ao_col = jnp.asarray(
-            geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_new)[:, 0],
-            dtype=dtype_jnp,
-        )  # (n_ao_dn,)
-        gx, gy, gz = geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_new)
+        ao_v, gx, gy, gz, ao_lap = geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_new)
+        ao_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)  # (n_ao_dn,)
         grad_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=0), dtype=dtype_jnp)  # (3, n_ao_dn)
-        lap_col = jnp.asarray(
-            geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_new)[:, 0],
-            dtype=dtype_jnp,
-        )  # (n_ao_dn,)
+        lap_col = jnp.asarray(ao_lap[:, 0], dtype=dtype_jnp)  # (n_ao_dn,)
 
         new_ao_dn = state.ao_dn.at[:, moved_index].set(ao_col)
         new_ao_dn_grads = state.ao_dn_grads.at[:, :, moved_index].set(grad_col)

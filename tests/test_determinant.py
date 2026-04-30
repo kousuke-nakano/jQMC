@@ -311,9 +311,9 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
 
 def test_geminal_sphe_to_cart_AOs_data():
     """Round-trip AOs l<=6: spherical→Cartesian keeps geminal values/grads."""
-    # Comparison crosses ao_eval/det_eval (values) and ao_grad/ao_lap/det_grad_lap (grads);
+    # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
-    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad", "ao_lap", "det_grad_lap"), "strict")
+    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
     rng = np.random.default_rng(321)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -351,9 +351,9 @@ def test_geminal_sphe_to_cart_AOs_data():
 
 def test_geminal_cart_to_sphe_AOs_data():
     """Round-trip AOs l<=6: Cartesian→spherical keeps geminal values/grads."""
-    # Comparison crosses ao_eval/det_eval (values) and ao_grad/ao_lap/det_grad_lap (grads);
+    # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
-    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad", "ao_lap", "det_grad_lap"), "strict")
+    atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
     rng = np.random.default_rng(654)
 
     aos_sphe = _build_sphe_aos_l_le6(rng)
@@ -393,10 +393,10 @@ def test_geminal_cart_to_sphe_AOs_data():
 
 def test_geminal_sphe_to_cart_MOs_data():
     """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps geminal values/grads."""
-    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad/ao_lap/mo_grad/mo_lap/det_grad_lap (grads);
+    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad/mo_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(
-        ("ao_eval", "mo_eval", "det_eval", "ao_grad", "ao_lap", "mo_grad", "mo_lap", "det_grad_lap"),
+        ("ao_eval", "mo_eval", "det_eval", "ao_grad_lap", "mo_grad", "mo_lap", "det_grad_lap"),
         "strict",
     )
     rng = np.random.default_rng(777)
@@ -440,10 +440,10 @@ def test_geminal_sphe_to_cart_MOs_data():
 
 def test_geminal_cart_to_sphe_MOs_data():
     """Round-trip MOs l<=6: Cartesian→spherical keeps geminal values/grads."""
-    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad/ao_lap/mo_grad/mo_lap/det_grad_lap (grads);
+    # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad/mo_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(
-        ("ao_eval", "mo_eval", "det_eval", "ao_grad", "ao_lap", "mo_grad", "mo_lap", "det_grad_lap"),
+        ("ao_eval", "mo_eval", "det_eval", "ao_grad_lap", "mo_grad", "mo_lap", "det_grad_lap"),
         "strict",
     )
     rng = np.random.default_rng(888)
@@ -822,7 +822,10 @@ def test_grads_and_laplacian_fast_update(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("det_grad_lap", "strict")
+    # Debug helper above is autodiff through compute_ln_det → bottlenecked by
+    # ao_eval (fp32 in mixed mode); fast path is fp64 (ao_grad_lap), so the
+    # achievable agreement is bounded by ao_eval, not det_grad_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "det_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(grad_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_up_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(grad_up_fast, grad_up_debug, atol=atol, rtol=rtol)
@@ -1300,7 +1303,10 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("det_grad_lap", "strict")
+    # Auto path is autodiff through compute_ln_det → bottlenecked by ao_eval
+    # (fp32 in mixed mode); analytic path is fp64 (ao_grad_lap), so achievable
+    # agreement is bounded by ao_eval, not det_grad_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "det_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
