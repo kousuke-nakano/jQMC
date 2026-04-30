@@ -262,6 +262,8 @@ class LRDMC_Ext_Workflow(Workflow):
         num_gfmc_projections: Optional[int] = None,
         max_continuation: int = 5,
         cleanup_patterns: Optional[list] = None,
+        # -- [precision] section --
+        precision_mode: str = "full",
     ):
         super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
@@ -305,6 +307,8 @@ class LRDMC_Ext_Workflow(Workflow):
         self.pilot_steps = pilot_steps
         self.num_gfmc_projections = num_gfmc_projections
         self.max_continuation = max_continuation
+        # [precision] section
+        self.precision_mode = precision_mode
 
     def _make_lrdmc_workflow(self, alat):
         """Create one :class:`Container` for a given *alat* value.
@@ -349,6 +353,7 @@ class LRDMC_Ext_Workflow(Workflow):
             num_gfmc_projections=self.num_gfmc_projections,
             max_continuation=self.max_continuation,
             cleanup_patterns=self.cleanup_patterns,
+            precision_mode=self.precision_mode,
         )
         enc = Container(
             label=label,
