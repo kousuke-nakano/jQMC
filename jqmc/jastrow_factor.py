@@ -3506,18 +3506,32 @@ def compute_grads_and_laplacian_Jastrow_two_body(
     # by ``pair_terms`` and would otherwise add a spurious ~1/eps^2 term to the
     # Laplacian). The grad diagonal is mathematically zero (grad_pair ∝ diff)
     # but is masked too to avoid 0*finite issues if ``eps`` is very small.
+    # NaN-safety note: the diagonal i==j has ``diff = 0``. Even though we mask
+    # the diagonal out of the sum, ``pair_terms`` evaluates ``r = sqrt(sum diff^2)``
+    # whose first derivative is ``1/(2*r)`` and is ``inf`` at ``r=0``. Under
+    # higher-order AD (kinetic energy gradients used for forces), this leaks
+    # ``0 * inf = NaN`` through the chain rule even though ``maximum(r, eps)``
+    # clamps the value. Replace the diagonal of ``diff`` with a safe nonzero
+    # vector ``(1, 0, 0)`` before evaluating ``pair_terms``; the mask still
+    # zeroes that entry in the sum, so the final result is unchanged.
     if num_up > 1:
         diff_uu = r_up[:, None, :] - r_up[None, :, :]
-        grad_pair_uu, lap_pair_uu = pair_terms(diff_uu)
-        mask_uu = 1.0 - jnp.eye(num_up, dtype=dtype_jnp)
+        eye_uu = jnp.eye(num_up, dtype=dtype_jnp)
+        safe_offset_uu = jnp.stack([eye_uu, jnp.zeros_like(eye_uu), jnp.zeros_like(eye_uu)], axis=-1)
+        diff_uu_safe = diff_uu + safe_offset_uu
+        grad_pair_uu, lap_pair_uu = pair_terms(diff_uu_safe)
+        mask_uu = 1.0 - eye_uu
         grad_up = grad_up + jnp.sum(grad_pair_uu * mask_uu[..., None], axis=1)
         lap_up = lap_up + jnp.sum(lap_pair_uu * mask_uu, axis=1)
 
     # dn-dn pairs: same dense reformulation as up-up above.
     if num_dn > 1:
         diff_dd = r_dn[:, None, :] - r_dn[None, :, :]
-        grad_pair_dd, lap_pair_dd = pair_terms(diff_dd)
-        mask_dd = 1.0 - jnp.eye(num_dn, dtype=dtype_jnp)
+        eye_dd = jnp.eye(num_dn, dtype=dtype_jnp)
+        safe_offset_dd = jnp.stack([eye_dd, jnp.zeros_like(eye_dd), jnp.zeros_like(eye_dd)], axis=-1)
+        diff_dd_safe = diff_dd + safe_offset_dd
+        grad_pair_dd, lap_pair_dd = pair_terms(diff_dd_safe)
+        mask_dd = 1.0 - eye_dd
         grad_dn = grad_dn + jnp.sum(grad_pair_dd * mask_dd[..., None], axis=1)
         lap_dn = lap_dn + jnp.sum(lap_pair_dd * mask_dd, axis=1)
 
