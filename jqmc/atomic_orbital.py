@@ -2152,29 +2152,36 @@ def _cart_max_polynomial_order(aos_data: AOs_cart_data) -> int:
 
 
 def _int_pow_unrolled_cart(base: jax.Array, exp_arr: jax.Array, L_MAX: int) -> jax.Array:
-    """Compute ``base ** exp_arr[:, None]`` via a static O(L_MAX) unroll.
+    """Compute ``base ** exp_arr`` (broadcast over base) via a static O(L_MAX) unroll.
 
     Args:
-        base: shape ``(num_ao_prim, ...)`` floating values.
+        base: shape ``(num_ao_prim, ...)`` floating values. May be 1D
+            (e.g. normalization factor ``(8 Z)**l``) or higher-rank
+            (e.g. ``(num_ao_prim, N_e)`` polynomial part ``(x+eps)**nx``).
         exp_arr: shape ``(num_ao_prim,)`` integer exponents in ``[0, L_MAX]``.
+            Trailing axes are added to broadcast against ``base``.
         L_MAX: Python int upper bound on ``exp_arr`` (basis-dependent;
-            obtained statically from :func:`_cart_max_polynomial_order`).
+            obtained statically from :func:`_cart_max_polynomial_order`
+            or directly from ``max(angular_momentums)`` for the
+            normalization-factor call site, which is always ``<=`` the
+            polynomial-order bound for Cartesian AOs).
 
     Returns:
         Same shape as ``base`` with ``out[i, ...] = base[i, ...] ** exp_arr[i]``.
 
     Rationale:
-        The naive ``base ** exp_arr[:, None]`` lowers to an XLA repeated-squaring
-        ``while_loop`` (because ``exp_arr`` is a traced integer array), which
+        The naive ``base ** exp[:, None]`` lowers to an XLA repeated-squaring
+        ``while_loop`` (because ``exp`` is a traced integer array), which
         emits 4 small kernel launches per iteration and dominates host-side
         launch overhead for kinetic-energy evaluation. Unrolling collapses
-        the per-axis power into a single fused elementwise kernel.
+        the power into a single fused elementwise kernel.
 
         Numerically equivalent to
-        ``jnp.where(exp == 0, 1.0, base ** exp[:, None])`` for ``exp ∈
-        [0, L_MAX]`` (bitwise-identical: same multiplication tree).
+        ``jnp.where(exp == 0, 1.0, base ** exp_b)`` for ``exp ∈ [0, L_MAX]``
+        (bitwise-identical: same left-to-right multiplication tree).
     """
-    e = exp_arr[:, None]
+    # Broadcast exp_arr against base: prepend trailing singleton axes.
+    e = exp_arr.reshape(exp_arr.shape + (1,) * (base.ndim - exp_arr.ndim))
     one = jnp.ones_like(base)
     if L_MAX <= 0:
         return one
@@ -2209,7 +2216,12 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
     N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
-    N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
+    # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop
+    # emitted by ``base ** l`` when ``l`` is a traced int array. ``L_MAX`` is
+    # an upper bound on the angular momentum and is identical to the
+    # polynomial-order bound for Cartesian AOs.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z_jnp, l_jnp, L_MAX)
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
@@ -2219,7 +2231,6 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
     # that ``(x + eps) ** (nx_jnp[:, None])`` would otherwise emit (the exponent
     # array is traced). See ``_int_pow_unrolled_cart`` for the rationale.
-    L_MAX = _cart_max_polynomial_order(aos_data)
     P_l_nx_ny_nz_dup = (
         _int_pow_unrolled_cart(x + eps, nx_jnp, L_MAX)
         * _int_pow_unrolled_cart(y + eps, ny_jnp, L_MAX)
@@ -2809,7 +2820,10 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
-    N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
+    # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop
+    # emitted by ``base ** l`` when ``l`` is a traced int array.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
@@ -2822,7 +2836,6 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 
     # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
     # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
-    L_MAX = _cart_max_polynomial_order(aos_data)
     px = _int_pow_unrolled_cart(x, nx, L_MAX)
     py = _int_pow_unrolled_cart(y, ny, L_MAX)
     pz = _int_pow_unrolled_cart(z, nz, L_MAX)
@@ -3119,7 +3132,9 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
-    N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
+    # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
@@ -3132,7 +3147,6 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 
     # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
     # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
-    L_MAX = _cart_max_polynomial_order(aos_data)
     px = _int_pow_unrolled_cart(x, nx, L_MAX)
     py = _int_pow_unrolled_cart(y, ny, L_MAX)
     pz = _int_pow_unrolled_cart(z, nz, L_MAX)
@@ -3286,7 +3300,9 @@ def _compute_AOs_value_grad_lap_cart(
     nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
-    N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
+    # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
