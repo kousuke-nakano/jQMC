@@ -45,7 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -797,7 +797,7 @@ def test_streaming_kinetic_energy_step_consistency(trexio_file):
     rng = np.random.RandomState(0)
     r_up0 = 4.0 * rng.rand(n_up, 3) - 2.0
     r_dn0 = 4.0 * rng.rand(n_dn, 3) - 2.0
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "strict")
     _streaming_step_consistency_one(wf, r_up0, r_dn0, K=32, atol=atol, rtol=rtol)
 
 
@@ -810,7 +810,7 @@ def test_streaming_kinetic_drift_accumulation(K):
     rng = np.random.RandomState(1)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
     r_dn0 = 4.0 * rng.rand(gem.num_electron_dn, 3) - 2.0
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "loose")
     _streaming_step_consistency_one(wf, r_up0, r_dn0, K=K, atol=atol, rtol=rtol, seed=2)
 
 
@@ -825,7 +825,7 @@ def test_streaming_kinetic_edge_cases(trexio_file):
     rng = np.random.RandomState(3)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
     r_dn0 = 4.0 * rng.rand(gem.num_electron_dn, 3) - 2.0
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "strict")
     _streaming_step_consistency_one(wf, r_up0, r_dn0, K=24, atol=atol, rtol=rtol, seed=4)
 
 
@@ -839,7 +839,7 @@ def test_streaming_kinetic_jastrow_combinations(jastrow_combo):
     rng = np.random.RandomState(5)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
     r_dn0 = 4.0 * rng.rand(gem.num_electron_dn, 3) - 2.0
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "strict")
     _streaming_step_consistency_one(wf, r_up0, r_dn0, K=24, atol=atol, rtol=rtol, seed=6)
 
 
@@ -893,7 +893,7 @@ def test_streaming_kinetic_walker_axis_vmap():
 
     # Reference: fresh evaluation per walker.
     ke_up_v, ke_dn_v = jax.vmap(_kinetic_energy_from_streaming_state)(states_new)
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "strict")
     for w in range(n_walkers):
         ke_up_ref, ke_dn_ref = compute_kinetic_energy_all_elements_fast_update(
             wavefunction_data=wf,
