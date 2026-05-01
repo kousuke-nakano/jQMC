@@ -3060,11 +3060,27 @@ def compute_grads_and_laplacian_Jastrow_part(
         grad_JNN_up = grad(_compute_Jastrow_nn_only, argnums=0)(r_up_carts_jnp, r_dn_carts_jnp)
         grad_JNN_dn = grad(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
 
-        hessian_JNN_up = hessian(_compute_Jastrow_nn_only, argnums=0)(r_up_carts_jnp, r_dn_carts_jnp)
-        lap_JNN_up = jnp.einsum("ijij->i", hessian_JNN_up)
+        # Compute per-electron Laplacian via forward-over-reverse (diagonal Hessian only).
+        # This produces an O(n) computation graph instead of O(n²) from hessian(),
+        # which significantly reduces the XLA kernel size when grad(compute_local_energy)
+        # differentiates through the kinetic energy (i.e. under 3rd-order AD).
+        def _lap_jvp(f_r, r):
+            """Sum of diagonal Hessian (Laplacian) per electron via jvp(grad)."""
+            n_elec, n_coord = r.shape
+            n = n_elec * n_coord
+            g_r = grad(f_r)
 
-        hessian_JNN_dn = hessian(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
-        lap_JNN_dn = jnp.einsum("ijij->i", hessian_JNN_dn)
+            def diag_one(e_flat):
+                e = e_flat.reshape(r.shape)
+                _, jvp_val = jax.jvp(g_r, (r,), (e,))
+                return jnp.sum(jvp_val * e)
+
+            basis = jnp.eye(n, dtype=r.dtype)
+            diags = jax.vmap(diag_one)(basis)
+            return diags.reshape(n_elec, n_coord).sum(axis=-1)
+
+        lap_JNN_up = _lap_jvp(lambda r: _compute_Jastrow_nn_only(r, r_dn_carts_jnp), r_up_carts_jnp)
+        lap_JNN_dn = _lap_jvp(lambda r: _compute_Jastrow_nn_only(r_up_carts_jnp, r), r_dn_carts_jnp)
 
         grad_J_up = grad_J_up + grad_JNN_up
         grad_J_dn = grad_J_dn + grad_JNN_dn
@@ -3171,11 +3187,25 @@ def _compute_grads_and_laplacian_Jastrow_part_auto(
         grad_JNN_up = grad(_compute_Jastrow_nn_only, argnums=0)(r_up_carts_jnp, r_dn_carts_jnp)
         grad_JNN_dn = grad(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
 
-        hessian_JNN_up = hessian(_compute_Jastrow_nn_only, argnums=0)(r_up_carts_jnp, r_dn_carts_jnp)
-        lap_JNN_up = jnp.einsum("ijij->i", hessian_JNN_up)
+        # Compute per-electron Laplacian via forward-over-reverse (diagonal Hessian only).
+        # See compute_grads_and_laplacian_Jastrow_part for rationale.
+        def _lap_jvp(f_r, r):
+            """Sum of diagonal Hessian (Laplacian) per electron via jvp(grad)."""
+            n_elec, n_coord = r.shape
+            n = n_elec * n_coord
+            g_r = grad(f_r)
 
-        hessian_JNN_dn = hessian(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
-        lap_JNN_dn = jnp.einsum("ijij->i", hessian_JNN_dn)
+            def diag_one(e_flat):
+                e = e_flat.reshape(r.shape)
+                _, jvp_val = jax.jvp(g_r, (r,), (e,))
+                return jnp.sum(jvp_val * e)
+
+            basis = jnp.eye(n, dtype=r.dtype)
+            diags = jax.vmap(diag_one)(basis)
+            return diags.reshape(n_elec, n_coord).sum(axis=-1)
+
+        lap_JNN_up = _lap_jvp(lambda r: _compute_Jastrow_nn_only(r, r_dn_carts_jnp), r_up_carts_jnp)
+        lap_JNN_dn = _lap_jvp(lambda r: _compute_Jastrow_nn_only(r_up_carts_jnp, r), r_dn_carts_jnp)
 
         grad_J_up = grad_J_up + grad_JNN_up
         grad_J_dn = grad_J_dn + grad_JNN_dn
