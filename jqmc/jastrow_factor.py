@@ -3487,25 +3487,39 @@ def compute_grads_and_laplacian_Jastrow_two_body(
     else:
         raise ValueError(f"Unknown jastrow_2b_type: {j2b_type}")
 
-    # up-up pairs (i<j)
+    # up-up pairs: dense (N_up, N_up) instead of triu + scatter-add.
+    #
+    # Background: the previous ``triu_indices(N, k=1)`` + ``.at[idx_i].add(...)``
+    # path emitted four ``scatter-add`` ops per spin (grad_i/grad_j/lap_i/lap_j).
+    # Because ``idx_i`` repeats values, XLA must respect sequential semantics and
+    # lowers each scatter to a ``while_loop`` of ``trip_count = N*(N-1)/2``
+    # (≈ 4 small kernel launches per iteration), which dominates host launch
+    # overhead in ``compute_kinetic_energy_all_elements_fast_update`` (8 such
+    # while-loops total → ~16k launches per call for N=32). Replacing with a
+    # dense (N,N) reduction collapses the work into a handful of fused
+    # elementwise + reduction kernels with no scatter.
+    #
+    # Correctness: ``grad_pair[i,j] = grad_coeff(|r_i-r_j|) * (r_i-r_j)`` is
+    # antisymmetric and ``lap_pair[i,j]`` is symmetric in (i,j), so summing over
+    # ``j`` reproduces the (i,j) and (j,i) contributions of the original
+    # triu-loop. The diagonal i==j is masked out (``r=0`` is clamped to ``eps``
+    # by ``pair_terms`` and would otherwise add a spurious ~1/eps^2 term to the
+    # Laplacian). The grad diagonal is mathematically zero (grad_pair ∝ diff)
+    # but is masked too to avoid 0*finite issues if ``eps`` is very small.
     if num_up > 1:
-        idx_i, idx_j = jnp.triu_indices(num_up, k=1)
-        diff_up = r_up[idx_i] - r_up[idx_j]
-        grad_pair, lap_pair = pair_terms(diff_up)
-        grad_up = grad_up.at[idx_i].add(grad_pair)
-        grad_up = grad_up.at[idx_j].add(-grad_pair)
-        lap_up = lap_up.at[idx_i].add(lap_pair)
-        lap_up = lap_up.at[idx_j].add(lap_pair)
+        diff_uu = r_up[:, None, :] - r_up[None, :, :]
+        grad_pair_uu, lap_pair_uu = pair_terms(diff_uu)
+        mask_uu = 1.0 - jnp.eye(num_up, dtype=dtype_jnp)
+        grad_up = grad_up + jnp.sum(grad_pair_uu * mask_uu[..., None], axis=1)
+        lap_up = lap_up + jnp.sum(lap_pair_uu * mask_uu, axis=1)
 
-    # dn-dn pairs (i<j)
+    # dn-dn pairs: same dense reformulation as up-up above.
     if num_dn > 1:
-        idx_i, idx_j = jnp.triu_indices(num_dn, k=1)
-        diff_dn = r_dn[idx_i] - r_dn[idx_j]
-        grad_pair, lap_pair = pair_terms(diff_dn)
-        grad_dn = grad_dn.at[idx_i].add(grad_pair)
-        grad_dn = grad_dn.at[idx_j].add(-grad_pair)
-        lap_dn = lap_dn.at[idx_i].add(lap_pair)
-        lap_dn = lap_dn.at[idx_j].add(lap_pair)
+        diff_dd = r_dn[:, None, :] - r_dn[None, :, :]
+        grad_pair_dd, lap_pair_dd = pair_terms(diff_dd)
+        mask_dd = 1.0 - jnp.eye(num_dn, dtype=dtype_jnp)
+        grad_dn = grad_dn + jnp.sum(grad_pair_dd * mask_dd[..., None], axis=1)
+        lap_dn = lap_dn + jnp.sum(lap_pair_dd * mask_dd, axis=1)
 
     # up-dn pairs (all combinations)
     if (num_up > 0) and (num_dn > 0):
