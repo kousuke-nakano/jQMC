@@ -2135,6 +2135,57 @@ def _reduce_primitives_to_aos(values: jax.Array, aos_data) -> jax.Array:
     return concatenated[jnp.asarray(inv_perm_np)]
 
 
+def _cart_max_polynomial_order(aos_data: AOs_cart_data) -> int:
+    """Return L_MAX = max(nx, ny, nz) over all AOs as a Python int.
+
+    ``polynominal_order_{x,y,z}`` are ``pytree_node=False`` (static), so this
+    is JIT-trace-time available and feeds the static-unrolled integer power
+    helper (:func:`_int_pow_unrolled_cart`) below.
+    """
+    return int(
+        max(
+            max(aos_data.polynominal_order_x, default=0),
+            max(aos_data.polynominal_order_y, default=0),
+            max(aos_data.polynominal_order_z, default=0),
+        )
+    )
+
+
+def _int_pow_unrolled_cart(base: jax.Array, exp_arr: jax.Array, L_MAX: int) -> jax.Array:
+    """Compute ``base ** exp_arr[:, None]`` via a static O(L_MAX) unroll.
+
+    Args:
+        base: shape ``(num_ao_prim, ...)`` floating values.
+        exp_arr: shape ``(num_ao_prim,)`` integer exponents in ``[0, L_MAX]``.
+        L_MAX: Python int upper bound on ``exp_arr`` (basis-dependent;
+            obtained statically from :func:`_cart_max_polynomial_order`).
+
+    Returns:
+        Same shape as ``base`` with ``out[i, ...] = base[i, ...] ** exp_arr[i]``.
+
+    Rationale:
+        The naive ``base ** exp_arr[:, None]`` lowers to an XLA repeated-squaring
+        ``while_loop`` (because ``exp_arr`` is a traced integer array), which
+        emits 4 small kernel launches per iteration and dominates host-side
+        launch overhead for kinetic-energy evaluation. Unrolling collapses
+        the per-axis power into a single fused elementwise kernel.
+
+        Numerically equivalent to
+        ``jnp.where(exp == 0, 1.0, base ** exp[:, None])`` for ``exp ∈
+        [0, L_MAX]`` (bitwise-identical: same multiplication tree).
+    """
+    e = exp_arr[:, None]
+    one = jnp.ones_like(base)
+    if L_MAX <= 0:
+        return one
+    out = jnp.where(e == 0, one, base)  # base^0 -> 1, else base^1
+    p = base
+    for k in range(2, L_MAX + 1):
+        p = p * base  # base^k
+        out = jnp.where(e == k, p, out)
+    return out
+
+
 @jit
 def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
@@ -2165,7 +2216,15 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
     eps = get_eps("stabilizing_ao", dtype_jnp)
-    P_l_nx_ny_nz_dup = (x + eps) ** (nx_jnp[:, None]) * (y + eps) ** (ny_jnp[:, None]) * (z + eps) ** (nz_jnp[:, None])
+    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
+    # that ``(x + eps) ** (nx_jnp[:, None])`` would otherwise emit (the exponent
+    # array is traced). See ``_int_pow_unrolled_cart`` for the rationale.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    P_l_nx_ny_nz_dup = (
+        _int_pow_unrolled_cart(x + eps, nx_jnp, L_MAX)
+        * _int_pow_unrolled_cart(y + eps, ny_jnp, L_MAX)
+        * _int_pow_unrolled_cart(z + eps, nz_jnp, L_MAX)
+    )
 
     """
     logger.info(f"Z_jnp={Z_jnp}.")
@@ -2761,10 +2820,12 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
-    def _pow(base, exp):
-        return jnp.where(exp[:, None] == 0, 1.0, base ** exp[:, None])
-
-    px, py, pz = _pow(x, nx), _pow(y, ny), _pow(z, nz)
+    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
+    # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    px = _int_pow_unrolled_cart(x, nx, L_MAX)
+    py = _int_pow_unrolled_cart(y, ny, L_MAX)
+    pz = _int_pow_unrolled_cart(z, nz, L_MAX)
     phi = N[:, None] * pref * px * py * pz
 
     def _second_component(base, n):
@@ -3069,10 +3130,12 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
-    def _pow(base, exp):
-        return jnp.where(exp[:, None] == 0, 1.0, base ** exp[:, None])
-
-    px, py, pz = _pow(x, nx), _pow(y, ny), _pow(z, nz)
+    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
+    # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    px = _int_pow_unrolled_cart(x, nx, L_MAX)
+    py = _int_pow_unrolled_cart(y, ny, L_MAX)
+    pz = _int_pow_unrolled_cart(z, nz, L_MAX)
     phi = N[:, None] * pref * px * py * pz
 
     def _grad_component(base, n):
@@ -3234,10 +3297,13 @@ def _compute_AOs_value_grad_lap_cart(
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
-    def _pow(base, exp):
-        return jnp.where(exp[:, None] == 0, 1.0, base ** exp[:, None])
-
-    px, py, pz = _pow(x, nx), _pow(y, ny), _pow(z, nz)
+    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
+    # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
+    # See ``_int_pow_unrolled_cart`` for the bitwise-equivalence rationale.
+    L_MAX = _cart_max_polynomial_order(aos_data)
+    px = _int_pow_unrolled_cart(x, nx, L_MAX)
+    py = _int_pow_unrolled_cart(y, ny, L_MAX)
+    pz = _int_pow_unrolled_cart(z, nz, L_MAX)
     # Shared body identical to the standalone grad/lap kernels (left-to-right
     # multiplication). Strict (rtol=atol=0) parity vs compute_AOs_grad and
     # compute_AOs_laplacian holds because the expression is bit-for-bit the

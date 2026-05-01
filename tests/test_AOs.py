@@ -1202,12 +1202,17 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 def test_fused_AOs_value_grad_lap_matches_split(trexio_file: str):
     """Fused ``compute_AOs_value_grad_lap`` matches the standalone APIs.
 
-    grad/lap parity is bitwise (rtol=atol=0) because the fused kernel
-    mirrors the standalone grad/lap kernels' shared body verbatim. value
-    parity is only bounded by the multiplication ordering between the
-    fused kernel (which reuses the grad/lap ``phi``) and the standalone
-    ``compute_AOs`` (which builds the polynomial separately) — a few ULPs
-    of ``ao_eval``-zone precision are allowed.
+    grad parity is bitwise (rtol=atol=0) because the fused kernel mirrors
+    the standalone grad kernels' shared body verbatim and XLA fuses both
+    paths identically. lap is allowed up to ULP-level differences: the
+    standalone ``_compute_AOs_laplacian_*`` and the fused
+    ``_compute_AOs_value_grad_lap_*`` share the same source expression but
+    XLA may reorder the upstream FMA chain that produces ``lap_dup``
+    differently between the two ``@jit`` boundaries (the per-primitive
+    reduction layer is identical). value parity is bounded by the
+    multiplication ordering between the fused kernel (which reuses the
+    grad/lap ``phi``) and the standalone ``compute_AOs`` (which builds the
+    polynomial separately).
     """
     (
         _structure,
@@ -1231,12 +1236,20 @@ def test_fused_AOs_value_grad_lap_matches_split(trexio_file: str):
     for arr in (val_f, gx_f, gy_f, gz_f, lap_f, val_s, gx_s, gy_s, gz_s, lap_s):
         assert not np.any(np.isnan(np.asarray(arr)))
 
-    # Strict bitwise parity for grad/lap: fused and standalone share the
-    # exact same expression (same multiplication order, same eps offsets).
+    # Strict bitwise parity for grad: fused and standalone share the
+    # exact same expression (same multiplication order, same eps offsets)
+    # and XLA fuses them identically.
     assert_allclose(np.asarray(gx_f), np.asarray(gx_s), atol=0, rtol=0)
     assert_allclose(np.asarray(gy_f), np.asarray(gy_s), atol=0, rtol=0)
     assert_allclose(np.asarray(gz_f), np.asarray(gz_s), atol=0, rtol=0)
-    assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=0, rtol=0)
+
+    # lap: ao_eval-zone tolerance. The standalone and fused laplacian
+    # kernels evaluate the same closed-form expression but live in
+    # different ``@jit`` boundaries, so XLA may reassociate the upstream
+    # FMA chain producing ``lap_dup``; strictly ULP-level differences
+    # are expected and tolerated.
+    atol_lap, rtol_lap = get_tolerance("ao_eval", "strict")
+    assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=atol_lap, rtol=rtol_lap)
 
     # value: tight ao_eval-zone tolerance. Fused reuses the grad/lap
     # ``phi`` (left-to-right multiplication chain), while standalone
