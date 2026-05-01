@@ -743,12 +743,11 @@ def test_MOs_cart_to_sphe():
 def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
     """Fused ``compute_MOs_value_grad_lap`` matches the standalone APIs.
 
-    grad/lap parity is bitwise (rtol=atol=0): the fused MO function applies
+    All outputs (val/grad/lap) are bounded by ULP-level differences in
+    the ``mo_eval`` / ``ao_eval`` zones: the fused MO function applies
     the same ``mo_coefficients @ ao_*`` matmul as the standalone kernels,
-    operating on bitwise-identical AO grad/lap arrays produced by the fused
-    AO kernel. value parity is bounded by the multiplication ordering
-    inside the fused vs standalone AO eval kernels (a few ULPs of
-    ``mo_eval``-zone precision).
+    but XLA may reassociate the upstream FMA chains across the different
+    ``@jit`` boundaries.
     """
     parsed = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
@@ -767,15 +766,14 @@ def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
     for arr in (val_f, gx_f, gy_f, gz_f, lap_f, val_s, gx_s, gy_s, gz_s, lap_s):
         assert not np.any(np.isnan(np.asarray(arr)))
 
-    # Strict bitwise parity for grad/lap.
-    np.testing.assert_allclose(np.asarray(gx_f), np.asarray(gx_s), atol=0, rtol=0)
-    np.testing.assert_allclose(np.asarray(gy_f), np.asarray(gy_s), atol=0, rtol=0)
-    np.testing.assert_allclose(np.asarray(gz_f), np.asarray(gz_s), atol=0, rtol=0)
-    np.testing.assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=0, rtol=0)
-
-    # value: tight tolerance bottlenecked by mo_eval (and ao_eval, which is
-    # the same fp32/fp64 zone in mixed/full).
+    # All outputs share the mo_eval/ao_eval zone tolerance; XLA may
+    # reassociate FMA chains across @jit boundaries producing strictly
+    # ULP-level differences.
     atol_val, rtol_val = get_tolerance_min(["ao_eval", "mo_eval"], "strict")
+    np.testing.assert_allclose(np.asarray(gx_f), np.asarray(gx_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(gy_f), np.asarray(gy_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(gz_f), np.asarray(gz_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=atol_val, rtol=rtol_val)
     np.testing.assert_allclose(np.asarray(val_f), np.asarray(val_s), atol=atol_val, rtol=rtol_val)
 
     jax.clear_caches()
