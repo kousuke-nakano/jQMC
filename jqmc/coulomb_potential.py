@@ -1553,7 +1553,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     # weight_all = jnp.zeros((0,))
     # V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
 
-    @jit
+    # NOTE: No `@jit` here — these are micro-ops (a few flops) called via
+    # `vmap(vmap(...))` inside the parent jit. An inner `@jit` forces XLA to
+    # cut the parent computation at the function boundary, defeating fusion
+    # and producing a per-(electron×neighbor×Nv) launch storm in LRDMC
+    # projection. Keep them as plain Python so the parent jit fuses them
+    # into the surrounding mesh-build / contract chain.
     def compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers):
         V_l = (
             jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
@@ -1564,7 +1569,6 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
 
         return V_l
 
-    @jit
     def compute_P_l(ang_mom, cos_theta, weight, wf_ratio):
         P_l = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta) * weight * wf_ratio
         return P_l
