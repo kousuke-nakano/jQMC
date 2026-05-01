@@ -1523,6 +1523,18 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     # RT is also forwarded as-is (Principle 3a); cast at the use site below.
     dtype_jnp = get_dtype_jnp("coulomb")
 
+    # The mesh-build path below uses a batched gather (`jnp.take(positions, ...)`)
+    # that assumes no minimum-image wrap. PBC is not yet supported by this
+    # fast-update entry point — fail loudly so a future PBC enablement does
+    # not silently produce incorrect ECP non-local contributions.
+    if coulomb_potential_data.structure_data.pbc_flag:
+        raise ValueError(
+            "compute_ecp_non_local_parts_nearest_neighbors_fast_update does not "
+            "support PBC (pbc_flag=True). The batched-gather mesh build skips "
+            "minimum-image wrapping. Restore the per-electron vmap over "
+            "_get_min_dist_rel_R_cart_jnp (with its PBC branch) before enabling PBC."
+        )
+
     if Nv == 4:
         weights = jnp.array(tetrahedron_sym_mesh_Nv4.weights, dtype=dtype_jnp)
         grid_points = jnp.array(tetrahedron_sym_mesh_Nv4.grid_points, dtype=dtype_jnp)
@@ -1545,6 +1557,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     # jnp variables
     ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data._padded_parameters_tuple
     global_max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
+    positions_cart = coulomb_potential_data.structure_data._positions_cart_jnp  # (n_atoms, 3), fp64
 
     # stored
     non_local_ecp_part_r_carts_up = jnp.zeros((0, len(r_up_carts), 3), dtype=dtype_jnp)
@@ -1553,12 +1566,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     # weight_all = jnp.zeros((0,))
     # V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
 
-    # NOTE: No `@jit` here — these are micro-ops (a few flops) called via
-    # `vmap(vmap(...))` inside the parent jit. An inner `@jit` forces XLA to
-    # cut the parent computation at the function boundary, defeating fusion
-    # and producing a per-(electron×neighbor×Nv) launch storm in LRDMC
-    # projection. Keep them as plain Python so the parent jit fuses them
-    # into the surrounding mesh-build / contract chain.
+    @jit
     def compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers):
         V_l = (
             jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
@@ -1569,6 +1577,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
 
         return V_l
 
+    @jit
     def compute_P_l(ang_mom, cos_theta, weight, wf_ratio):
         P_l = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta) * weight * wf_ratio
         return P_l
@@ -1593,17 +1602,15 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             )
         )(r_carts)
 
-        def _rels_for_electron(r_cart, i_atom_list):
-            return vmap(
-                lambda i_atom: _get_min_dist_rel_R_cart_jnp(
-                    structure_data=coulomb_potential_data.structure_data,
-                    r_cart=r_cart,
-                    i_atom=i_atom,
-                    dtype=dtype_jnp,
-                )
-            )(i_atom_list)
-
-        rels = vmap(_rels_for_electron)(r_carts, i_atom_lists)  # (n_spin, NN, 3)
+        # Vectorised replacement of the nested
+        #   vmap(vmap(_get_min_dist_rel_R_cart_jnp))(r_carts, i_atom_lists)
+        # which lowered to a per-(electron × NN) `dynamic_slice` loop and was
+        # the dominant launch source in LRDMC ECP non-local. Single batched
+        # gather + broadcast subtract = one fused kernel under the parent jit.
+        # PBC minimum-image is intentionally omitted here — guarded at function
+        # entry above. Cast to coulomb zone (Principle 3b) at the use site.
+        R_carts_NN = jnp.take(positions_cart, i_atom_lists, axis=0)  # (n_spin, NN, 3)
+        rels = (R_carts_NN - r_carts[:, None, :]).astype(dtype_jnp)  # (n_spin, NN, 3)
         rel_norm = jnp.linalg.norm(rels, axis=-1, keepdims=True)
         offsets = rels[..., None, :] + rel_norm[..., None, :] * grid_points[None, None, :, :]
         updated_carts = r_carts[:, None, None, :] + offsets  # (n_spin, NN, Nv, 3)
