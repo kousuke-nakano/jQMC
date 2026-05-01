@@ -1620,8 +1620,16 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         powers = power_all[i_atom_lists]
 
         def _V_l_mapped(rel, ang_mom, exponent, coefficient, power):
+            # NOTE: previously `jax.ops.segment_sum(V_l_vmapped, ang_mom,
+            # num_segments=global_max_ang_mom_plus_1)`. Inside the outer
+            # vmap(vmap(...)) the scatter was lowered to a 1-element-per-iter
+            # GPU while_loop with batch dim flattened to 4096*32*1*L =
+            # ~262k iters/call, dominating LRDMC launch storm (see
+            # work/05nvidia-nsight/analysis.md §13). For small L (typically 2-3
+            # for cc-ECP) a masked dense reduce avoids the scatter entirely.
             V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
-            return jax.ops.segment_sum(V_l_vmapped, ang_mom, num_segments=global_max_ang_mom_plus_1)
+            mask = ang_mom[:, None] == jnp.arange(global_max_ang_mom_plus_1)[None, :]
+            return jnp.where(mask, V_l_vmapped[:, None], 0.0).sum(axis=0)
 
         V_l_mapped = vmap(vmap(_V_l_mapped, in_axes=(0, 0, 0, 0, 0)))(rels, ang_moms, exponents, coefficients, powers)
         V_l_dup = jnp.repeat(V_l_mapped[:, :, :, None], grid_points.shape[0], axis=3)
