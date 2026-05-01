@@ -567,6 +567,20 @@ class AOs_cart_data:
         return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
+    def _prim_groups_by_K(self) -> tuple:
+        """Group AOs by contraction depth K (primitives per AO).
+
+        Used by :func:`_reduce_primitives_to_aos` to replace
+        ``segment_sum`` (which falls back to a scatter-add while-loop
+        in XLA) with a small, fixed number of dense ``reduce_sum`` ops
+        — one per unique contraction depth K.
+
+        Returns:
+            tuple of ``(K, ao_idx_np, prim_idx_np, is_identity_perm)``.
+        """
+        return _build_prim_groups_by_K(self.orbital_indices, self.num_ao)
+
+    @property
     def _atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian.
 
@@ -1188,6 +1202,20 @@ class AOs_sphe_data:
     def _orbital_indices_jnp(self) -> jax.Array:
         """orbital_index."""
         return jnp.array(self.orbital_indices, dtype=jnp.int32)
+
+    @property
+    def _prim_groups_by_K(self) -> tuple:
+        """Group AOs by contraction depth K (primitives per AO).
+
+        Used by :func:`_reduce_primitives_to_aos` to replace
+        ``segment_sum`` (which falls back to a scatter-add while-loop
+        in XLA) with a small, fixed number of dense ``reduce_sum`` ops
+        — one per unique contraction depth K.
+
+        Returns:
+            tuple of ``(K, ao_idx_np, prim_idx_np, is_identity_perm)``.
+        """
+        return _build_prim_groups_by_K(self.orbital_indices, self.num_ao)
 
     @property
     def _atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
@@ -2004,6 +2032,109 @@ def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.flo
     return aos_values
 
 
+def _build_prim_groups_by_K(orbital_indices, num_ao: int) -> tuple:
+    """Group AOs by contraction depth K (number of primitives per AO).
+
+    This is a pure-Python (numpy) preprocessor invoked at trace time
+    by the cached property :attr:`AOs_cart_data._prim_groups_by_K` /
+    :attr:`AOs_sphe_data._prim_groups_by_K`. It produces the static
+    bucket descriptors consumed by :func:`_reduce_primitives_to_aos`,
+    which replaces the AO-side ``segment_sum`` (XLA scatter-add
+    fallback) with one fixed-shape ``reduce_sum`` per unique K plus a
+    final inverse-permutation gather (no scatter at all).
+
+    Args:
+        orbital_indices: Sequence of length ``num_ao_prim``; entry
+            ``j`` is the parent AO index of primitive ``j``.
+        num_ao: Total number of contracted AOs.
+
+    Returns:
+        Tuple of ``(groups, inv_perm_np, is_identity_perm)`` where:
+            - ``groups`` is a tuple of ``(K, prim_idx_np)`` for each
+              unique contraction depth K, with ``prim_idx_np`` of
+              shape ``(n_ao_K, K)``.
+            - ``inv_perm_np`` (int32, shape ``(num_ao,)``) maps the
+              concatenated bucket-order layout back to the original
+              AO ordering.
+            - ``is_identity_perm`` (bool): True iff ``inv_perm_np``
+              equals ``arange(num_ao)`` (lets callers skip the final
+              gather).
+    """
+    prim_per_ao: dict[int, list[int]] = {}
+    for prim_idx, ao_idx in enumerate(orbital_indices):
+        prim_per_ao.setdefault(int(ao_idx), []).append(int(prim_idx))
+
+    by_K: dict[int, list[tuple[int, list[int]]]] = {}
+    for ao_idx, prims in prim_per_ao.items():
+        by_K.setdefault(len(prims), []).append((ao_idx, prims))
+
+    # Bucket order: by ascending K, and inside each bucket by ascending
+    # AO index. ``concat_order`` lists AO indices in this layout.
+    groups = []
+    concat_order: list[int] = []
+    for K in sorted(by_K.keys()):
+        items = sorted(by_K[K], key=lambda t: t[0])
+        prim_idx_np = np.asarray([p for _, p in items], dtype=np.int32)
+        groups.append((K, prim_idx_np))
+        concat_order.extend(a for a, _ in items)
+
+    # Inverse permutation: out[ao_idx] = concatenated[inv_perm[ao_idx]]
+    inv_perm_np = np.empty(num_ao, dtype=np.int32)
+    for pos, ao_idx in enumerate(concat_order):
+        inv_perm_np[ao_idx] = pos
+    is_identity_perm = bool(np.array_equal(inv_perm_np, np.arange(num_ao, dtype=np.int32)))
+    return tuple(groups), inv_perm_np, is_identity_perm
+
+
+def _reduce_primitives_to_aos(values: jax.Array, aos_data) -> jax.Array:
+    """Sum primitives into contracted AOs without scatter / while loop.
+
+    Functionally equivalent to::
+
+        jax.ops.segment_sum(values,
+                            aos_data._orbital_indices_jnp,
+                            num_segments=aos_data.num_ao)
+
+    but emits, for each unique contraction depth K, a single dense
+    ``reduce_sum`` over ``(n_ao_K, K, ...)``; the per-K outputs are
+    concatenated in bucket order and finally permuted into the
+    original AO ordering by a single ``gather``. There is no
+    ``scatter`` and no XLA ``while`` loop, so the kernel chain that
+    replaces the legacy ``segment_sum`` consists only of fusable
+    gather/reduce/gather ops.
+
+    Args:
+        values: Primitive values, shape ``(num_ao_prim, ...)``.
+        aos_data: ``AOs_cart_data`` or ``AOs_sphe_data`` providing
+            ``num_ao`` and ``_prim_groups_by_K``.
+
+    Returns:
+        Reduced values, shape ``(num_ao, ...)`` and same dtype as
+        ``values``.
+    """
+    groups, inv_perm_np, is_identity_perm = aos_data._prim_groups_by_K
+
+    # Single-bucket fast path: one reduce, no concat, no gather.
+    if len(groups) == 1:
+        _K, prim_idx_np = groups[0]
+        tile = values[jnp.asarray(prim_idx_np)]  # (num_ao, K, ...)
+        summed = jnp.sum(tile, axis=1)
+        if is_identity_perm:
+            return summed
+        return summed[jnp.asarray(inv_perm_np)]
+
+    # General path: per-K dense reduce → concat in bucket order → final
+    # inverse-permutation gather.
+    pieces = []
+    for _K, prim_idx_np in groups:
+        tile = values[jnp.asarray(prim_idx_np)]  # (n_ao_K, K, ...)
+        pieces.append(jnp.sum(tile, axis=1))
+    concatenated = jnp.concatenate(pieces, axis=0)
+    if is_identity_perm:
+        return concatenated
+    return concatenated[jnp.asarray(inv_perm_np)]
+
+
 @jit
 def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
@@ -2050,9 +2181,7 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * P_l_nx_ny_nz_dup
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
+    AOs = _reduce_primitives_to_aos(AOs_dup, aos_data)
     return AOs
 
 
@@ -2102,9 +2231,7 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
+    AOs = _reduce_primitives_to_aos(AOs_dup, aos_data)
     return AOs
 
 
@@ -2648,9 +2775,7 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 
     lap_dup = _second_component(x, nx) + _second_component(y, ny) + _second_component(z, nz)
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    lap = jax.ops.segment_sum(lap_dup, orbital_indices, num_segments=num_segments)
+    lap = _reduce_primitives_to_aos(lap_dup, aos_data)
     return lap
 
 
@@ -2708,9 +2833,7 @@ def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.n
         - 4.0 * Z_jnp[:, None] * pref * grad_S_dot_r
     )
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    lap = jax.ops.segment_sum(lap_dup, orbital_indices, num_segments=num_segments)
+    lap = _reduce_primitives_to_aos(lap_dup, aos_data)
     return lap
 
 
@@ -2960,11 +3083,9 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     gy_dup = _grad_component(y, ny)
     gz_dup = _grad_component(z, nz)
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    gx = jax.ops.segment_sum(gx_dup, orbital_indices, num_segments=num_segments)
-    gy = jax.ops.segment_sum(gy_dup, orbital_indices, num_segments=num_segments)
-    gz = jax.ops.segment_sum(gz_dup, orbital_indices, num_segments=num_segments)
+    gx = _reduce_primitives_to_aos(gx_dup, aos_data)
+    gy = _reduce_primitives_to_aos(gy_dup, aos_data)
+    gz = _reduce_primitives_to_aos(gz_dup, aos_data)
 
     return gx, gy, gz
 
@@ -3037,11 +3158,9 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     grad_from_S = pref[..., None] * S_l_m_grad_dup
     grad_dup = grad_from_R + grad_from_S
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    gx = jax.ops.segment_sum(grad_dup[..., 0], orbital_indices, num_segments=num_segments)
-    gy = jax.ops.segment_sum(grad_dup[..., 1], orbital_indices, num_segments=num_segments)
-    gz = jax.ops.segment_sum(grad_dup[..., 2], orbital_indices, num_segments=num_segments)
+    gx = _reduce_primitives_to_aos(grad_dup[..., 0], aos_data)
+    gy = _reduce_primitives_to_aos(grad_dup[..., 1], aos_data)
+    gz = _reduce_primitives_to_aos(grad_dup[..., 2], aos_data)
 
     return gx, gy, gz
 
@@ -3126,11 +3245,8 @@ def _compute_AOs_value_grad_lap_cart(
     # standalone eval kernel uses a different multiplication ordering.
     phi = N[:, None] * pref * px * py * pz  # shared val/grad/lap body
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-
     # value finalize: only downcast site (Principle 3b).
-    val = jax.ops.segment_sum(phi.astype(dtype_eval), orbital_indices, num_segments=num_segments)
+    val = _reduce_primitives_to_aos(phi.astype(dtype_eval), aos_data)
 
     # grad finalize (kept in ao_grad_lap zone — no cast).
     def _grad_component(base, n):
@@ -3140,9 +3256,9 @@ def _compute_AOs_value_grad_lap_cart(
     gx_dup = _grad_component(x, nx)
     gy_dup = _grad_component(y, ny)
     gz_dup = _grad_component(z, nz)
-    gx = jax.ops.segment_sum(gx_dup, orbital_indices, num_segments=num_segments)
-    gy = jax.ops.segment_sum(gy_dup, orbital_indices, num_segments=num_segments)
-    gz = jax.ops.segment_sum(gz_dup, orbital_indices, num_segments=num_segments)
+    gx = _reduce_primitives_to_aos(gx_dup, aos_data)
+    gy = _reduce_primitives_to_aos(gy_dup, aos_data)
+    gz = _reduce_primitives_to_aos(gz_dup, aos_data)
 
     # lap finalize (kept in ao_grad_lap zone — no cast).
     def _second_component(base, n):
@@ -3152,7 +3268,7 @@ def _compute_AOs_value_grad_lap_cart(
         return phi * (a**2 - safe_div2 - 2.0 * Z[:, None])
 
     lap_dup = _second_component(x, nx) + _second_component(y, ny) + _second_component(z, nz)
-    lap = jax.ops.segment_sum(lap_dup, orbital_indices, num_segments=num_segments)
+    lap = _reduce_primitives_to_aos(lap_dup, aos_data)
 
     return val, gx, gy, gz, lap
 
@@ -3218,19 +3334,16 @@ def _compute_AOs_value_grad_lap_sphe(
     pref = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None]
     AOs_dup = pref * S_l_m_dup
 
-    orbital_indices = aos_data._orbital_indices_jnp
-    num_segments = aos_data.num_ao
-
     # value finalize: only downcast site (Principle 3b).
-    val = jax.ops.segment_sum(AOs_dup.astype(dtype_eval), orbital_indices, num_segments=num_segments)
+    val = _reduce_primitives_to_aos(AOs_dup.astype(dtype_eval), aos_data)
 
     # grad finalize (kept in ao_grad_lap zone — no cast).
     grad_from_R = AOs_dup[..., None] * (-2.0 * Z_jnp[:, None, None] * r_R_diffs)
     grad_from_S = pref[..., None] * S_l_m_grad_dup
     grad_dup = grad_from_R + grad_from_S
-    gx = jax.ops.segment_sum(grad_dup[..., 0], orbital_indices, num_segments=num_segments)
-    gy = jax.ops.segment_sum(grad_dup[..., 1], orbital_indices, num_segments=num_segments)
-    gz = jax.ops.segment_sum(grad_dup[..., 2], orbital_indices, num_segments=num_segments)
+    gx = _reduce_primitives_to_aos(grad_dup[..., 0], aos_data)
+    gy = _reduce_primitives_to_aos(grad_dup[..., 1], aos_data)
+    gz = _reduce_primitives_to_aos(grad_dup[..., 2], aos_data)
 
     # lap finalize (kept in ao_grad_lap zone — no cast).
     grad_S_dot_r = jnp.sum(S_l_m_grad_dup * r_R_diffs, axis=-1)
@@ -3239,7 +3352,7 @@ def _compute_AOs_value_grad_lap_sphe(
         + AOs_dup * (4.0 * (Z_jnp[:, None] ** 2) * r_squared - 6.0 * Z_jnp[:, None])
         - 4.0 * Z_jnp[:, None] * pref * grad_S_dot_r
     )
-    lap = jax.ops.segment_sum(lap_dup, orbital_indices, num_segments=num_segments)
+    lap = _reduce_primitives_to_aos(lap_dup, aos_data)
 
     return val, gx, gy, gz, lap
 
