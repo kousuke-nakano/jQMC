@@ -70,7 +70,7 @@ from numpy import linalg as LA
 
 from ._jqmc_utility import _spherical_to_cart_matrix
 from ._precision import get_dtype_jnp, get_dtype_np
-from ._setting import atol_consistency, get_eps, rtol_consistency
+from ._setting import atol_consistency, rtol_consistency
 from .structure import Structure_data
 
 # set logger
@@ -1366,6 +1366,7 @@ class ShellPrimMap:
     __slots__ = ("unique_indices", "prim_to_unique", "num_unique", "num_full")
 
     def __init__(self, unique_indices: np.ndarray, prim_to_unique: np.ndarray):
+        """Build the prim<->unique-AO index mapping from precomputed arrays."""
         self.unique_indices = unique_indices
         self.prim_to_unique = prim_to_unique
         self.num_unique = len(unique_indices)
@@ -2259,16 +2260,15 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     nx_ao = jnp.asarray(aos_data.polynominal_order_x, dtype=jnp.int32)
     ny_ao = jnp.asarray(aos_data.polynominal_order_y, dtype=jnp.int32)
     nz_ao = jnp.asarray(aos_data.polynominal_order_z, dtype=jnp.int32)
-    # NOTE: the previous ``stabilizing_ao`` epsilon (``x + eps``) was needed
-    # only to guard the autodiff path against ``0**0`` when an electron sat
-    # exactly on a nucleus. The static-unrolled :func:`_int_pow_unrolled_cart`
-    # already handles the ``e == 0`` branch via ``where(e == 0, 1.0, base)``,
-    # making the eps redundant. Removing it eliminates three ``add`` ops and
-    # the associated select tree from the dominant fusion. Production AD
-    # reaches AO derivatives only through the analytic kernels
-    # (``_compute_AOs_grad_analytic_*`` / ``_compute_AOs_laplacian_analytic_*``),
-    # so this is safe; the autodiff debug variant still benefits from
-    # ``_int_pow_unrolled_cart``'s ``e == 0`` short-circuit.
+    # NOTE: the legacy AO stabilizer epsilon (``x + eps``) was needed only
+    # to guard the kernels against ``0**0`` (here) and ``n/0`` (in the
+    # analytic grad/lap kernels) when an electron sat exactly on a nucleus.
+    # The static-unrolled :func:`_int_pow_unrolled_cart` already handles
+    # ``e == 0`` via ``where(e == 0, 1.0, base)``, and the analytic
+    # grad/lap kernels were rewritten in shifted-exponent product form
+    # (``n * x^(n-1)``, ``n(n-1) * x^(n-2)``) so the divisions and
+    # ``where(base != 0)`` masks are no longer needed either. The eps is
+    # therefore fully removed across the AO module.
     P_l_nx_ny_nz_ao = (
         _int_pow_unrolled_cart(x_ao, nx_ao, L_MAX)
         * _int_pow_unrolled_cart(y_ao, ny_ao, L_MAX)
@@ -2860,27 +2860,44 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    eps = get_eps("stabilizing_ao", dtype_jnp)
-    x = x + eps
-    y = y + eps
-    z = z + eps
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
-    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
-    # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
+    # See _compute_AOs_grad_analytic_cart for the rationale of the shifted-
+    # exponent formulation. Here we additionally need
+    # ``∂²_x x^n = n(n-1) x^(n-2)``, again expressed as
+    # ``n(n-1) * x^(max(n-2, 0))``; the prefactor zeros the term for
+    # n < 2 to match the analytic limit. No divisions, no eps, no masks.
     px = _int_pow_unrolled_cart(x, nx, L_MAX)
     py = _int_pow_unrolled_cart(y, ny, L_MAX)
     pz = _int_pow_unrolled_cart(z, nz, L_MAX)
-    phi = N[:, None] * pref * px * py * pz
+    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 1, 0), L_MAX)
+    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 1, 0), L_MAX)
+    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 1, 0), L_MAX)
+    qppx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 2, 0), L_MAX)
+    qppy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 2, 0), L_MAX)
+    qppz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 2, 0), L_MAX)
 
-    def _second_component(base, n):
-        safe_div = jnp.where(base != 0.0, n[:, None] / base, 0.0)
-        safe_div2 = jnp.where(base != 0.0, n[:, None] / (base**2), 0.0)
-        a = safe_div - 2.0 * Z[:, None] * base
-        return phi * (a**2 - safe_div2 - 2.0 * Z[:, None])
+    nx_b = nx[:, None].astype(dtype_jnp)
+    ny_b = ny[:, None].astype(dtype_jnp)
+    nz_b = nz[:, None].astype(dtype_jnp)
+    Npref = N[:, None] * pref
+    Z_b = Z[:, None]
+    phi = Npref * px * py * pz
+    Kx = Npref * py * pz
+    Ky = Npref * px * pz
+    Kz = Npref * px * py
 
-    lap_dup = _second_component(x, nx) + _second_component(y, ny) + _second_component(z, nz)
+    # ∂²_x phi = K_x · [n(n-1) x^(n-2) − 4Z n x^n + (4Z² x² − 2Z) x^n]
+    # Sum over x,y,z gives the Laplacian. The (4Z² r² − 6Z) term is the
+    # collected isotropic contribution from the three (4Z² d² − 2Z) pieces.
+    lap_dup = (
+        Kx * (nx_b * (nx_b - 1.0) * qppx)
+        + Ky * (ny_b * (ny_b - 1.0) * qppy)
+        + Kz * (nz_b * (nz_b - 1.0) * qppz)
+        - 4.0 * Z_b * (x * Kx * (nx_b * qpx) + y * Ky * (ny_b * qpy) + z * Kz * (nz_b * qpz))
+        + (4.0 * Z_b * Z_b * r2 - 6.0 * Z_b) * phi
+    )
 
     lap = _reduce_primitives_to_aos(lap_dup, aos_data)
     return lap
@@ -3171,27 +3188,33 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    eps = get_eps("stabilizing_ao", dtype_jnp)
-    x = x + eps
-    y = y + eps
-    z = z + eps
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
-    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
-    # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
+    # Static-unrolled integer powers. The shifted exponents
+    # ``max(n - 1, 0)`` combined with the integer prefactor ``n`` express
+    # ``∂_x x^n = n x^(n-1)`` directly. For ``n == 0`` the prefactor zeros
+    # the term, matching the analytic limit; this lets us drop both the
+    # legacy AO stabilizer eps and the ``where(base != 0, n/base, 0)``
+    # safeguard, eliminating divisions from the GPU kernel.
     px = _int_pow_unrolled_cart(x, nx, L_MAX)
     py = _int_pow_unrolled_cart(y, ny, L_MAX)
     pz = _int_pow_unrolled_cart(z, nz, L_MAX)
-    phi = N[:, None] * pref * px * py * pz
+    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 1, 0), L_MAX)
+    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 1, 0), L_MAX)
+    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 1, 0), L_MAX)
 
-    def _grad_component(base, n):
-        safe_div = jnp.where(base != 0.0, n[:, None] / base, 0.0)
-        return phi * (safe_div - 2.0 * Z[:, None] * base)
+    nx_b = nx[:, None].astype(dtype_jnp)
+    ny_b = ny[:, None].astype(dtype_jnp)
+    nz_b = nz[:, None].astype(dtype_jnp)
+    Npref = N[:, None] * pref
+    Z_b = Z[:, None]
+    phi = Npref * px * py * pz
 
-    gx_dup = _grad_component(x, nx)
-    gy_dup = _grad_component(y, ny)
-    gz_dup = _grad_component(z, nz)
+    # ∂_x phi = (N pref y^(n_y) z^(n_z)) · n_x x^(n_x-1) − 2Z x · phi
+    gx_dup = Npref * py * pz * (nx_b * qpx) - 2.0 * Z_b * x * phi
+    gy_dup = Npref * px * pz * (ny_b * qpy) - 2.0 * Z_b * y * phi
+    gz_dup = Npref * px * py * (nz_b * qpz) - 2.0 * Z_b * z * phi
 
     gx = _reduce_primitives_to_aos(gx_dup, aos_data)
     gy = _reduce_primitives_to_aos(gy_dup, aos_data)
@@ -3339,50 +3362,58 @@ def _compute_AOs_value_grad_lap_cart(
     N = jnp.sqrt(N_Z * N_fact)
 
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    eps = get_eps("stabilizing_ao", dtype_jnp)
-    x = x + eps
-    y = y + eps
-    z = z + eps
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
     # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
     # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
     # See ``_int_pow_unrolled_cart`` for the bitwise-equivalence rationale.
+    # Shifted exponents (``max(n - 1, 0)``, ``max(n - 2, 0)``) combined with
+    # the integer prefactors (``n``, ``n(n-1)``) express the first and
+    # second derivatives of ``x^n`` in product form, matching the layout
+    # used by ``_compute_AOs_grad_analytic_cart`` and
+    # ``_compute_AOs_laplacian_analytic_cart``. Mathematical (not bitwise)
+    # parity vs those standalone kernels — agreement to ULP magnitude.
     L_MAX = _cart_max_polynomial_order(aos_data)
     px = _int_pow_unrolled_cart(x, nx, L_MAX)
     py = _int_pow_unrolled_cart(y, ny, L_MAX)
     pz = _int_pow_unrolled_cart(z, nz, L_MAX)
-    # Shared body identical to the standalone grad/lap kernels (left-to-right
-    # multiplication). Strict (rtol=atol=0) parity vs compute_AOs_grad and
-    # compute_AOs_laplacian holds because the expression is bit-for-bit the
-    # same; parity vs compute_AOs is preserved up to a few ULPs because the
-    # standalone eval kernel uses a different multiplication ordering.
-    phi = N[:, None] * pref * px * py * pz  # shared val/grad/lap body
+    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 1, 0), L_MAX)
+    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 1, 0), L_MAX)
+    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 1, 0), L_MAX)
+    qppx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 2, 0), L_MAX)
+    qppy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 2, 0), L_MAX)
+    qppz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 2, 0), L_MAX)
+
+    nx_b = nx[:, None].astype(dtype_jnp)
+    ny_b = ny[:, None].astype(dtype_jnp)
+    nz_b = nz[:, None].astype(dtype_jnp)
+    Npref = N[:, None] * pref
+    Z_b = Z[:, None]
+    phi = Npref * px * py * pz
+    Kx = Npref * py * pz
+    Ky = Npref * px * pz
+    Kz = Npref * px * py
 
     # value finalize: only downcast site (Principle 3b).
     val = _reduce_primitives_to_aos(phi.astype(dtype_eval), aos_data)
 
     # grad finalize (kept in ao_grad_lap zone — no cast).
-    def _grad_component(base, n):
-        safe_div = jnp.where(base != 0.0, n[:, None] / base, 0.0)
-        return phi * (safe_div - 2.0 * Z[:, None] * base)
-
-    gx_dup = _grad_component(x, nx)
-    gy_dup = _grad_component(y, ny)
-    gz_dup = _grad_component(z, nz)
+    gx_dup = Kx * (nx_b * qpx) - 2.0 * Z_b * x * phi
+    gy_dup = Ky * (ny_b * qpy) - 2.0 * Z_b * y * phi
+    gz_dup = Kz * (nz_b * qpz) - 2.0 * Z_b * z * phi
     gx = _reduce_primitives_to_aos(gx_dup, aos_data)
     gy = _reduce_primitives_to_aos(gy_dup, aos_data)
     gz = _reduce_primitives_to_aos(gz_dup, aos_data)
 
     # lap finalize (kept in ao_grad_lap zone — no cast).
-    def _second_component(base, n):
-        safe_div = jnp.where(base != 0.0, n[:, None] / base, 0.0)
-        safe_div2 = jnp.where(base != 0.0, n[:, None] / (base**2), 0.0)
-        a = safe_div - 2.0 * Z[:, None] * base
-        return phi * (a**2 - safe_div2 - 2.0 * Z[:, None])
-
-    lap_dup = _second_component(x, nx) + _second_component(y, ny) + _second_component(z, nz)
+    lap_dup = (
+        Kx * (nx_b * (nx_b - 1.0) * qppx)
+        + Ky * (ny_b * (ny_b - 1.0) * qppy)
+        + Kz * (nz_b * (nz_b - 1.0) * qppz)
+        - 4.0 * Z_b * (x * Kx * (nx_b * qpx) + y * Ky * (ny_b * qpy) + z * Kz * (nz_b * qpz))
+        + (4.0 * Z_b * Z_b * r2 - 6.0 * Z_b) * phi
+    )
     lap = _reduce_primitives_to_aos(lap_dup, aos_data)
 
     return val, gx, gy, gz, lap

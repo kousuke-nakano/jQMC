@@ -99,11 +99,9 @@ _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
 #
 # Constants:
 #   machine_precision — floor for safe ratio in diagnostics.
-#   stabilizing_ao    — small epsilon for AO Cartesian derivative stabilization.
 #   rcond_svd         — threshold for SVD pseudoinverse of the geminal matrix.
 _EPS_DTYPE_AWARE: dict[str, dict[str, float]] = {
     "machine_precision": {"float64": 1e-38, "float32": 1e-38},
-    "stabilizing_ao": {"float64": 1e-16, "float32": 1e-12},
     "rcond_svd": {"float64": 1e-20, "float32": 1e-16},
 }
 
@@ -112,8 +110,7 @@ def get_eps(name: str, dtype) -> float:
     """Return a dtype-aware numerical stability constant.
 
     Args:
-        name: One of ``"machine_precision"``, ``"stabilizing_ao"``,
-            ``"rcond_svd"``.
+        name: One of ``"machine_precision"``, ``"rcond_svd"``.
         dtype: A NumPy/JAX dtype (e.g. ``jnp.float32``, ``np.float64``).
 
     Returns:
@@ -125,9 +122,6 @@ def get_eps(name: str, dtype) -> float:
     dtype_key = "float32" if np.dtype(dtype) == np.float32 else "float64"
     return _EPS_DTYPE_AWARE[name][dtype_key]
 
-
-# Numerical stability settings for AO
-EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
 
 # Threshold for SVD pseudoinverse of the geminal matrix G.
 # Singular values below EPS_rcond_SVD * s_max are zeroed to avoid 1/~0 NaN.
