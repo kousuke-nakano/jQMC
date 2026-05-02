@@ -2195,10 +2195,31 @@ def _int_pow_unrolled_cart(base: jax.Array, exp_arr: jax.Array, L_MAX: int) -> j
 
 @jit
 def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """Compute AO values at the given r_carts.
+    r"""Compute AO values at the given r_carts.
 
     See compute_AOs_api
 
+    Implementation note (perf):
+        The angular polynomial part :math:`x^{n_x} y^{n_y} z^{n_z}` is
+        identical for all primitives belonging to the same contracted
+        AO (the angular quantum numbers are an AO property, not a
+        primitive property). By the distributive law
+
+        .. math::
+           \\sum_{p \\in \\mathrm{AO}} N_p R_p \\cdot P
+                 = P \\cdot \\sum_{p \\in \\mathrm{AO}} N_p R_p ,
+
+        we can apply :func:`_reduce_primitives_to_aos` to the radial
+        product (``N R``) FIRST, then multiply by the AO-level
+        polynomial. This (1) shrinks the materialised pre-reduction
+        buffer from ``(num_ao_prim, n_elec)`` to ``(num_ao, n_elec)``
+        — for cc-pVQZ on C6H6 that is 880→512 along axis 0 — and (2)
+        runs the static-unrolled :func:`_int_pow_unrolled_cart` loops
+        (the dominant ALU pipe consumer per HLO inspection) at AO
+        rank rather than primitive rank. NCU/HLO showed the previous
+        formulation materialising a 3.7 GB intermediate
+        (``f64[880, 8192, 64]``) feeding the bucket gathers — this
+        rewrite cuts that to 2.15 GB.
     """
     dtype_jnp = get_dtype_jnp("ao_eval")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
@@ -2211,9 +2232,6 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
-    nx_jnp = aos_data._polynominal_order_x_prim_jnp
-    ny_jnp = aos_data._polynominal_order_y_prim_jnp
-    nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
     N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop
@@ -2226,32 +2244,38 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
-    x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
-    eps = get_eps("stabilizing_ao", dtype_jnp)
-    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
-    # that ``(x + eps) ** (nx_jnp[:, None])`` would otherwise emit (the exponent
-    # array is traced). See ``_int_pow_unrolled_cart`` for the rationale.
-    P_l_nx_ny_nz_dup = (
-        _int_pow_unrolled_cart(x + eps, nx_jnp, L_MAX)
-        * _int_pow_unrolled_cart(y + eps, ny_jnp, L_MAX)
-        * _int_pow_unrolled_cart(z + eps, nz_jnp, L_MAX)
+    # Radial part at primitive level → reduce to AO level (case 1: see docstring).
+    NR_dup = N_n_dup[:, None] * R_n_dup  # (num_ao_prim, n_elec)
+    NR_ao = _reduce_primitives_to_aos(NR_dup, aos_data)  # (num_ao, n_elec)
+
+    # AO-level coordinates: each AO sits on exactly one atom, so we use the
+    # AO→atom mapping (``_atomic_center_carts_jnp``, length num_ao) rather than
+    # the prim→atom mapping (``_atomic_center_carts_prim_jnp``, length num_ao_prim).
+    R_carts_ao = aos_data._atomic_center_carts_jnp
+    r_R_diffs_ao = (r_carts[None, :, :] - R_carts_ao[:, None, :]).astype(dtype_jnp)
+    x_ao, y_ao, z_ao = r_R_diffs_ao[..., 0], r_R_diffs_ao[..., 1], r_R_diffs_ao[..., 2]
+    # AO-level polynomial orders (length num_ao). These are static lists on the
+    # dataclass; ``jnp.asarray`` here is constant-folded into the JIT.
+    nx_ao = jnp.asarray(aos_data.polynominal_order_x, dtype=jnp.int32)
+    ny_ao = jnp.asarray(aos_data.polynominal_order_y, dtype=jnp.int32)
+    nz_ao = jnp.asarray(aos_data.polynominal_order_z, dtype=jnp.int32)
+    # NOTE: the previous ``stabilizing_ao`` epsilon (``x + eps``) was needed
+    # only to guard the autodiff path against ``0**0`` when an electron sat
+    # exactly on a nucleus. The static-unrolled :func:`_int_pow_unrolled_cart`
+    # already handles the ``e == 0`` branch via ``where(e == 0, 1.0, base)``,
+    # making the eps redundant. Removing it eliminates three ``add`` ops and
+    # the associated select tree from the dominant fusion. Production AD
+    # reaches AO derivatives only through the analytic kernels
+    # (``_compute_AOs_grad_analytic_*`` / ``_compute_AOs_laplacian_analytic_*``),
+    # so this is safe; the autodiff debug variant still benefits from
+    # ``_int_pow_unrolled_cart``'s ``e == 0`` short-circuit.
+    P_l_nx_ny_nz_ao = (
+        _int_pow_unrolled_cart(x_ao, nx_ao, L_MAX)
+        * _int_pow_unrolled_cart(y_ao, ny_ao, L_MAX)
+        * _int_pow_unrolled_cart(z_ao, nz_ao, L_MAX)
     )
 
-    """
-    logger.info(f"Z_jnp={Z_jnp}.")
-    logger.info(f"l_jnp={l_jnp}.")
-    logger.info(f"nx_jnp={nx_jnp}.")
-    logger.info(f"ny_jnp={ny_jnp}.")
-    logger.info(f"nz_jnp={nz_jnp}.")
-    logger.info(f"N_n_dup={N_n_dup.shape}, R_n_dup={R_n_dup.shape}")
-    logger.info(f"N_n_dup={N_n_dup.shape}, R_n_dup={R_n_dup.shape}")
-    logger.info(f"l_jnp={l_jnp.shape}, Z_jnp={Z_jnp.shape}.")
-    logger.info(f"nx_jnp={nx_jnp.shape}, ny_jnp={ny_jnp.shape}, nz_jnp={nz_jnp.shape}")
-    """
-
-    AOs_dup = N_n_dup[:, None] * R_n_dup * P_l_nx_ny_nz_dup
-
-    AOs = _reduce_primitives_to_aos(AOs_dup, aos_data)
+    AOs = NR_ao * P_l_nx_ny_nz_ao
     return AOs
 
 
@@ -2272,11 +2296,9 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
     R_carts_unique = aos_data._atomic_center_carts_unique_jnp
     r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
     r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
-    nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
     c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
-    m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
     # Normalization constants computed in zone dtype.
     l_typed = l_jnp.astype(dtype_jnp)
@@ -2291,17 +2313,28 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
+    # Radial part at primitive level → reduce to AO level. Same distributive-law
+    # rationale as in :func:`_compute_AOs_cart`: the angular factor
+    # :math:`Y_{lm}` is constant across primitives of a given AO, so we can
+    # reduce ``N R`` first and then multiply by the AO-level ``S_{lm}``.
+    NR_dup = N_n_dup[:, None] * N_l_m_dup[:, None] * R_n_dup  # (num_ao_prim, n_elec)
+    NR_ao = _reduce_primitives_to_aos(NR_dup, aos_data)  # (num_ao, n_elec)
+
+    # Solid harmonics tabulated at unique-atom level (49, n_atoms_unique, n_elec),
+    # then gathered at AO level (was: at primitive level via
+    # ``nucleus_index_prim_jnp`` / ``l_jnp`` / ``m_jnp`` of length num_ao_prim).
     max_ml, S_l_m_dup_all_l_m = _compute_S_l_m(r_R_diffs_uq)
     S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
         (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"
     )
-    global_l_m_index = l_jnp**2 + (m_jnp + l_jnp)
-    global_R_l_m_index = nucleus_index_prim_jnp * max_ml + global_l_m_index
-    S_l_m_dup = S_l_m_dup_all_l_m_reshaped[global_R_l_m_index]
+    nucleus_index_ao = aos_data._nucleus_index_jnp
+    l_ao = jnp.asarray(aos_data.angular_momentums, dtype=jnp.int32)
+    m_ao = jnp.asarray(aos_data.magnetic_quantum_numbers, dtype=jnp.int32)
+    global_l_m_index_ao = l_ao**2 + (m_ao + l_ao)
+    global_R_l_m_index_ao = nucleus_index_ao * max_ml + global_l_m_index_ao
+    S_l_m_ao = S_l_m_dup_all_l_m_reshaped[global_R_l_m_index_ao]  # (num_ao, n_elec)
 
-    AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
-
-    AOs = _reduce_primitives_to_aos(AOs_dup, aos_data)
+    AOs = NR_ao * S_l_m_ao
     return AOs
 
 
