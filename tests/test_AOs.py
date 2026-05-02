@@ -33,6 +33,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import itertools
+import os
 import sys
 from pathlib import Path
 
@@ -63,12 +64,14 @@ from jqmc.atomic_orbital import (  # noqa: E402
     _compute_overlap_matrix_debug,
     _compute_S_l_m,
     _compute_S_l_m_debug,
-    # compute_AOs,
+    compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_AOs_value_grad_lap,
     compute_overlap_matrix,
 )
-from jqmc._precision import get_tolerance  # noqa: E402
+from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
@@ -504,7 +507,9 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     gx_auto, gy_auto, gz_auto = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
     gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad", "strict")
+    # autodiff path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
+    # tolerance bottlenecked by ao_eval, not ao_grad_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(gx_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an, gx_auto, atol=atol, rtol=rtol)
@@ -567,7 +572,9 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     gx_auto_cart, gy_auto_cart, gz_auto_cart = _compute_AOs_grad_autodiff(aos_data=aos_data_cart, r_carts=r_carts)
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data_cart, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad", "loose")
+    # autodiff and FD-debug both pass through compute_AOs (ao_eval zone, fp32 in
+    # mixed mode); tolerance bottlenecked by ao_eval.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
     assert not np.any(np.isnan(np.asarray(gx_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -755,7 +762,9 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
     gx_an_cart, gy_an_cart, gz_an_cart = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_grad", "loose")
+    # FD-debug path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
+    # tolerance bottlenecked by ao_eval.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
     assert not np.any(np.isnan(np.asarray(gx_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -867,7 +876,9 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     lap_auto_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_lap", "strict")
+    # autodiff path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
+    # tolerance bottlenecked by ao_eval, not ao_grad_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_auto_cart, atol=atol, rtol=rtol)
@@ -965,7 +976,9 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_lap", "loose")
+    # FD-debug path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
+    # tolerance bottlenecked by ao_eval.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1065,7 +1078,9 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("ao_lap", "loose")
+    # both autodiff and FD-debug go through compute_AOs (ao_eval zone, fp32 in
+    # mixed mode); tolerance bottlenecked by ao_eval.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_auto_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1172,6 +1187,114 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_num_sphe, lap_auto_sphe, atol=atol, rtol=rtol)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    [
+        "water_ccecp_ccpvqz.h5",  # spherical (l up to f)
+        "H2_ae_ccpvdz_cart.h5",  # Cartesian
+        "N_ae_ccpvdz_cart.h5",  # Cartesian, larger
+    ],
+)
+def test_fused_AOs_value_grad_lap_matches_split(trexio_file: str):
+    """Fused ``compute_AOs_value_grad_lap`` matches the standalone APIs.
+
+    grad parity is bitwise (rtol=atol=0) because the fused kernel mirrors
+    the standalone grad kernels' shared body verbatim and XLA fuses both
+    paths identically. lap is allowed up to ULP-level differences: the
+    standalone ``_compute_AOs_laplacian_*`` and the fused
+    ``_compute_AOs_value_grad_lap_*`` share the same source expression but
+    XLA may reorder the upstream FMA chain that produces ``lap_dup``
+    differently between the two ``@jit`` boundaries (the per-primitive
+    reduction layer is identical). value parity is bounded by the
+    multiplication ordering between the fused kernel (which reuses the
+    grad/lap ``phi``) and the standalone ``compute_AOs`` (which builds the
+    polynomial separately).
+    """
+    (
+        _structure,
+        aos_data,
+        *_rest,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    aos_data.sanity_check()
+
+    rng = np.random.default_rng(20260430)
+    r_carts = (rng.standard_normal((6, 3)) * 1.5).astype(np.float64)
+
+    val_f, gx_f, gy_f, gz_f, lap_f = compute_AOs_value_grad_lap(aos_data=aos_data, r_carts=r_carts)
+    val_s = compute_AOs(aos_data=aos_data, r_carts=r_carts)
+    gx_s, gy_s, gz_s = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
+    lap_s = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
+
+    # NaN guards.
+    for arr in (val_f, gx_f, gy_f, gz_f, lap_f, val_s, gx_s, gy_s, gz_s, lap_s):
+        assert not np.any(np.isnan(np.asarray(arr)))
+
+    # Strict bitwise parity for grad: fused and standalone share the
+    # exact same expression (same multiplication order, same eps offsets)
+    # and XLA fuses them identically.
+    assert_allclose(np.asarray(gx_f), np.asarray(gx_s), atol=0, rtol=0)
+    assert_allclose(np.asarray(gy_f), np.asarray(gy_s), atol=0, rtol=0)
+    assert_allclose(np.asarray(gz_f), np.asarray(gz_s), atol=0, rtol=0)
+
+    # lap: ao_eval-zone tolerance. The standalone and fused laplacian
+    # kernels evaluate the same closed-form expression but live in
+    # different ``@jit`` boundaries, so XLA may reassociate the upstream
+    # FMA chain producing ``lap_dup``; strictly ULP-level differences
+    # are expected and tolerated.
+    atol_lap, rtol_lap = get_tolerance("ao_eval", "strict")
+    assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=atol_lap, rtol=rtol_lap)
+
+    # value: tight ao_eval-zone tolerance. Fused reuses the grad/lap
+    # ``phi`` (left-to-right multiplication chain), while standalone
+    # ``compute_AOs`` parenthesises the polynomial separately — strictly
+    # ULP-level differences are allowed.
+    atol_val, rtol_val = get_tolerance("ao_eval", "strict")
+    assert_allclose(np.asarray(val_f), np.asarray(val_s), atol=atol_val, rtol=rtol_val)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    [
+        "water_ccecp_ccpvqz.h5",
+        "H2_ae_ccpvdz_cart.h5",
+    ],
+)
+def test_fused_AOs_dtypes_match_zones(trexio_file: str):
+    """``compute_AOs_value_grad_lap`` outputs are pinned to their zones.
+
+    val ↔ ``ao_eval`` (fp32 mixed / fp64 full); gx/gy/gz/lap ↔
+    ``ao_grad_lap`` (fp64 always).
+    """
+    (
+        _structure,
+        aos_data,
+        *_rest,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    aos_data.sanity_check()
+
+    rng = np.random.default_rng(20260430)
+    r_carts = (rng.standard_normal((4, 3)) * 1.5).astype(np.float64)
+    val_f, gx_f, gy_f, gz_f, lap_f = compute_AOs_value_grad_lap(aos_data=aos_data, r_carts=r_carts)
+
+    eval_dtype = get_dtype_jnp("ao_eval")
+    gradlap_dtype = get_dtype_jnp("ao_grad_lap")
+    assert val_f.dtype == eval_dtype, f"val.dtype = {val_f.dtype}, expected {eval_dtype}"
+    assert gx_f.dtype == gradlap_dtype, f"gx.dtype = {gx_f.dtype}, expected {gradlap_dtype}"
+    assert gy_f.dtype == gradlap_dtype, f"gy.dtype = {gy_f.dtype}, expected {gradlap_dtype}"
+    assert gz_f.dtype == gradlap_dtype, f"gz.dtype = {gz_f.dtype}, expected {gradlap_dtype}"
+    assert lap_f.dtype == gradlap_dtype, f"lap.dtype = {lap_f.dtype}, expected {gradlap_dtype}"
 
     jax.clear_caches()
 

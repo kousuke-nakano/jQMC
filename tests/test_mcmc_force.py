@@ -275,6 +275,77 @@ def test_mcmc_force_without_SWCT():
     assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"
 
 
+@pytest.mark.parametrize(
+    "with_nn",
+    [pytest.param(False, id="open-shell"), pytest.param(True, id="open-shell-nn")],
+)
+def test_mcmc_force_open_shell_finite(with_nn: bool):
+    """Force evaluation must stay finite for open-shell systems with J2 active.
+
+    Regression guard: dense (N,N) up-up/dn-dn pair sums in J2 trigger
+    ``0 * inf = NaN`` on the i==j diagonal under second-order AD when num_up>1
+    (or num_dn>1). H2 (n_up=n_dn=1) does not exercise this path; Li
+    (n_up=2, n_dn=1) does.
+    """
+    trexio_file = "Li_ae_ccpvdz_cart.h5"
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=0.5,
+        structure_data=structure_data,
+        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+        jastrow_1b_type="exp",
+    )
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    jastrow_nn_data = (
+        Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0)
+        if with_nn
+        else None
+    )
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
+    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=34356,
+        num_walkers=2,
+        comput_position_deriv=True,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
+        epsilon_AS=1.0e-2,
+    )
+    mcmc.run(num_mcmc_steps=20)
+    mcmc.get_E(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+    force_mean, force_std = mcmc.get_aF(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+
+    assert not np.any(np.isnan(np.array(force_mean))), "NaN detected in force_mean"
+    assert not np.any(np.isnan(np.array(force_std))), "NaN detected in force_std"
+    assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"
+
+
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 

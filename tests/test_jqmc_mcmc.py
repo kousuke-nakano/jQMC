@@ -71,9 +71,16 @@ param_grid = [
     ("H2_ae_ccpvdz_cart.h5", True, True, True, True),
     ("H_ae_ccpvdz_cart.h5", True, False, False, False),
     ("Li_ae_ccpvdz_cart.h5", False, False, False, False),
+    # Open-shell (n_up=2, n_dn=1): exercises the J2 num_up>1 dense pair path
+    # under force evaluation (de_L/dr second-order AD). NN-off variant added
+    # alongside the NN-on variant to isolate Jastrow-2b regressions.
+    ("Li_ae_ccpvdz_cart.h5", True, True, True, False),
     ("Li_ae_ccpvdz_cart.h5", True, True, True, True),
     ("H2_ecp_ccpvtz.h5", True, True, True, True),
     ("N_ae_ccpvdz_cart.h5", False, False, False, False),
+    # n_up=4, n_dn=3 with J2 only: covers J2 dense pair path on a larger
+    # open-shell system (no J3/NN) to keep regression detection narrow.
+    ("N_ae_ccpvdz_cart.h5", True, True, False, False),
 ]
 
 

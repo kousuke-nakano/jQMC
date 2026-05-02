@@ -57,8 +57,11 @@ from ._diff_mask import DiffMask, apply_diff_mask
 from ._precision import get_dtype_jnp
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap
 from .determinant import (
+    Det_streaming_state,
     Geminal_data,
+    _advance_grads_laplacian_ln_Det_streaming_state,
     _compute_ratio_determinant_part_split_spin,
+    _init_grads_laplacian_ln_Det_streaming_state,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_fast,
@@ -67,8 +70,19 @@ from .determinant import (
 )
 from .jastrow_factor import (
     Jastrow_data,
+    Jastrow_one_body_streaming_state,
+    Jastrow_three_body_streaming_state,
+    Jastrow_two_body_streaming_state,
+    _advance_grads_laplacian_Jastrow_one_body_streaming_state,
+    _advance_grads_laplacian_Jastrow_three_body_streaming_state,
+    _advance_grads_laplacian_Jastrow_two_body_streaming_state,
     _compute_ratio_Jastrow_part_rank1_update,
+    _init_grads_laplacian_Jastrow_one_body_streaming_state,
+    _init_grads_laplacian_Jastrow_three_body_streaming_state,
+    _init_grads_laplacian_Jastrow_two_body_streaming_state,
+    compute_grads_and_laplacian_Jastrow_one_body,
     compute_grads_and_laplacian_Jastrow_part,
+    compute_grads_and_laplacian_Jastrow_two_body,
     compute_Jastrow_part,
 )
 from .molecular_orbital import MOs_data
@@ -1206,6 +1220,314 @@ def _compute_kinetic_energy_all_elements_fast_update_debug(
     )
 
 
+# ---------------------------------------------------------------------------
+# Per-electron kinetic-energy streaming state (used by GFMC projection)
+# ---------------------------------------------------------------------------
+#
+# Maintains enough auxiliary information to advance the per-electron kinetic
+# energies after a single-electron move without recomputing them from
+# scratch. PR1 (devel-speedup-lrdmc-incremental) enables this only for the
+# J3 part — J1, J2 and the determinant gradients/Laplacians are still
+# recomputed fresh inside ``_advance_*``. Subsequent PRs will replace those
+# fresh recomputes with rank-1 updates while keeping the public per-electron
+# fields (``grad_J_up`` etc.) shape-stable.
+#
+# The state is freshly built at every branching boundary by
+# ``_init_kinetic_energy_all_elements_streaming_state`` (lifetime matches
+# the Sherman-Morrison ``A_old_inv``).
+
+
+@struct.dataclass
+class Kinetic_streaming_state:
+    """Streaming state for per-electron kinetic-energy evaluation.
+
+    Fields evaluated at the current ``(r_up_carts, r_dn_carts)``:
+
+    - ``j3_state``: J3 auxiliary tables (None if no J3 component is active).
+    - ``det_state``: det auxiliary tables (always populated in PR2+; the
+      determinant per-electron grad/lap fields below mirror its outputs).
+    - ``grad_J_up`` / ``grad_J_dn``: total Jastrow per-electron gradient.
+    - ``lap_J_up`` / ``lap_J_dn``: total Jastrow per-electron Laplacian.
+    - ``grad_ln_D_up`` / ``grad_ln_D_dn``: per-electron ``∇ln|Det|`` from the
+      geminal at the current ``A_old_inv``.
+    - ``lap_ln_D_up`` / ``lap_ln_D_dn``: per-electron ``∇²ln|Det|``.
+    """
+
+    j1_state: Jastrow_one_body_streaming_state | None = struct.field(pytree_node=True, default=None)
+    j2_state: Jastrow_two_body_streaming_state | None = struct.field(pytree_node=True, default=None)
+    j3_state: Jastrow_three_body_streaming_state | None = struct.field(pytree_node=True, default=None)
+    det_state: Det_streaming_state | None = struct.field(pytree_node=True, default=None)
+    grad_J_up: jax.Array = struct.field(pytree_node=True, default=None)
+    grad_J_dn: jax.Array = struct.field(pytree_node=True, default=None)
+    lap_J_up: jax.Array = struct.field(pytree_node=True, default=None)
+    lap_J_dn: jax.Array = struct.field(pytree_node=True, default=None)
+    grad_ln_D_up: jax.Array = struct.field(pytree_node=True, default=None)
+    grad_ln_D_dn: jax.Array = struct.field(pytree_node=True, default=None)
+    lap_ln_D_up: jax.Array = struct.field(pytree_node=True, default=None)
+    lap_ln_D_dn: jax.Array = struct.field(pytree_node=True, default=None)
+
+
+def _kinetic_energy_from_grads_laps(
+    grad_J_up,
+    grad_J_dn,
+    lap_J_up,
+    lap_J_dn,
+    grad_ln_D_up,
+    grad_ln_D_dn,
+    lap_ln_D_up,
+    lap_ln_D_dn,
+):
+    """Common assembly: ``-(1/2) * (∇²ln Ψ + ||∇ln Ψ||²)`` per electron."""
+    dtype_jnp = get_dtype_jnp("wf_kinetic")
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+    grad_ln_D_up = jnp.asarray(grad_ln_D_up, dtype=dtype_jnp)
+    grad_ln_D_dn = jnp.asarray(grad_ln_D_dn, dtype=dtype_jnp)
+    lap_ln_D_up = jnp.asarray(lap_ln_D_up, dtype=dtype_jnp)
+    lap_ln_D_dn = jnp.asarray(lap_ln_D_dn, dtype=dtype_jnp)
+
+    grad_ln_Psi_up = grad_J_up + grad_ln_D_up
+    grad_ln_Psi_dn = grad_J_dn + grad_ln_D_dn
+    lap_ln_Psi_up = lap_J_up + lap_ln_D_up
+    lap_ln_Psi_dn = lap_J_dn + lap_ln_D_dn
+    ke_up = -0.5 * (lap_ln_Psi_up + jnp.sum(grad_ln_Psi_up**2, axis=1))
+    ke_dn = -0.5 * (lap_ln_Psi_dn + jnp.sum(grad_ln_Psi_dn**2, axis=1))
+    return ke_up, ke_dn
+
+
+def _init_kinetic_energy_all_elements_streaming_state(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inverse: jax.Array,
+) -> Kinetic_streaming_state:
+    """Build a fresh streaming state at the supplied ``(r_up, r_dn)``.
+
+    PR1+PR2+PR3 scope: J1, J2, J3, and det sub-states are all incrementally
+    maintained. NN three-body falls back to ``compute_grads_and_laplacian_Jastrow_part``
+    (the streaming dispatch in ``jqmc_gfmc.py`` already excludes the NN case).
+
+    Note: ``geminal_inverse`` must be the inverse of ``G(r_up, r_dn)`` (the
+    same invariant as :func:`compute_kinetic_energy_all_elements_fast_update`).
+    """
+    # Per-electron Jastrow grad/lap (sum of J1/J2/J3/NN parts) — used as the
+    # initial total. Sub-states below are populated for the streaming path.
+    grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # Cast totals to the jastrow_grad_lap zone so init and advance store
+    # ``grad_J_*`` / ``lap_J_*`` in the same dtype (Principle 3b — required
+    # for fori_loop carry-shape stability under mixed precision, where
+    # ``advance`` reassembles the totals from streaming sub-states that
+    # live in the jastrow_grad_lap zone).
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+
+    # Determinant streaming state — drives grad_ln_D_*/lap_ln_D_* fields.
+    det_state = _init_grads_laplacian_ln_Det_streaming_state(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=geminal_inverse,
+    )
+
+    jastrow_data = wavefunction_data.jastrow_data
+    j1_data = jastrow_data.jastrow_one_body_data
+    j2_data = jastrow_data.jastrow_two_body_data
+    j3_data = jastrow_data.jastrow_three_body_data
+    j1_state = (
+        _init_grads_laplacian_Jastrow_one_body_streaming_state(j1_data, r_up_carts, r_dn_carts) if j1_data is not None else None
+    )
+    j2_state = (
+        _init_grads_laplacian_Jastrow_two_body_streaming_state(j2_data, r_up_carts, r_dn_carts) if j2_data is not None else None
+    )
+    j3_state = (
+        _init_grads_laplacian_Jastrow_three_body_streaming_state(j3_data, r_up_carts, r_dn_carts)
+        if j3_data is not None
+        else None
+    )
+
+    return Kinetic_streaming_state(
+        j1_state=j1_state,
+        j2_state=j2_state,
+        j3_state=j3_state,
+        det_state=det_state,
+        grad_J_up=grad_J_up,
+        grad_J_dn=grad_J_dn,
+        lap_J_up=lap_J_up,
+        lap_J_dn=lap_J_dn,
+        grad_ln_D_up=det_state.grad_ln_D_up,
+        grad_ln_D_dn=det_state.grad_ln_D_dn,
+        lap_ln_D_up=det_state.lap_ln_D_up,
+        lap_ln_D_dn=det_state.lap_ln_D_dn,
+    )
+
+
+def _kinetic_energy_from_streaming_state(state: Kinetic_streaming_state):
+    """Per-electron kinetic energies extracted from a streaming state."""
+    return _kinetic_energy_from_grads_laps(
+        state.grad_J_up,
+        state.grad_J_dn,
+        state.lap_J_up,
+        state.lap_J_dn,
+        state.grad_ln_D_up,
+        state.grad_ln_D_dn,
+        state.lap_ln_D_up,
+        state.lap_ln_D_dn,
+    )
+
+
+def _advance_kinetic_energy_all_elements_streaming_state(
+    wavefunction_data: Wavefunction_data,
+    state: Kinetic_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+    A_new_inv: jax.Array,
+) -> Kinetic_streaming_state:
+    """Advance the streaming state after a single-electron move.
+
+    PR1+PR2+PR3 scope: J1, J2, J3, and det sub-states are all updated
+    incrementally. NN three-body falls back to a fresh
+    ``compute_grads_and_laplacian_Jastrow_part`` call (defensive — the
+    streaming dispatch in ``jqmc_gfmc.py`` excludes the NN case so this
+    branch is unreachable in production).
+
+    The returned state is consistent with ``(r_up_carts_new, r_dn_carts_new,
+    A_new_inv)``; downstream consumers can read kinetic energies via
+    :func:`_kinetic_energy_from_streaming_state`.
+    """
+    dtype_jnp = get_dtype_jnp("jastrow_grad_lap")
+    jastrow_data = wavefunction_data.jastrow_data
+
+    # --- J1: incremental advance via streaming state ---------------------
+    j1_data = jastrow_data.jastrow_one_body_data
+    if j1_data is not None and state.j1_state is not None:
+        new_j1_state = _advance_grads_laplacian_Jastrow_one_body_streaming_state(
+            j1_data,
+            state.j1_state,
+            moved_spin_is_up,
+            moved_index,
+            r_up_carts_new,
+            r_dn_carts_new,
+        )
+        grad_J1_up = new_j1_state.grad_J1_up
+        grad_J1_dn = new_j1_state.grad_J1_dn
+        lap_J1_up = new_j1_state.lap_J1_up
+        lap_J1_dn = new_j1_state.lap_J1_dn
+    else:
+        new_j1_state = None
+        grad_J1_up = jnp.zeros_like(state.grad_J_up)
+        grad_J1_dn = jnp.zeros_like(state.grad_J_dn)
+        lap_J1_up = jnp.zeros_like(state.lap_J_up)
+        lap_J1_dn = jnp.zeros_like(state.lap_J_dn)
+
+    # --- J2: incremental advance via streaming state ---------------------
+    j2_data = jastrow_data.jastrow_two_body_data
+    if j2_data is not None and state.j2_state is not None:
+        new_j2_state = _advance_grads_laplacian_Jastrow_two_body_streaming_state(
+            j2_data,
+            state.j2_state,
+            moved_spin_is_up,
+            moved_index,
+            r_up_carts_new,
+            r_dn_carts_new,
+        )
+        grad_J2_up = new_j2_state.grad_J2_up
+        grad_J2_dn = new_j2_state.grad_J2_dn
+        lap_J2_up = new_j2_state.lap_J2_up
+        lap_J2_dn = new_j2_state.lap_J2_dn
+    else:
+        new_j2_state = None
+        grad_J2_up = jnp.zeros_like(state.grad_J_up)
+        grad_J2_dn = jnp.zeros_like(state.grad_J_dn)
+        lap_J2_up = jnp.zeros_like(state.lap_J_up)
+        lap_J2_dn = jnp.zeros_like(state.lap_J_dn)
+
+    # --- J3: incremental advance via streaming state ---------------------
+    j3_data = jastrow_data.jastrow_three_body_data
+    if j3_data is not None and state.j3_state is not None:
+        new_j3_state = _advance_grads_laplacian_Jastrow_three_body_streaming_state(
+            j3_data,
+            state.j3_state,
+            moved_spin_is_up,
+            moved_index,
+            r_up_carts_new,
+            r_dn_carts_new,
+        )
+        grad_J3_up = new_j3_state.grad_J3_up
+        grad_J3_dn = new_j3_state.grad_J3_dn
+        lap_J3_up = new_j3_state.lap_J3_up
+        lap_J3_dn = new_j3_state.lap_J3_dn
+    else:
+        new_j3_state = None
+        grad_J3_up = jnp.zeros_like(state.grad_J_up)
+        grad_J3_dn = jnp.zeros_like(state.grad_J_dn)
+        lap_J3_up = jnp.zeros_like(state.lap_J_up)
+        lap_J3_dn = jnp.zeros_like(state.lap_J_dn)
+
+    # Reassemble Jastrow totals from the streamed sub-state contributions.
+    grad_J_up = grad_J1_up + grad_J2_up + grad_J3_up
+    grad_J_dn = grad_J1_dn + grad_J2_dn + grad_J3_dn
+    lap_J_up = lap_J1_up + lap_J2_up + lap_J3_up
+    lap_J_dn = lap_J1_dn + lap_J2_dn + lap_J3_dn
+
+    # NN three-body (autodiff path) — defensive fallback. The streaming
+    # dispatch in ``jqmc_gfmc.py`` already routes NN-on cases to the legacy
+    # body, so this branch is unreachable in production.
+    if jastrow_data.jastrow_nn_data is not None:
+        grad_J_up_full, grad_J_dn_full, lap_J_up_full, lap_J_dn_full = compute_grads_and_laplacian_Jastrow_part(
+            jastrow_data=jastrow_data,
+            r_up_carts=r_up_carts_new,
+            r_dn_carts=r_dn_carts_new,
+        )
+        grad_J_up = grad_J_up_full
+        grad_J_dn = grad_J_dn_full
+        lap_J_up = lap_J_up_full
+        lap_J_dn = lap_J_dn_full
+
+    # --- determinant: incremental advance via streaming state ------------
+    new_det_state = _advance_grads_laplacian_ln_Det_streaming_state(
+        geminal_data=wavefunction_data.geminal_data,
+        state=state.det_state,
+        moved_spin_is_up=moved_spin_is_up,
+        moved_index=moved_index,
+        r_up_carts_new=r_up_carts_new,
+        r_dn_carts_new=r_dn_carts_new,
+        A_new_inv=A_new_inv,
+    )
+
+    # Cast totals to jastrow_grad_lap dtype to match init's storage zone.
+    grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
+    grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
+    lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
+    lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
+
+    return state.replace(
+        j1_state=new_j1_state,
+        j2_state=new_j2_state,
+        j3_state=new_j3_state,
+        det_state=new_det_state,
+        grad_J_up=grad_J_up,
+        grad_J_dn=grad_J_dn,
+        lap_J_up=lap_J_up,
+        lap_J_dn=lap_J_dn,
+        grad_ln_D_up=new_det_state.grad_ln_D_up,
+        grad_ln_D_dn=new_det_state.grad_ln_D_dn,
+        lap_ln_D_up=new_det_state.lap_ln_D_up,
+        lap_ln_D_dn=new_det_state.lap_ln_D_dn,
+    )
+
+
 def _compute_discretized_kinetic_energy_debug(
     alat: float, wavefunction_data: Wavefunction_data, r_up_carts: npt.NDArray, r_dn_carts: npt.NDArray
 ) -> list[tuple[npt.NDArray, npt.NDArray]]:
@@ -1422,6 +1744,7 @@ def compute_discretized_kinetic_energy_fast_update(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
     RT: jax.Array,
+    j3_state: "Jastrow_three_body_streaming_state | None" = None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     r"""Fast-update version of discretized kinetic mesh and ratios.
 
@@ -1437,6 +1760,12 @@ def compute_discretized_kinetic_energy_fast_update(
         r_up_carts: Up-electron positions with shape ``(n_up, 3)``.
         r_dn_carts: Down-electron positions with shape ``(n_dn, 3)``.
         RT: Rotation matrix (:math:`R^T`) with shape ``(3, 3)``.
+        j3_state: Optional cached J3 streaming auxiliaries consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to the Jastrow ratio kernel
+            so it can skip the per-call ``aos_*_old``/``W``/``U``/cross_vec
+            recomputation. Use the value carried in the projection's
+            ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
+            the original 1-shot path used by observation/MCMC code.
 
     Returns:
         Tuple ``(r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part)`` with combined
@@ -1518,6 +1847,7 @@ def compute_discretized_kinetic_energy_fast_update(
             old_r_dn_carts=r_dn,
             new_r_up_carts_arr=r_up_carts_combined,
             new_r_dn_carts_arr=r_dn_carts_combined,
+            j3_state=j3_state,
         ),
         dtype=dtype_wf_ratio_jnp,
     )

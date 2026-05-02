@@ -20,7 +20,7 @@ the table below (and enforced by convention in ``_FULL_PRECISION`` /
 Principle 2 — A module may own multiple Precision Zones.
 ------------------------------------------------------------
 Different code paths in the same module legitimately need different precisions
-(e.g. ``ao_eval`` vs ``ao_grad``, or ``det_eval`` vs ``det_ratio``). Each
+(e.g. ``ao_eval`` vs ``ao_grad_lap``, or ``det_eval`` vs ``det_ratio``). Each
 zone is named for its *purpose*, not for its dtype.
 
 ------------------------------------------------------------
@@ -174,8 +174,7 @@ Precision Zones
 Zone                Owning module                      Default    Mixed     risk   E_L path
 ==================  =================================  =========  ========  =====  =========
 ``ao_eval``         atomic_orbital.py (forward)        float64    float32   low    core
-``ao_grad``         atomic_orbital.py (gradient)       float64    float32   low    core
-``ao_lap``          atomic_orbital.py (Laplacian)      float64    float64   high§  core
+``ao_grad_lap``     atomic_orbital.py (grad/Lap)       float64    float64   high§  core
 ``mo_eval``         molecular_orbital.py (forward)     float64    float64   high*  core
 ``mo_grad``         molecular_orbital.py (gradient)    float64    float64   high   core
 ``mo_lap``          molecular_orbital.py (Laplacian)   float64    float64   high   core
@@ -203,15 +202,22 @@ forward values (J and ln|Psi|) do not enter the E_L formula directly
 (E_L depends on *derivatives* of ln|Psi|).  Diagnostics show zero E_L
 bias when these zones alone are fp32.
 
-§ ``ao_lap`` is fp64 even in mixed mode because the analytic Laplacian
-kernel for spherical AOs contains catastrophic cancellation
+§ ``ao_grad_lap`` is fp64 even in mixed mode because the analytic
+Laplacian kernel for spherical AOs contains catastrophic cancellation
 (``4 Z² r² − 6 Z`` and ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``
 terms) that fp32 cannot resolve for tight Gaussians. Diagnostic
 ``bug/fp32/diag_07_ao_grad_vs_lap_split.py`` showed that
 ``ao_lap=fp32`` alone reproduces the full atomic-force bias
 (``max|dF| ≈ 1.9 Ha/bohr`` on N₂ at scale=0.3, ``≈ 2e−2 Ha/bohr`` on
-the water-cluster-8 system), while ``ao_grad=fp32`` alone is safe
-(``max|dF| < 8e−3 Ha/bohr``).
+the water-cluster-8 system); the historical ``ao_grad=fp32`` zone was
+safe in isolation (``max|dF| < 8e−3 Ha/bohr``) but is merged here with
+``ao_lap`` because the fused ``compute_AOs_value_grad_lap`` kernel
+shares one heavy expression (``exp / pow / phi / S_l_m``) across grad
+and lap. Running that shared kernel at fp32 would break the lap path,
+so the unified zone is fp64 always — a small extra cost on the
+standalone ``compute_AOs_grad`` (which is not on the per-step hot
+path) in exchange for a single source of truth for the shared kernel
+dtype.
 
 ‡ ``det_ratio`` and ``jastrow_ratio`` affect E_L **indirectly** through
 the ECP non-local potential, which evaluates Psi(R')/Psi(R) on a
@@ -237,7 +243,7 @@ Usage::
         # NOTE: never reach for another module's zone (e.g.
         # ``get_dtype_jnp("local_energy")``) here — that violates
         # Principle 1 (zone ↔ owning module is 1:1). atomic_orbital.py
-        # may only consult ao_eval / ao_grad / ao_lap.
+        # may only consult ao_eval / ao_grad_lap.
         dtype_jnp = get_dtype_jnp("ao_eval")
         R_carts = aos_data._atomic_center_carts_jnp
         diff = (r_carts - R_carts).astype(dtype_jnp)
@@ -288,8 +294,7 @@ logger = logging.getLogger(__name__)
 _FULL_PRECISION: dict[str, str] = {
     # atomic_orbital.py
     "ao_eval": "float64",  # AO forward evaluation
-    "ao_grad": "float64",  # AO gradient
-    "ao_lap": "float64",  # AO Laplacian
+    "ao_grad_lap": "float64",  # AO gradient + Laplacian (unified for fused kernel)
     # molecular_orbital.py
     "mo_eval": "float64",  # MO forward evaluation (mo_coef @ AO)
     "mo_grad": "float64",  # MO gradient
@@ -315,17 +320,12 @@ _FULL_PRECISION: dict[str, str] = {
 }
 
 # --- mode="mixed" (recommended mixed precision) ---
-# Five "low risk" zones drop to float32:
+# Four "low risk" zones drop to float32:
 #
 #   ao_eval          - smooth Gaussian basis kernel; the dominant cost.
 #                      The downstream consumer (mo_eval / det_eval /
 #                      jastrow_eval) is fp64 and explicitly casts the AO
 #                      result up before any sensitive arithmetic.
-#   ao_grad          - AO analytic gradient kernel; same O(N_ao × N_e)
-#                      cost as ao_eval.  Diagnostics
-#                      (bug/fp32/diag_07) show grad-only fp32 yields
-#                      max|dF| < 8e-3 Ha/bohr (relative bias ~5e-5 on
-#                      water-cluster-8) — well within chemical accuracy.
 #   jastrow_eval     - smooth correlation function value (pre-exp).
 #   jastrow_grad_lap - nabla J, nabla^2 J; smooth Jastrow factor, low
 #                      cancellation. Diagnostics show bias < 8e-06 Ha
@@ -342,12 +342,19 @@ _FULL_PRECISION: dict[str, str] = {
 # unacceptable bias on E_L for ~32-electron systems, OR the
 # kernel is cheap enough that fp32 is not worth the bias:
 #
-#   ao_lap        - analytic Laplacian kernel for spherical/Cartesian AOs
-#                   contains catastrophic cancellation (``4 Z² r² − 6 Z``
-#                   and ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``).
+#   ao_grad_lap   - analytic gradient + Laplacian kernel for spherical/
+#                   Cartesian AOs.  Lap arithmetic contains catastrophic
+#                   cancellation (``4 Z² r² − 6 Z`` and
+#                   ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``).
 #                   diag_07 showed lap=fp32 alone yields max|dF| ≈ 1.9
 #                   Ha/bohr on N₂ (scale=0.3), reproducing the entire
-#                   bias of grad+lap=fp32. fp64 mandatory.
+#                   bias of grad+lap=fp32. fp64 mandatory.  This zone
+#                   merges the historical ``ao_grad`` (which was safe at
+#                   fp32 in isolation) with ``ao_lap`` because the fused
+#                   ``compute_AOs_value_grad_lap`` kernel evaluates
+#                   ``exp / pow / phi / S_l_m`` once and reuses it across
+#                   grad and lap; running the shared path at fp32 would
+#                   break the lap output.
 #   coulomb       - sum of 1/r + ECP spherical quadrature.  Cheap
 #                   (O(N_e^2) el-el + O(N_e * N_nuc) el-ion, vs
 #                   O(N_e * N_ao) AO eval) but contributes the
@@ -376,8 +383,9 @@ _FULL_PRECISION: dict[str, str] = {
 _MIXED_PRECISION: dict[str, str] = {
     # atomic_orbital.py
     "ao_eval": "float32",  # low risk (heavy kernel)
-    "ao_grad": "float32",  # low risk (smooth grad kernel; bias < 8e-3 Ha/bohr atomic force)
-    "ao_lap": "float64",  # high risk (catastrophic cancellation in 4Z²r²-6Z terms)
+    "ao_grad_lap": "float64",  # high risk (catastrophic cancellation in 4Z²r²-6Z terms;
+    # unified zone — historical ao_grad was safe at fp32 but is merged with ao_lap so
+    # the fused compute_AOs_value_grad_lap kernel can share one heavy kernel at fp64)
     # molecular_orbital.py
     "mo_eval": "float64",  # high risk (feeds det_eval)
     "mo_grad": "float64",  # high risk

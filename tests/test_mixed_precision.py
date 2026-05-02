@@ -188,16 +188,16 @@ class TestAODtype:
         )
 
     def test_compute_AOs_grad_output_dtype(self, h2_data):
-        """compute_AOs_grad must return ao_grad zone dtype."""
+        """compute_AOs_grad must return ao_grad_lap zone dtype."""
         grad_x, grad_y, grad_z = compute_AOs_grad(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype_jnp("ao_grad")
+        expected = get_dtype_jnp("ao_grad_lap")
         for name, arr in [("grad_x", grad_x), ("grad_y", grad_y), ("grad_z", grad_z)]:
             assert arr.dtype == expected, f"compute_AOs_grad {name} dtype is {arr.dtype}, expected {expected}."
 
     def test_compute_AOs_laplacian_output_dtype(self, h2_data):
-        """compute_AOs_laplacian must return ao_lap zone dtype."""
+        """compute_AOs_laplacian must return ao_grad_lap zone dtype."""
         lap = compute_AOs_laplacian(h2_data["aos_data"], h2_data["r_up"])
-        expected = get_dtype_jnp("ao_lap")
+        expected = get_dtype_jnp("ao_grad_lap")
         assert lap.dtype == expected, f"compute_AOs_laplacian dtype is {lap.dtype}, expected {expected}."
 
 
@@ -426,11 +426,11 @@ class TestAOSpheDtype:
     def test_compute_AOs_sphe_grad_output_dtype(self, h2_sphe_data):
         gx, gy, gz = compute_AOs_grad(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
         for name, arr in [("grad_x", gx), ("grad_y", gy), ("grad_z", gz)]:
-            _assert_dtype(arr, get_dtype_jnp("ao_grad"), f"compute_AOs_grad sphe {name}")
+            _assert_dtype(arr, get_dtype_jnp("ao_grad_lap"), f"compute_AOs_grad sphe {name}")
 
     def test_compute_AOs_sphe_laplacian_output_dtype(self, h2_sphe_data):
         lap = compute_AOs_laplacian(h2_sphe_data["aos_data"], h2_sphe_data["r_up"])
-        _assert_dtype(lap, get_dtype_jnp("ao_lap"), "compute_AOs_laplacian (sphe)")
+        _assert_dtype(lap, get_dtype_jnp("ao_grad_lap"), "compute_AOs_laplacian (sphe)")
 
 
 class TestMOExtendedDtype:

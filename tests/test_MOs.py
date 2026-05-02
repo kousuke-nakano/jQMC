@@ -32,6 +32,7 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import os
 import sys
 from pathlib import Path
 
@@ -61,9 +62,11 @@ from jqmc.molecular_orbital import (  # noqa: E402
     compute_MOs,
     compute_MOs_grad,
     compute_MOs_laplacian,
+    compute_MOs_value_grad_lap,
 )
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
+from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min  # noqa: E402
 from jqmc.structure import Structure_data  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -454,8 +457,8 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad (fp32 in mixed) -> mo_grad (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad", "mo_grad"], "strict")
+    # Path crosses ao_grad_lap (fp64) -> mo_grad (fp64); use min.
+    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
     assert not np.any(np.isnan(np.asarray(grad_x_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_x_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol, rtol=rtol)
@@ -522,8 +525,8 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_lap (fp64) -> mo_lap (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_lap", "mo_lap"], "strict")
+    # Path crosses ao_grad_lap (fp64) -> mo_lap (fp64); use min.
+    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_lap_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_lap_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol, rtol=rtol)
@@ -603,8 +606,8 @@ def test_MOs_sphe_to_cart():
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
 
-    # grad path crosses ao_grad (fp32 in mixed) -> mo_grad.
-    atol_g, rtol_g = get_tolerance_min(["ao_grad", "mo_grad"], "strict")
+    # grad path crosses ao_grad_lap (fp64) -> mo_grad.
+    atol_g, rtol_g = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in second argument"
@@ -613,8 +616,8 @@ def test_MOs_sphe_to_cart():
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
 
-    # lap path crosses ao_lap (fp64) -> mo_lap (fp64).
-    atol_l, rtol_l = get_tolerance_min(["ao_lap", "mo_lap"], "strict")
+    # lap path crosses ao_grad_lap (fp64) -> mo_lap (fp64).
+    atol_l, rtol_l = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol_l, rtol=rtol_l)
@@ -710,8 +713,8 @@ def test_MOs_cart_to_sphe():
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
 
-    # grad path crosses ao_grad (fp32 in mixed) -> mo_grad.
-    atol_g, rtol_g = get_tolerance_min(["ao_grad", "mo_grad"], "strict")
+    # grad path crosses ao_grad_lap (fp64) -> mo_grad.
+    atol_g, rtol_g = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in second argument"
@@ -720,11 +723,93 @@ def test_MOs_cart_to_sphe():
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
 
-    # lap path crosses ao_lap (fp64) -> mo_lap (fp64).
-    atol_l, rtol_l = get_tolerance_min(["ao_lap", "mo_lap"], "strict")
+    # lap path crosses ao_grad_lap (fp64) -> mo_lap (fp64).
+    atol_l, rtol_l = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol_l, rtol=rtol_l)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    [
+        "water_ccecp_ccpvqz.h5",  # spherical
+        "H2_ae_ccpvdz_cart.h5",  # Cartesian
+        "N_ae_ccpvdz_cart.h5",
+    ],
+)
+def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
+    """Fused ``compute_MOs_value_grad_lap`` matches the standalone APIs.
+
+    All outputs (val/grad/lap) are bounded by ULP-level differences in
+    the ``mo_eval`` / ``ao_eval`` zones: the fused MO function applies
+    the same ``mo_coefficients @ ao_*`` matmul as the standalone kernels,
+    but XLA may reassociate the upstream FMA chains across the different
+    ``@jit`` boundaries.
+    """
+    parsed = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    _structure, _aos, mos_data_up, *_rest = parsed
+
+    rng = np.random.default_rng(20260430)
+    r_carts = (rng.standard_normal((6, 3)) * 1.5).astype(np.float64)
+
+    val_f, gx_f, gy_f, gz_f, lap_f = compute_MOs_value_grad_lap(mos_data=mos_data_up, r_carts=r_carts)
+    val_s = compute_MOs(mos_data=mos_data_up, r_carts=r_carts)
+    gx_s, gy_s, gz_s = compute_MOs_grad(mos_data=mos_data_up, r_carts=r_carts)
+    lap_s = compute_MOs_laplacian(mos_data=mos_data_up, r_carts=r_carts)
+
+    for arr in (val_f, gx_f, gy_f, gz_f, lap_f, val_s, gx_s, gy_s, gz_s, lap_s):
+        assert not np.any(np.isnan(np.asarray(arr)))
+
+    # All outputs share the mo_eval/ao_eval zone tolerance; XLA may
+    # reassociate FMA chains across @jit boundaries producing strictly
+    # ULP-level differences.
+    atol_val, rtol_val = get_tolerance_min(["ao_eval", "mo_eval"], "strict")
+    np.testing.assert_allclose(np.asarray(gx_f), np.asarray(gx_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(gy_f), np.asarray(gy_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(gz_f), np.asarray(gz_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(val_f), np.asarray(val_s), atol=atol_val, rtol=rtol_val)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    [
+        "water_ccecp_ccpvqz.h5",
+        "H2_ae_ccpvdz_cart.h5",
+    ],
+)
+def test_fused_MOs_dtypes_match_zones(trexio_file: str):
+    """``compute_MOs_value_grad_lap`` outputs are pinned to their zones.
+
+    val ↔ ``mo_eval`` (fp32 mixed / fp64 full); gx/gy/gz ↔ ``mo_grad``
+    (fp64); lap ↔ ``mo_lap`` (fp64).
+    """
+    parsed = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    _structure, _aos, mos_data_up, *_rest = parsed
+
+    rng = np.random.default_rng(20260430)
+    r_carts = (rng.standard_normal((4, 3)) * 1.5).astype(np.float64)
+    val_f, gx_f, gy_f, gz_f, lap_f = compute_MOs_value_grad_lap(mos_data=mos_data_up, r_carts=r_carts)
+
+    eval_dtype = get_dtype_jnp("mo_eval")
+    grad_dtype = get_dtype_jnp("mo_grad")
+    lap_dtype = get_dtype_jnp("mo_lap")
+    assert val_f.dtype == eval_dtype, f"val.dtype = {val_f.dtype}, expected {eval_dtype}"
+    assert gx_f.dtype == grad_dtype, f"gx.dtype = {gx_f.dtype}, expected {grad_dtype}"
+    assert gy_f.dtype == grad_dtype, f"gy.dtype = {gy_f.dtype}, expected {grad_dtype}"
+    assert gz_f.dtype == grad_dtype, f"gz.dtype = {gz_f.dtype}, expected {grad_dtype}"
+    assert lap_f.dtype == lap_dtype, f"lap.dtype = {lap_f.dtype}, expected {lap_dtype}"
 
     jax.clear_caches()
 

@@ -69,7 +69,11 @@ from .determinant import (
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
 )
-from .jastrow_factor import _compute_ratio_Jastrow_part_split_spin, compute_Jastrow_part
+from .jastrow_factor import (
+    Jastrow_three_body_streaming_state,
+    _compute_ratio_Jastrow_part_split_spin,
+    compute_Jastrow_part,
+)
 from .structure import (
     Structure_data,
     _find_nearest_nucleus_indices_jnp,
@@ -1375,8 +1379,13 @@ def compute_ecp_non_local_parts_nearest_neighbors(
         powers = power_all[i_atom_lists]
 
         def _V_l_mapped(rel, ang_mom, exponent, coefficient, power):
+            # NOTE: see compute_ecp_non_local_parts_nearest_neighbors_fast_update
+            # below for the rationale — `jax.ops.segment_sum` inside vmap(vmap(...))
+            # lowers to a 4096*32*1*L-iter while_loop on GPU. For small L
+            # (typically 2-3) a masked dense reduce is dramatically faster.
             V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
-            return jax.ops.segment_sum(V_l_vmapped, ang_mom, num_segments=global_max_ang_mom_plus_1)
+            mask = ang_mom[:, None] == jnp.arange(global_max_ang_mom_plus_1)[None, :]
+            return jnp.where(mask, V_l_vmapped[:, None], 0.0).sum(axis=0)
 
         V_l_mapped = vmap(vmap(_V_l_mapped, in_axes=(0, 0, 0, 0, 0)))(rels, ang_moms, exponents, coefficients, powers)
 
@@ -1476,6 +1485,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     NN: int = NN_default,
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
+    j3_state: "Jastrow_three_body_streaming_state | None" = None,
 ) -> tuple[list, list, list, float]:
     """Fast-update variant of non-local ECP contributions (nearest neighbors).
 
@@ -1492,6 +1502,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         NN (int): Number of nearest nuclei to include for each electron.
         Nv (int): Number of quadrature points on the sphere.
         flag_determinant_only (bool): If True, ignore Jastrow in the wavefunction ratio.
+        j3_state: Optional cached J3 streaming auxiliaries consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to the split-spin Jastrow
+            ratio kernel so it can skip per-call ``aos_*_old``/``W``/``U``/cross_vec
+            recomputation. Use the value carried in the projection's
+            ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
+            the original 1-shot path used by observation/MCMC code.
 
     Returns:
         tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
@@ -1609,8 +1625,16 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         powers = power_all[i_atom_lists]
 
         def _V_l_mapped(rel, ang_mom, exponent, coefficient, power):
+            # NOTE: previously `jax.ops.segment_sum(V_l_vmapped, ang_mom,
+            # num_segments=global_max_ang_mom_plus_1)`. Inside the outer
+            # vmap(vmap(...)) the scatter was lowered to a 1-element-per-iter
+            # GPU while_loop with batch dim flattened to 4096*32*1*L =
+            # ~262k iters/call, dominating LRDMC launch storm (see
+            # work/05nvidia-nsight/analysis.md §13). For small L (typically 2-3
+            # for cc-ECP) a masked dense reduce avoids the scatter entirely.
             V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
-            return jax.ops.segment_sum(V_l_vmapped, ang_mom, num_segments=global_max_ang_mom_plus_1)
+            mask = ang_mom[:, None] == jnp.arange(global_max_ang_mom_plus_1)[None, :]
+            return jnp.where(mask, V_l_vmapped[:, None], 0.0).sum(axis=0)
 
         V_l_mapped = vmap(vmap(_V_l_mapped, in_axes=(0, 0, 0, 0, 0)))(rels, ang_moms, exponents, coefficients, powers)
         V_l_dup = jnp.repeat(V_l_mapped[:, :, :, None], grid_points.shape[0], axis=3)
@@ -1657,6 +1681,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             old_r_dn_carts=r_dn_carts,
             new_r_up_shifted=up_mesh_r_up,
             new_r_dn_shifted=dn_mesh_r_dn,
+            j3_state=j3_state,
         )
         jastrow_ratio = jnp.asarray(jastrow_ratio, dtype=dtype_jnp)
         wf_ratio_all = det_ratio * jastrow_ratio
@@ -1767,8 +1792,15 @@ def compute_ecp_non_local_parts_all_pairs(
     # start = time.perf_counter()
     nucleus_index_non_local_part = np.array(coulomb_potential_data._nucleus_index_non_local_part, dtype=np.int32)
     num_segments = len(set(coulomb_potential_data._nucleus_index_non_local_part))
-    V_ecp_up = jax.ops.segment_sum(V_ecp_up, nucleus_index_non_local_part, num_segments=num_segments)
-    V_ecp_dn = jax.ops.segment_sum(V_ecp_dn, nucleus_index_non_local_part, num_segments=num_segments)
+    # NOTE: previously two `jax.ops.segment_sum(..., num_segments=num_segments)`.
+    # Replaced with a masked dense reduce (matmul over the kr-pair axis) so the
+    # XLA scatter-pathology that bites V_l (see compute_ecp_non_local_parts_nearest_neighbors_fast_update
+    # and analysis.md §13/§14) cannot resurface here. n_kr_pairs and num_segments
+    # are both small (~tens), so the dense reduce is essentially free.
+    nucleus_index_non_local_part_jnp = jnp.asarray(nucleus_index_non_local_part)
+    _aggregator_mask = nucleus_index_non_local_part_jnp[:, None] == jnp.arange(num_segments)[None, :]
+    V_ecp_up = jnp.einsum("ks,k...->s...", _aggregator_mask.astype(V_ecp_up.dtype), V_ecp_up)
+    V_ecp_dn = jnp.einsum("ks,k...->s...", _aggregator_mask.astype(V_ecp_dn.dtype), V_ecp_dn)
     # end = time.perf_counter()
     # logger.info(f"Segment sum elapsed Time = {(end-start)*1e3:.3f} msec.")
 
