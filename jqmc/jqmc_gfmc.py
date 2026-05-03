@@ -1507,6 +1507,13 @@ class GFMC_t:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            if self.__use_swct:
+                # Warm up SWCT vmap callables here so the very first branching
+                # step that consumes them does not pay JIT compile time.
+                _ = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+                _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
             end_init_force = time.perf_counter()
             logger.info("End compilation of force gradient functions.")
             logger.info(f"Elapsed Time = {end_init_force - start_init_force:.2f} sec.")
@@ -1514,6 +1521,138 @@ class GFMC_t:
 
         # Main branching loop.
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
+
+        # ------------------------------------------------------------------
+        # Pre-build the per-branching projection driver. Defined ONCE here
+        # (outside the ``for i_branching`` loop) so that:
+        #   * The Python closure objects ``_body_t`` / ``_body_t_streaming``
+        #     are stable across iterations -> the implicit jit cache key
+        #     for ``lax.while_loop`` hits after the first compile.
+        #   * Closing over ``self.__random_discretized_mesh``,
+        #     ``self.__non_local_move``, ``self.__alat``, and
+        #     ``self.__hamiltonian_data`` is safe because none of them
+        #     change between branching steps within a single ``run()``.
+        # If these were defined inside the per-branching loop, every step
+        # would create a fresh function identity and trigger a full
+        # re-trace + re-compile (causing ~7 s/step on H100).
+        # ------------------------------------------------------------------
+        def _cond_t(carry):
+            tau_left = carry[2]
+            return jnp.max(tau_left) > 0.0
+
+        _body_vmap_t = vmap(
+            _projection_t,
+            in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None),
+        )
+
+        def _body_t(carry):
+            (_, pcl, tll, wll, ru, rd, Ainv, key, _) = carry
+            return _body_vmap_t(
+                pcl,
+                tll,
+                wll,
+                ru,
+                rd,
+                Ainv,
+                key,
+                self.__random_discretized_mesh,
+                self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
+            )
+
+        @jit
+        def _run_projection_loop(pcl, tll, wll, ru, rd, Ainv, key):
+            init_carry = _body_vmap_t(
+                pcl,
+                tll,
+                wll,
+                ru,
+                rd,
+                Ainv,
+                key,
+                self.__random_discretized_mesh,
+                self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
+            )
+            return lax.while_loop(_cond_t, _body_t, init_carry)
+
+        if use_streaming:
+            _body_vmap_t_streaming = vmap(
+                _projection_t_streaming,
+                in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None),
+            )
+
+            def _body_t_streaming(carry):
+                (_, pcl, tll, wll, ru, rd, Ainv, ks, key, _) = carry
+                return _body_vmap_t_streaming(
+                    pcl,
+                    tll,
+                    wll,
+                    ru,
+                    rd,
+                    Ainv,
+                    key,
+                    ks,
+                    self.__random_discretized_mesh,
+                    self.__non_local_move,
+                    self.__alat,
+                    self.__hamiltonian_data,
+                )
+
+            @jit
+            def _run_projection_loop_streaming(pcl, tll, wll, ru, rd, Ainv, key, ks):
+                init_carry = _body_vmap_t_streaming(
+                    pcl,
+                    tll,
+                    wll,
+                    ru,
+                    rd,
+                    Ainv,
+                    key,
+                    ks,
+                    self.__random_discretized_mesh,
+                    self.__non_local_move,
+                    self.__alat,
+                    self.__hamiltonian_data,
+                )
+                return lax.while_loop(_cond_t, _body_t_streaming, init_carry)
+
+        # ------------------------------------------------------------------
+        # Warm up the lax.while_loop driver(s) via AOT compilation, so that
+        # the first ``branching step`` does NOT include compile time.
+        # ``.lower(*args).compile()`` traces & compiles without executing,
+        # so walker state / RNG keys are not consumed.
+        # ------------------------------------------------------------------
+        start_warmup = time.perf_counter()
+        logger.info("Start compilation of the GFMC projection while_loop driver.")
+        logger.info("  Compilation is in progress...")
+        _run_projection_loop.lower(
+            projection_counter_list,
+            tau_left_list,
+            w_L_list,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+            self.__latest_A_old_inv,
+            self.__jax_PRNG_key_list,
+        ).compile()
+        if use_streaming:
+            _run_projection_loop_streaming.lower(
+                projection_counter_list,
+                tau_left_list,
+                w_L_list,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
+                self.__jax_PRNG_key_list,
+                _init_kinetic_state_list_compile,
+            ).compile()
+        end_warmup = time.perf_counter()
+        timer_projection_init += end_warmup - start_warmup
+        logger.info("End compilation of the GFMC projection while_loop driver.")
+        logger.info(f"Elapsed Time = {end_warmup - start_warmup:.2f} sec.")
+        logger.info("")
 
         logger.info("-Start branching-")
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -1577,62 +1716,68 @@ class GFMC_t:
                     self.__latest_A_old_inv,
                 )
             # projection loop
-            while True:
-                if use_streaming:
-                    (
-                        e_L_list,
-                        projection_counter_list,
-                        tau_left_list,
-                        w_L_list,
-                        self.__latest_r_up_carts,
-                        self.__latest_r_dn_carts,
-                        self.__latest_A_old_inv,
-                        kinetic_state_list,
-                        self.__jax_PRNG_key_list,
-                        latest_RTs,
-                    ) = vmap(
-                        _projection_t_streaming,
-                        in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None),
-                    )(
-                        projection_counter_list,
-                        tau_left_list,
-                        w_L_list,
-                        self.__latest_r_up_carts,
-                        self.__latest_r_dn_carts,
-                        self.__latest_A_old_inv,
-                        self.__jax_PRNG_key_list,
-                        kinetic_state_list,
-                        self.__random_discretized_mesh,
-                        self.__non_local_move,
-                        self.__alat,
-                        self.__hamiltonian_data,
-                    )
-                else:
-                    (
-                        e_L_list,
-                        projection_counter_list,
-                        tau_left_list,
-                        w_L_list,
-                        self.__latest_r_up_carts,
-                        self.__latest_r_dn_carts,
-                        self.__latest_A_old_inv,
-                        self.__jax_PRNG_key_list,
-                        latest_RTs,
-                    ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
-                        projection_counter_list,
-                        tau_left_list,
-                        w_L_list,
-                        self.__latest_r_up_carts,
-                        self.__latest_r_dn_carts,
-                        self.__latest_A_old_inv,
-                        self.__jax_PRNG_key_list,
-                        self.__random_discretized_mesh,
-                        self.__non_local_move,
-                        self.__alat,
-                        self.__hamiltonian_data,
-                    )
-                if np.max(tau_left_list) <= 0.0:
-                    break
+            #
+            # The previous implementation was a Python ``while True`` that
+            # dispatched ``vmap(_projection_t)`` from the host once per
+            # projection step and broke on ``np.max(tau_left_list) <= 0``.
+            # That ``np.max`` forces a host-side jax->numpy materialization,
+            # which blocks on the GPU once per step (so 27 projections =>
+            # 27 host syncs and 27 jit dispatches per branching). On H100
+            # this dominates wall time for small systems (e.g. 01water:
+            # ~4.5 ms/step vs <0.5 ms/step measured for GFMC_n which uses
+            # ``lax.fori_loop``). We replace it with ``lax.while_loop`` so
+            # the entire projection loop is captured into a single jit graph
+            # (CUDA-graph friendly) and only one host sync happens at the
+            # end via ``block_until_ready`` below. The cond is evaluated on
+            # device (``jnp.max(tau_left) > 0.0``).
+            #
+            # The driver functions ``_run_projection_loop_*`` are defined
+            # **outside** this ``for i_branching`` loop (see above) so the
+            # jit cache hits after the first compile; defining them here
+            # would create a fresh Python closure each branching and force
+            # a re-trace + re-compile per step (catastrophic slowdown).
+            if use_streaming:
+                (
+                    e_L_list,
+                    projection_counter_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                    kinetic_state_list,
+                    self.__jax_PRNG_key_list,
+                    latest_RTs,
+                ) = _run_projection_loop_streaming(
+                    projection_counter_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                    self.__jax_PRNG_key_list,
+                    kinetic_state_list,
+                )
+            else:
+                (
+                    e_L_list,
+                    projection_counter_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                    self.__jax_PRNG_key_list,
+                    latest_RTs,
+                ) = _run_projection_loop(
+                    projection_counter_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                    self.__jax_PRNG_key_list,
+                )
 
             # sync. jax arrays computations.
             e_L_list.block_until_ready()
@@ -5579,6 +5724,13 @@ class GFMC_n:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            if self.__use_swct:
+                # Warm up SWCT vmap callables so they are not JIT-compiled
+                # inside the main MCMC loop.
+                _ = _jit_vmap_swct_omega_n(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_omega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+                _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
