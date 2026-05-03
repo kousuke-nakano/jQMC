@@ -1611,21 +1611,39 @@ def _compute_ratio_determinant_part_rank1_update(
     orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts).astype(dtype_jnp)
     orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts).astype(dtype_jnp)
 
-    # Batched AO for moved electrons (up) -> rows
+    # Batched AO for moved electrons (up) -> rows.
+    #
+    # R3 (associativity): the chain is
+    #   row_paired = (orb_up_new^T @ lambda_paired) @ orb_dn_old.
+    # Naively materialising ``orb_up_new^T @ lambda_paired`` produces a
+    # ``(G, n_orb_dn)`` intermediate that is enormous on the ECP / discretized
+    # kinetic mesh (G ≈ walker * Nv * NN or walker * 6 * n_elec, easily 1-100 M
+    # rows for f64 at GH200 scale).  Pre-contracting on the small side instead,
+    #   M_paired := lambda_paired @ orb_dn_old   # (n_orb_up, N_dn)
+    #   row_paired = orb_up_new^T @ M_paired     # (G, N_dn)
+    # turns the big middle gemm into a small ``(n_orb_up, n_orb_dn) x (n_orb_dn, N_dn)``
+    # constant-size product (executed once per walker) followed by a single
+    # ``(G, n_orb_up) x (n_orb_up, N_dn)`` gemm whose output is the final
+    # small ``(G, N_dn)`` row block.  Roughly (n_orb + N) / N FLOPs are saved
+    # and the (G, n_orb) intermediate is eliminated, lifting the gemm AI from
+    # the DRAM-bound regime to ridge.
     orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat).astype(
         dtype_jnp
     )  # (n_orb_up, G)
-    tmp_up = jnp.dot(orb_up_new_batch.T, lambda_matrix_paired)  # (G, n_orb_dn)
-    row_paired = jnp.dot(tmp_up, orb_matrix_dn_old)  # (G, N_dn)
+    M_paired_up = jnp.dot(lambda_matrix_paired, orb_matrix_dn_old)  # (n_orb_up, N_dn)
+    row_paired = jnp.dot(orb_up_new_batch.T, M_paired_up)  # (G, N_dn)
     row_unpaired = jnp.dot(orb_up_new_batch.T, lambda_matrix_unpaired)  # (G, num_unpaired)
     new_rows_up = jnp.hstack([row_paired, row_unpaired])  # (G, N_up)
 
-    # Batched AO for moved electrons (dn) -> columns
+    # Batched AO for moved electrons (dn) -> columns.
+    # Same R3 reorder for the dn block:
+    #   cols = orb_up_old^T @ (lambda_paired @ orb_dn_new) -> (orb_up_old^T @ lambda_paired) @ orb_dn_new.
+    # ``M_dn`` has shape ``(N_up, n_orb_dn)`` (small) instead of ``(n_orb_up, G)``.
     orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat).astype(
         dtype_jnp
     )  # (n_orb_dn, G)
-    w_batch = jnp.dot(lambda_matrix_paired, orb_dn_new_batch)  # (n_orb_up, G)
-    cols = jnp.dot(orb_matrix_up_old.T, w_batch)  # (N_up, G)
+    M_paired_dn = jnp.dot(orb_matrix_up_old.T, lambda_matrix_paired)  # (N_up, n_orb_dn)
+    cols = jnp.dot(M_paired_dn, orb_dn_new_batch)  # (N_up, G)
     new_cols_dn = cols.T  # (G, N_up)
 
     # rank-1 determinant ratios for up-move grids and dn-move grids.
@@ -1723,11 +1741,19 @@ def _compute_ratio_determinant_part_split_spin(
     r_up_new_flat = jnp.take_along_axis(new_r_up_shifted, idx_up[:, None, None], axis=1).reshape(-1, 3)
 
     # Only evaluate up-spin MOs for the moved electron positions.
+    #
+    # R3 (associativity): pre-contract on the small side
+    #   M_paired := lambda_paired @ orb_dn_old   # (n_orb_up, N_dn)
+    # so the chain ``(orb_up_new^T @ lambda_paired) @ orb_dn_old`` becomes
+    #   row_paired = orb_up_new^T @ M_paired     # (G_up, N_dn)
+    # eliminating the (G_up, n_orb_dn) middle intermediate. See the matching
+    # comment in ``_compute_ratio_determinant_part_rank1_update`` for the
+    # GH200 motivation (DRAM-bound pattern C).
     orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat).astype(
         dtype_jnp
     )  # (n_orb_up, G_up)
-    tmp_up = jnp.dot(orb_up_new_batch.T, lambda_matrix_paired)  # (G_up, n_orb_dn)
-    row_paired = jnp.dot(tmp_up, orb_matrix_dn_old)  # (G_up, N_dn)
+    M_paired_up = jnp.dot(lambda_matrix_paired, orb_matrix_dn_old)  # (n_orb_up, N_dn)
+    row_paired = jnp.dot(orb_up_new_batch.T, M_paired_up)  # (G_up, N_dn)
     row_unpaired = jnp.dot(orb_up_new_batch.T, lambda_matrix_unpaired)  # (G_up, num_unpaired)
     new_rows_up = jnp.hstack([row_paired, row_unpaired])  # (G_up, N_up)
 
@@ -1743,11 +1769,13 @@ def _compute_ratio_determinant_part_split_spin(
     r_dn_new_flat = jnp.take_along_axis(new_r_dn_shifted, idx_dn[:, None, None], axis=1).reshape(-1, 3)
 
     # Only evaluate dn-spin MOs for the moved electron positions.
+    # R3 (associativity): pre-contract ``M_dn := orb_up_old^T @ lambda_paired``
+    # (N_up, n_orb_dn), then ``cols.T = orb_dn_new^T @ M_dn^T = (M_dn @ orb_dn_new).T``.
     orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat).astype(
         dtype_jnp
     )  # (n_orb_dn, G_dn)
-    w_batch = jnp.dot(lambda_matrix_paired, orb_dn_new_batch)  # (n_orb_up, G_dn)
-    new_cols_dn = jnp.dot(orb_matrix_up_old.T, w_batch).T  # (G_dn, N_up)
+    M_paired_dn = jnp.dot(orb_matrix_up_old.T, lambda_matrix_paired)  # (N_up, n_orb_dn)
+    new_cols_dn = jnp.dot(M_paired_dn, orb_dn_new_batch).T  # (G_dn, N_up)
 
     A_row_for_dn = jnp.take(A_old_inv_z, idx_dn, axis=0)  # (G_dn, N_up)
     det_ratio_dn_block = jnp.sum(A_row_for_dn * new_cols_dn, axis=1)  # (G_dn,)
