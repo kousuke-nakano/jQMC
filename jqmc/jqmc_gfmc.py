@@ -715,9 +715,13 @@ class GFMC_t:
             )
             return R
 
-        # Note: This jit drastically accelarates the computation!!
-        @partial(jit, static_argnums=(7, 8, 9))
-        def _projection_t(
+        # Shared core of legacy and streaming GFMC_t projection. Two thin
+        # wrappers (`_projection_t` legacy / `_projection_t_streaming`) below
+        # supply the per-electron continuum kinetic energy and the optional
+        # ``j3_state`` (None for legacy, ``kinetic_state.j3_state`` for
+        # streaming) and call this body. Mirrors the ``_body_step_core`` /
+        # ``_body_fun_n`` / ``_body_fun_n_streaming`` split in GFMC_n.
+        def _projection_t_core(
             projection_counter: int,
             tau_left: float,
             w_L: float,
@@ -725,37 +729,26 @@ class GFMC_t:
             r_dn_carts: jnpt.ArrayLike,
             A_old_inv: jnpt.ArrayLike,
             jax_PRNG_key: jnpt.ArrayLike,
+            diagonal_kinetic_continuum_elements_up: jnpt.ArrayLike,
+            diagonal_kinetic_continuum_elements_dn: jnpt.ArrayLike,
+            j3_state,
             random_discretized_mesh: bool,
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
         ):
-            """Do projection, compatible with vmap.
+            """Single GFMC_t projection step, parameterized by per-electron continuum kinetic energy.
 
-            Do projection for a set of (r_up_cart, r_dn_cart).
+            Extracted from the original ``_projection_t`` so that legacy and
+            streaming wrappers can share the body. The caller is responsible
+            for supplying the continuum per-electron kinetic energies (legacy:
+            ``compute_kinetic_energy_all_elements_fast_update``; streaming:
+            ``_kinetic_energy_from_streaming_state``) and ``j3_state`` (legacy:
+            None; streaming: the maintained J3 sub-state).
 
-            Args:
-                projection_counter(int): the counter of projection steps
-                tau_left (float): left projection time
-                w_L (float): weight before projection
-                r_up_carts (N_e^up, 3) before projection
-                r_dn_carts (N_e^dn, 3) after projection
-                jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
-                random_discretized_mesh (bool): Flag for the random discretization mesh in the kinetic part and the non-local part of ECPs.
-                non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
-                alat (float): discretized grid length (bohr)
-                hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-
-            Returns:
-                e_L (float): e_L after the final projection.
-                projection_counter(int): the counter of projection steps
-                tau_left (float): left projection time
-                w_L (float): weight after the final projection
-                r_up_carts (N_e^up, 3) after the final projection
-                r_dn_carts (N_e^dn, 3) after the final projection
-                A_old_inv: cached inverse geminal matrix after the final projection
-                jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
-                R.T: rotation matrix used for the discretized mesh
+            Returns the same tuple as the legacy ``_projection_t`` plus three
+            extra fields (``has_up_move``, ``up_index``, ``dn_index``) that the
+            streaming wrapper uses to drive ``_advance_kinetic_energy_*``.
             """
             # projection counter
             projection_counter = lax.cond(
@@ -769,15 +762,9 @@ class GFMC_t:
             # compute diagonal elements, kinetic part
             diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
-            # compute continuum kinetic energy
-            diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_fast_update(
-                    wavefunction_data=hamiltonian_data.wavefunction_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                    geminal_inverse=A_old_inv,
-                )
-            )
+            # continuum kinetic energy is supplied by the wrapper (legacy:
+            # ``compute_kinetic_energy_all_elements_fast_update``; streaming:
+            # ``_kinetic_energy_from_streaming_state``).
 
             # generate a random rotation matrix
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -798,6 +785,7 @@ class GFMC_t:
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
+                    j3_state=j3_state,
                 )
             )
             # spin-filp
@@ -920,6 +908,7 @@ class GFMC_t:
                             flag_determinant_only=False,
                             A_old_inv=A_old_inv,
                             RT=R.T,
+                            j3_state=j3_state,
                         )
                     )
 
@@ -938,6 +927,7 @@ class GFMC_t:
                             flag_determinant_only=True,
                             A_old_inv=A_old_inv,
                             RT=R.T,
+                            j3_state=j3_state,
                         )
                     )
 
@@ -950,6 +940,7 @@ class GFMC_t:
                         old_r_dn_carts=r_dn_carts,
                         new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
                         new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                        j3_state=j3_state,
                     )
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
@@ -1110,7 +1101,121 @@ class GFMC_t:
                 A_new_inv,
                 jax_PRNG_key,
                 R.T,
+                has_up_move,
+                up_index,
+                dn_index,
             )
+
+        # Note: This jit drastically accelarates the computation!!
+        @partial(jit, static_argnums=(7, 8, 9))
+        def _projection_t(
+            projection_counter: int,
+            tau_left: float,
+            w_L: float,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            A_old_inv: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
+            random_discretized_mesh: bool,
+            non_local_move: bool,
+            alat: float,
+            hamiltonian_data: Hamiltonian_data,
+        ):
+            """Legacy GFMC_t projection step (no streaming kinetic-energy state).
+
+            Recomputes the per-electron continuum kinetic energy fresh each step
+            via :func:`compute_kinetic_energy_all_elements_fast_update` and
+            delegates the rest of the body to :func:`_projection_t_core`.
+            """
+            ke_up, ke_dn = compute_kinetic_energy_all_elements_fast_update(
+                wavefunction_data=hamiltonian_data.wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                geminal_inverse=A_old_inv,
+            )
+            (e_L, pc, tl, wL, ru, rd, Ainv, key, RT, _has_up, _up_idx, _dn_idx) = _projection_t_core(
+                projection_counter,
+                tau_left,
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                A_old_inv,
+                jax_PRNG_key,
+                ke_up,
+                ke_dn,
+                None,  # j3_state
+                random_discretized_mesh,
+                non_local_move,
+                alat,
+                hamiltonian_data,
+            )
+            return (e_L, pc, tl, wL, ru, rd, Ainv, key, RT)
+
+        @partial(jit, static_argnums=(8, 9, 10))
+        def _projection_t_streaming(
+            projection_counter: int,
+            tau_left: float,
+            w_L: float,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            A_old_inv: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
+            kinetic_state: Kinetic_streaming_state,
+            random_discretized_mesh: bool,
+            non_local_move: bool,
+            alat: float,
+            hamiltonian_data: Hamiltonian_data,
+        ):
+            """Streaming GFMC_t projection step.
+
+            Reads per-electron kinetic energies from ``kinetic_state`` instead
+            of recomputing them, threads ``kinetic_state.j3_state`` into the
+            fast-update kernels (discretized kinetic / non-local ECP / rank-1
+            Jastrow ratio), delegates the body to :func:`_projection_t_core`,
+            then advances the kinetic streaming state to the post-step
+            ``(r_up_new, r_dn_new, A_new_inv)``.
+
+            Valid only when ``jastrow_data.jastrow_nn_data is None`` (NN J3
+            has no rank-1 advance). Dispatch is Python-static at the
+            ``run()`` entry point. When ``tau_left <= 0.0`` the move is
+            suppressed (positions unchanged, A_new_inv == A_old_inv), so the
+            advance is a numerical no-op.
+            """
+            ke_up, ke_dn = _kinetic_energy_from_streaming_state(kinetic_state)
+            (e_L, pc, tl, wL, ru, rd, Ainv, key, RT, has_up, up_idx, dn_idx) = _projection_t_core(
+                projection_counter,
+                tau_left,
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                A_old_inv,
+                jax_PRNG_key,
+                ke_up,
+                ke_dn,
+                kinetic_state.j3_state,
+                random_discretized_mesh,
+                non_local_move,
+                alat,
+                hamiltonian_data,
+            )
+            moved_spin_is_up = has_up
+            moved_index = jnp.where(has_up, up_idx, dn_idx)
+            kinetic_state_new = _advance_kinetic_energy_all_elements_streaming_state(
+                wavefunction_data=hamiltonian_data.wavefunction_data,
+                state=kinetic_state,
+                moved_spin_is_up=moved_spin_is_up,
+                moved_index=moved_index,
+                r_up_carts_new=ru,
+                r_dn_carts_new=rd,
+                A_new_inv=Ainv,
+            )
+            return (e_L, pc, tl, wL, ru, rd, Ainv, kinetic_state_new, key, RT)
+
+        # Python-static dispatch: streaming is incompatible with NN three-body
+        # Jastrow (J_NN has no rank-1 advance), and offers no benefit when J3 is
+        # absent. Mirrors the GFMC_n dispatch policy.
+        jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data
+        use_streaming = jastrow_data.jastrow_nn_data is None and jastrow_data.jastrow_three_body_data is not None
 
         # projection compilation.
         start_init = time.perf_counter()
@@ -1132,6 +1237,31 @@ class GFMC_t:
             self.__alat,
             self.__hamiltonian_data,
         )
+        if use_streaming:
+            # Pre-compile the streaming variant on a fresh kinetic state so the
+            # while-loop inside the branching loop does not pay the JIT cost.
+            _init_kinetic_state_list_compile = vmap(_init_kinetic_energy_all_elements_streaming_state, in_axes=(None, 0, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
+            )
+            (_, _, _, _, _, _, _, _, _, _) = vmap(
+                _projection_t_streaming, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None)
+            )(
+                projection_counter_list,
+                tau_left_list,
+                w_L_list,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
+                self.__jax_PRNG_key_list,
+                _init_kinetic_state_list_compile,
+                self.__random_discretized_mesh,
+                self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
+            )
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -1435,31 +1565,72 @@ class GFMC_t:
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             start_projection = time.perf_counter()
+            # If streaming is enabled, build a fresh per-walker kinetic state
+            # at the start of each branching step (consistent with the freshly
+            # reset projection_counter / tau_left / w_L). The state is then
+            # advanced by ``_projection_t_streaming`` inside the while loop.
+            if use_streaming:
+                kinetic_state_list = vmap(_init_kinetic_energy_all_elements_streaming_state, in_axes=(None, 0, 0, 0))(
+                    self.__hamiltonian_data.wavefunction_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                )
             # projection loop
             while True:
-                (
-                    e_L_list,
-                    projection_counter_list,
-                    tau_left_list,
-                    w_L_list,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    self.__latest_A_old_inv,
-                    self.__jax_PRNG_key_list,
-                    latest_RTs,
-                ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
-                    projection_counter_list,
-                    tau_left_list,
-                    w_L_list,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    self.__latest_A_old_inv,
-                    self.__jax_PRNG_key_list,
-                    self.__random_discretized_mesh,
-                    self.__non_local_move,
-                    self.__alat,
-                    self.__hamiltonian_data,
-                )
+                if use_streaming:
+                    (
+                        e_L_list,
+                        projection_counter_list,
+                        tau_left_list,
+                        w_L_list,
+                        self.__latest_r_up_carts,
+                        self.__latest_r_dn_carts,
+                        self.__latest_A_old_inv,
+                        kinetic_state_list,
+                        self.__jax_PRNG_key_list,
+                        latest_RTs,
+                    ) = vmap(
+                        _projection_t_streaming,
+                        in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None),
+                    )(
+                        projection_counter_list,
+                        tau_left_list,
+                        w_L_list,
+                        self.__latest_r_up_carts,
+                        self.__latest_r_dn_carts,
+                        self.__latest_A_old_inv,
+                        self.__jax_PRNG_key_list,
+                        kinetic_state_list,
+                        self.__random_discretized_mesh,
+                        self.__non_local_move,
+                        self.__alat,
+                        self.__hamiltonian_data,
+                    )
+                else:
+                    (
+                        e_L_list,
+                        projection_counter_list,
+                        tau_left_list,
+                        w_L_list,
+                        self.__latest_r_up_carts,
+                        self.__latest_r_dn_carts,
+                        self.__latest_A_old_inv,
+                        self.__jax_PRNG_key_list,
+                        latest_RTs,
+                    ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
+                        projection_counter_list,
+                        tau_left_list,
+                        w_L_list,
+                        self.__latest_r_up_carts,
+                        self.__latest_r_dn_carts,
+                        self.__latest_A_old_inv,
+                        self.__jax_PRNG_key_list,
+                        self.__random_discretized_mesh,
+                        self.__non_local_move,
+                        self.__alat,
+                        self.__hamiltonian_data,
+                    )
                 if np.max(tau_left_list) <= 0.0:
                     break
 
