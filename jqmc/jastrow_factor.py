@@ -2637,7 +2637,13 @@ def _compute_ratio_Jastrow_part_rank1_update(
         term1 = j1_vec @ aos_p_batch  # (N,)
 
         # UP formula  -----------------------------------------------------------
-        V_up = jnp.dot(aos_p_batch.T, W_up)  # (N, N_up)
+        # Use tensordot with explicit contracting axes (n_ao = axis 0 of both
+        # operands) instead of ``aos_p_batch.T @ W_up``: under vmap on the
+        # walker axis XLA's transpose-folding does not fold the ``.T`` into
+        # the dot, materialising an explicit ~1.8 GB ``transpose`` kernel
+        # (HBM-bound, ~88-92% DRAM peak on GH200). Expressing the contraction
+        # via ``dot_general(contract=[0]x[0])`` avoids the materialisation.
+        V_up = jnp.tensordot(aos_p_batch, W_up, axes=((0,), (0,)))  # (N, N_up)
         P_up = jnp.dot(U_up, aos_p_batch)  # (N_up, N)
         Q_up_c = (idx_for_Q[:, None] < jnp.arange(num_up)[None, :]).astype(dtype_jnp)  # (N, N_up)
         Q_up_r = (idx_for_Q[:, None] > jnp.arange(num_up)[None, :]).astype(dtype_jnp)  # (N, N_up)
@@ -2647,7 +2653,8 @@ def _compute_ratio_Jastrow_part_rank1_update(
         J3_log_up = term1 + term2_up + term3_up + term4_up
 
         # DN formula  -----------------------------------------------------------
-        V_dn = jnp.dot(aos_p_batch.T, W_dn)  # (N, N_dn)
+        # See UP-formula comment above re: tensordot-vs-``.T``-then-dot.
+        V_dn = jnp.tensordot(aos_p_batch, W_dn, axes=((0,), (0,)))  # (N, N_dn)
         P_dn = jnp.dot(U_dn, aos_p_batch)  # (N_dn, N)
         Q_dn_c = (idx_for_Q[:, None] < jnp.arange(num_dn)[None, :]).astype(dtype_jnp)  # (N, N_dn)
         Q_dn_r = (idx_for_Q[:, None] > jnp.arange(num_dn)[None, :]).astype(dtype_jnp)  # (N, N_dn)
@@ -2899,7 +2906,10 @@ def _compute_ratio_Jastrow_part_split_spin(
         aos_p_up = aos_up_new_moved - aos_up_old_moved  # (n_ao, G_up)
 
         term1_up = j1_vec @ aos_p_up  # (G_up,)
-        V_up_block = jnp.dot(aos_p_up.T, W_up)  # (G_up, N_up)
+        # tensordot avoids the explicit transpose of ``aos_p_up`` (1.8 GB on
+        # GH200 ECP-nonlocal benchmark) — see ``_compute_ratio_Jastrow_part_rank1_update``
+        # for the same rewrite rationale.
+        V_up_block = jnp.tensordot(aos_p_up, W_up, axes=((0,), (0,)))  # (G_up, N_up)
         P_up_block = jnp.dot(U_up, aos_p_up)  # (N_up, G_up)
         Q_up_c = (idx_up_block[:, None] < jnp.arange(num_up)[None, :]).astype(dtype_jnp)  # (G_up, N_up)
         Q_up_r = (idx_up_block[:, None] > jnp.arange(num_up)[None, :]).astype(dtype_jnp)  # (G_up, N_up)
@@ -2915,7 +2925,8 @@ def _compute_ratio_Jastrow_part_split_spin(
         aos_p_dn = aos_dn_new_moved - aos_dn_old_moved  # (n_ao, G_dn)
 
         term1_dn = j1_vec @ aos_p_dn  # (G_dn,)
-        V_dn_block = jnp.dot(aos_p_dn.T, W_dn)  # (G_dn, N_dn)
+        # See UP-block comment re: tensordot.
+        V_dn_block = jnp.tensordot(aos_p_dn, W_dn, axes=((0,), (0,)))  # (G_dn, N_dn)
         P_dn_block = jnp.dot(U_dn, aos_p_dn)  # (N_dn, G_dn)
         Q_dn_c = (idx_dn_block[:, None] < jnp.arange(num_dn)[None, :]).astype(dtype_jnp)  # (G_dn, N_dn)
         Q_dn_r = (idx_dn_block[:, None] > jnp.arange(num_dn)[None, :]).astype(dtype_jnp)  # (G_dn, N_dn)

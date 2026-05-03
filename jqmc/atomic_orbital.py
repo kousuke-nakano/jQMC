@@ -2269,6 +2269,17 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     # (``n * x^(n-1)``, ``n(n-1) * x^(n-2)``) so the divisions and
     # ``where(base != 0)`` masks are no longer needed either. The eps is
     # therefore fully removed across the AO module.
+    #
+    # NOTE (perf, shell-wise unroll attempt 2026-05): grouping AOs by static
+    # ``(nx, ny, nz)`` triplets and emitting a direct multiply chain per
+    # group eliminates the L_MAX-deep ``where(e == k, ...)`` select tree,
+    # but the required permute-once / inverse-permute layout introduced an
+    # end-of-kernel ``inv_perm`` gather of shape ``(num_ao, n_walker,
+    # n_elec)`` (~2 GB at f64) that became the new dominant
+    # ``loop_gather_fusion_1`` kernel on GH200, slowing cart f64 from
+    # 24 ms → 41 ms (NSYS measured). The select-tree formulation below is
+    # therefore preferred until a layout that avoids the round-trip gather
+    # is found.
     P_l_nx_ny_nz_ao = (
         _int_pow_unrolled_cart(x_ao, nx_ao, L_MAX)
         * _int_pow_unrolled_cart(y_ao, ny_ao, L_MAX)
@@ -2837,7 +2848,23 @@ def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 
 @jit
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
-    """Analytic Laplacian for Cartesian AOs (contracted)."""
+    r"""Analytic Laplacian for Cartesian AOs (contracted).
+
+    Implementation note (perf, poly-after-reduce):
+        Mirrors the rewrite in ``_compute_AOs_value_grad_lap_cart``.
+        Three radial moments ``NR``, ``ZNR``, ``Z²NR`` are reduced from
+        primitive rank to AO rank, then
+
+        .. math::
+           \\nabla^2 \\phi = NR \\cdot \\nabla^2 P
+                            - 4\\, ZNR \\cdot (x \\partial_x P + y \\partial_y P + z \\partial_z P)
+                            + (4 r^2\\, Z^2NR - 6\\, ZNR) \\cdot P
+
+        is assembled at AO rank. Eliminates the
+        ``(n_walker, num_ao_prim, n_elec)`` prim-rank Laplacian
+        intermediate that previously appeared in the standalone API
+        path.
+    """
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
     # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
@@ -2848,9 +2875,6 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     c = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z = aos_data._exponents_jnp.astype(dtype_jnp)
     l = aos_data._angular_momentums_prim_jnp
-    nx = aos_data._polynominal_order_x_prim_jnp
-    ny = aos_data._polynominal_order_y_prim_jnp
-    nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop
@@ -2859,47 +2883,48 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
-    x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    r2 = jnp.sum(diff**2, axis=-1)
-    pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
+    r2_prim = jnp.sum(diff**2, axis=-1)
+    pref_prim = N[:, None] * c[:, None] * jnp.exp(-Z[:, None] * r2_prim)
 
-    # See _compute_AOs_grad_analytic_cart for the rationale of the shifted-
-    # exponent formulation. Here we additionally need
-    # ``∂²_x x^n = n(n-1) x^(n-2)``, again expressed as
-    # ``n(n-1) * x^(max(n-2, 0))``; the prefactor zeros the term for
-    # n < 2 to match the analytic limit. No divisions, no eps, no masks.
-    px = _int_pow_unrolled_cart(x, nx, L_MAX)
-    py = _int_pow_unrolled_cart(y, ny, L_MAX)
-    pz = _int_pow_unrolled_cart(z, nz, L_MAX)
-    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 1, 0), L_MAX)
-    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 1, 0), L_MAX)
-    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 1, 0), L_MAX)
-    qppx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 2, 0), L_MAX)
-    qppy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 2, 0), L_MAX)
-    qppz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 2, 0), L_MAX)
-
-    nx_b = nx[:, None].astype(dtype_jnp)
-    ny_b = ny[:, None].astype(dtype_jnp)
-    nz_b = nz[:, None].astype(dtype_jnp)
-    Npref = N[:, None] * pref
+    # Three radial moments contracted at primitive rank → reduced to AO rank.
     Z_b = Z[:, None]
-    phi = Npref * px * py * pz
-    Kx = Npref * py * pz
-    Ky = Npref * px * pz
-    Kz = Npref * px * py
+    NR_ao = _reduce_primitives_to_aos(pref_prim, aos_data)
+    ZNR_ao = _reduce_primitives_to_aos(Z_b * pref_prim, aos_data)
+    Z2NR_ao = _reduce_primitives_to_aos(Z_b * Z_b * pref_prim, aos_data)
 
-    # ∂²_x phi = K_x · [n(n-1) x^(n-2) − 4Z n x^n + (4Z² x² − 2Z) x^n]
-    # Sum over x,y,z gives the Laplacian. The (4Z² r² − 6Z) term is the
-    # collected isotropic contribution from the three (4Z² d² − 2Z) pieces.
-    lap_dup = (
-        Kx * (nx_b * (nx_b - 1.0) * qppx)
-        + Ky * (ny_b * (ny_b - 1.0) * qppy)
-        + Kz * (nz_b * (nz_b - 1.0) * qppz)
-        - 4.0 * Z_b * (x * Kx * (nx_b * qpx) + y * Ky * (ny_b * qpy) + z * Kz * (nz_b * qpz))
-        + (4.0 * Z_b * Z_b * r2 - 6.0 * Z_b) * phi
+    # AO-level coordinates.
+    R_carts_ao = aos_data._atomic_center_carts_jnp
+    diff_ao = (r_carts[None, :, :] - R_carts_ao[:, None, :]).astype(dtype_jnp)
+    x, y, z = diff_ao[..., 0], diff_ao[..., 1], diff_ao[..., 2]
+    r2_ao = jnp.sum(diff_ao**2, axis=-1)
+
+    nx_ao = jnp.asarray(aos_data.polynominal_order_x, dtype=jnp.int32)
+    ny_ao = jnp.asarray(aos_data.polynominal_order_y, dtype=jnp.int32)
+    nz_ao = jnp.asarray(aos_data.polynominal_order_z, dtype=jnp.int32)
+
+    # Static-unrolled integer powers at AO rank. See grad analog above for
+    # rationale of the shifted-exponent formulation; here we additionally
+    # need ``∂²_x x^n = n(n-1) x^(n-2)``.
+    px = _int_pow_unrolled_cart(x, nx_ao, L_MAX)
+    py = _int_pow_unrolled_cart(y, ny_ao, L_MAX)
+    pz = _int_pow_unrolled_cart(z, nz_ao, L_MAX)
+    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx_ao - 1, 0), L_MAX)
+    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny_ao - 1, 0), L_MAX)
+    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz_ao - 1, 0), L_MAX)
+    qppx = _int_pow_unrolled_cart(x, jnp.maximum(nx_ao - 2, 0), L_MAX)
+    qppy = _int_pow_unrolled_cart(y, jnp.maximum(ny_ao - 2, 0), L_MAX)
+    qppz = _int_pow_unrolled_cart(z, jnp.maximum(nz_ao - 2, 0), L_MAX)
+
+    nx_b = nx_ao[:, None].astype(dtype_jnp)
+    ny_b = ny_ao[:, None].astype(dtype_jnp)
+    nz_b = nz_ao[:, None].astype(dtype_jnp)
+
+    P = px * py * pz
+    lapP = (
+        (nx_b * (nx_b - 1.0) * qppx) * py * pz + px * (ny_b * (ny_b - 1.0) * qppy) * pz + px * py * (nz_b * (nz_b - 1.0) * qppz)
     )
-
-    lap = _reduce_primitives_to_aos(lap_dup, aos_data)
+    rdotgradP = x * (nx_b * qpx) * py * pz + y * px * (ny_b * qpy) * pz + z * px * py * (nz_b * qpz)
+    lap = NR_ao * lapP - 4.0 * ZNR_ao * rdotgradP + (4.0 * r2_ao * Z2NR_ao - 6.0 * ZNR_ao) * P
     return lap
 
 
@@ -3166,7 +3191,23 @@ def _compute_AOs_laplacian_debug(
 
 @jit
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Analytic gradients for Cartesian AOs (contracted)."""
+    r"""Analytic gradients for Cartesian AOs (contracted).
+
+    Implementation note (perf, poly-after-reduce):
+        Mirrors the rewrite in ``_compute_AOs_value_grad_lap_cart``.
+        Two radial moments ``NR = Σ_p N_p c_p e^{-Z_p r^2}`` and
+        ``ZNR = Σ_p Z_p N_p c_p e^{-Z_p r^2}`` are reduced from
+        primitive rank to AO rank, then
+
+        .. math::
+           \\partial_a \\phi = NR \\cdot \\partial_a P - 2 x_a\\, ZNR \\cdot P
+
+        is assembled at AO rank. Eliminates the
+        ``(n_walker, num_ao_prim, n_elec, 3)`` prim-rank gradient
+        intermediate (5.5 GB on cc-pVQZ C6H6) that previously dominated
+        the kinetic_disc / kinetic_continuum HLO when the standalone
+        grad API is reached (e.g. via ``compute_AOs_grad`` callers).
+    """
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
     # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
@@ -3177,9 +3218,6 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     c = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z = aos_data._exponents_jnp.astype(dtype_jnp)
     l = aos_data._angular_momentums_prim_jnp
-    nx = aos_data._polynominal_order_x_prim_jnp
-    ny = aos_data._polynominal_order_y_prim_jnp
-    nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop.
@@ -3187,38 +3225,45 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
-    x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    r2 = jnp.sum(diff**2, axis=-1)
-    pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
+    r2_prim = jnp.sum(diff**2, axis=-1)
+    pref_prim = N[:, None] * c[:, None] * jnp.exp(-Z[:, None] * r2_prim)
 
-    # Static-unrolled integer powers. The shifted exponents
-    # ``max(n - 1, 0)`` combined with the integer prefactor ``n`` express
-    # ``∂_x x^n = n x^(n-1)`` directly. For ``n == 0`` the prefactor zeros
-    # the term, matching the analytic limit; this lets us drop both the
-    # legacy AO stabilizer eps and the ``where(base != 0, n/base, 0)``
-    # safeguard, eliminating divisions from the GPU kernel.
-    px = _int_pow_unrolled_cart(x, nx, L_MAX)
-    py = _int_pow_unrolled_cart(y, ny, L_MAX)
-    pz = _int_pow_unrolled_cart(z, nz, L_MAX)
-    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 1, 0), L_MAX)
-    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 1, 0), L_MAX)
-    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 1, 0), L_MAX)
-
-    nx_b = nx[:, None].astype(dtype_jnp)
-    ny_b = ny[:, None].astype(dtype_jnp)
-    nz_b = nz[:, None].astype(dtype_jnp)
-    Npref = N[:, None] * pref
+    # Two radial moments contracted at primitive rank → reduced to AO rank.
     Z_b = Z[:, None]
-    phi = Npref * px * py * pz
+    NR_ao = _reduce_primitives_to_aos(pref_prim, aos_data)  # Σ_p pref_p
+    ZNR_ao = _reduce_primitives_to_aos(Z_b * pref_prim, aos_data)  # Σ_p Z_p pref_p
 
-    # ∂_x phi = (N pref y^(n_y) z^(n_z)) · n_x x^(n_x-1) − 2Z x · phi
-    gx_dup = Npref * py * pz * (nx_b * qpx) - 2.0 * Z_b * x * phi
-    gy_dup = Npref * px * pz * (ny_b * qpy) - 2.0 * Z_b * y * phi
-    gz_dup = Npref * px * py * (nz_b * qpz) - 2.0 * Z_b * z * phi
+    # AO-level coordinates: each AO sits on exactly one atom.
+    R_carts_ao = aos_data._atomic_center_carts_jnp
+    diff_ao = (r_carts[None, :, :] - R_carts_ao[:, None, :]).astype(dtype_jnp)
+    x, y, z = diff_ao[..., 0], diff_ao[..., 1], diff_ao[..., 2]
 
-    gx = _reduce_primitives_to_aos(gx_dup, aos_data)
-    gy = _reduce_primitives_to_aos(gy_dup, aos_data)
-    gz = _reduce_primitives_to_aos(gz_dup, aos_data)
+    # AO-rank polynomial orders (length num_ao). Static, constant-folded.
+    nx_ao = jnp.asarray(aos_data.polynominal_order_x, dtype=jnp.int32)
+    ny_ao = jnp.asarray(aos_data.polynominal_order_y, dtype=jnp.int32)
+    nz_ao = jnp.asarray(aos_data.polynominal_order_z, dtype=jnp.int32)
+
+    # Static-unrolled integer powers at AO rank. Shifted exponent
+    # ``max(n - 1, 0)`` combined with prefactor ``n`` expresses
+    # ``∂_x x^n = n x^(n-1)`` directly; for ``n == 0`` the prefactor zeros
+    # the term, matching the analytic limit (no eps, no divisions).
+    px = _int_pow_unrolled_cart(x, nx_ao, L_MAX)
+    py = _int_pow_unrolled_cart(y, ny_ao, L_MAX)
+    pz = _int_pow_unrolled_cart(z, nz_ao, L_MAX)
+    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx_ao - 1, 0), L_MAX)
+    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny_ao - 1, 0), L_MAX)
+    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz_ao - 1, 0), L_MAX)
+
+    nx_b = nx_ao[:, None].astype(dtype_jnp)
+    ny_b = ny_ao[:, None].astype(dtype_jnp)
+    nz_b = nz_ao[:, None].astype(dtype_jnp)
+
+    P = px * py * pz  # (num_ao, n_elec)
+
+    # ∂_a φ = NR · ∂_a P − 2 x_a · ZNR · P
+    gx = NR_ao * ((nx_b * qpx) * py * pz) - 2.0 * x * ZNR_ao * P
+    gy = NR_ao * (px * (ny_b * qpy) * pz) - 2.0 * y * ZNR_ao * P
+    gz = NR_ao * (px * py * (nz_b * qpz)) - 2.0 * z * ZNR_ao * P
 
     return gx, gy, gz
 
@@ -3333,12 +3378,42 @@ def compute_AOs_grad(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array
 def _compute_AOs_value_grad_lap_cart(
     aos_data: AOs_cart_data, r_carts: jnp.ndarray
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Fused value/grad/lap for Cartesian AOs (contracted).
+    r"""Fused value/grad/lap for Cartesian AOs (contracted).
 
-    Shared heavy block (``exp(-Z r^2)``, polynomial powers, ``phi``) is
-    evaluated once in the ``ao_grad_lap`` zone (fp64); only the value
-    output is downcast to ``ao_eval`` at the segment-sum site. See module
-    docstring for the full rationale.
+    Implementation note (perf, poly-after-reduce for grad/lap):
+        The angular polynomial part :math:`x^{n_x} y^{n_y} z^{n_z}` and
+        its derivatives depend only on AO-level quantum numbers, not on
+        the primitive index. Within an AO, every primitive shares the
+        same ``(n_x, n_y, n_z)`` and the same Cartesian center. Writing
+
+        .. math::
+           \\mathrm{pref}_p = N_p c_p e^{-Z_p r^2}, \\qquad
+           NR    = \\sum_p \\mathrm{pref}_p, \\qquad
+           ZNR   = \\sum_p Z_p\\, \\mathrm{pref}_p, \\qquad
+           Z^2NR = \\sum_p Z_p^2\\, \\mathrm{pref}_p,
+
+        all primitive-rank arrays disappear after three radial reductions
+        — value, grad and Laplacian then reduce to AO-rank polynomial
+        algebra:
+
+        .. math::
+           \\phi    &= NR \\cdot P                                              \\\\
+           \\partial_a \\phi &= NR \\cdot \\partial_a P - 2 x_a\\, ZNR \\cdot P   \\\\
+           \\nabla^2 \\phi   &= NR \\cdot \\nabla^2 P
+                              - 4\\, ZNR \\cdot (x \\partial_x P + y \\partial_y P + z \\partial_z P)
+                              + (4 r^2\\, Z^2NR - 6\\, ZNR) \\cdot P
+
+        Previously the kernel materialised ``phi``, ``Kx``, ``Ky``, ``Kz``
+        as four ``(n_walker, num_ao_prim, n_elec)`` tuples (~7.4 GB on
+        cc-pVQZ C6H6) and reduced each to AO rank with a separate
+        ``_reduce_primitives_to_aos``; HLO dump showed a single
+        ``loop_multiply_reduce_select_fusion`` of type
+        ``(f64[8192,880,32], f64[8192,880,32], f64[8192,880,32],
+        f64[8192,880,32])`` — the dominant DRAM consumer of the kinetic
+        energy / local energy paths. This rewrite shrinks that to one
+        prim-rank reduce per radial moment (NR / ZNR / Z²NR) and runs
+        all polynomial work at AO rank (~144 channel for C6H6 vs 880
+        prim).
     """
     dtype_eval = get_dtype_jnp("ao_eval")
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
@@ -3351,9 +3426,6 @@ def _compute_AOs_value_grad_lap_cart(
     c = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z = aos_data._exponents_jnp.astype(dtype_jnp)
     l = aos_data._angular_momentums_prim_jnp
-    nx = aos_data._polynominal_order_x_prim_jnp
-    ny = aos_data._polynominal_order_y_prim_jnp
-    nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop.
@@ -3361,60 +3433,76 @@ def _compute_AOs_value_grad_lap_cart(
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
-    x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
-    r2 = jnp.sum(diff**2, axis=-1)
-    pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
+    r2_prim = jnp.sum(diff**2, axis=-1)
+    pref_prim = N[:, None] * c[:, None] * jnp.exp(-Z[:, None] * r2_prim)
 
-    # Static-unrolled integer power avoids the XLA repeated-squaring while-loop
-    # emitted by ``base ** exp[:, None]`` when ``exp`` is a traced int array.
-    # See ``_int_pow_unrolled_cart`` for the bitwise-equivalence rationale.
-    # Shifted exponents (``max(n - 1, 0)``, ``max(n - 2, 0)``) combined with
-    # the integer prefactors (``n``, ``n(n-1)``) express the first and
-    # second derivatives of ``x^n`` in product form, matching the layout
-    # used by ``_compute_AOs_grad_analytic_cart`` and
-    # ``_compute_AOs_laplacian_analytic_cart``. Mathematical (not bitwise)
-    # parity vs those standalone kernels — agreement to ULP magnitude.
-    L_MAX = _cart_max_polynomial_order(aos_data)
-    px = _int_pow_unrolled_cart(x, nx, L_MAX)
-    py = _int_pow_unrolled_cart(y, ny, L_MAX)
-    pz = _int_pow_unrolled_cart(z, nz, L_MAX)
-    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 1, 0), L_MAX)
-    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 1, 0), L_MAX)
-    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 1, 0), L_MAX)
-    qppx = _int_pow_unrolled_cart(x, jnp.maximum(nx - 2, 0), L_MAX)
-    qppy = _int_pow_unrolled_cart(y, jnp.maximum(ny - 2, 0), L_MAX)
-    qppz = _int_pow_unrolled_cart(z, jnp.maximum(nz - 2, 0), L_MAX)
-
-    nx_b = nx[:, None].astype(dtype_jnp)
-    ny_b = ny[:, None].astype(dtype_jnp)
-    nz_b = nz[:, None].astype(dtype_jnp)
-    Npref = N[:, None] * pref
+    # Three radial moments contracted at primitive rank → reduced to AO rank
+    # via a single _reduce_primitives_to_aos each. Everything downstream
+    # operates at AO rank (num_ao << num_ao_prim), eliminating the
+    # (n_walker, num_ao_prim, n_elec)-sized intermediate tuple that
+    # dominated the kinetic energy HLO.
     Z_b = Z[:, None]
-    phi = Npref * px * py * pz
-    Kx = Npref * py * pz
-    Ky = Npref * px * pz
-    Kz = Npref * px * py
+    NR_ao = _reduce_primitives_to_aos(pref_prim, aos_data)  # Σ_p pref_p
+    ZNR_ao = _reduce_primitives_to_aos(Z_b * pref_prim, aos_data)  # Σ_p Z_p pref_p
+    Z2NR_ao = _reduce_primitives_to_aos(Z_b * Z_b * pref_prim, aos_data)  # Σ_p Z_p^2 pref_p
+
+    # AO-level coordinates: each AO sits on exactly one atom, so we use the
+    # AO→atom mapping (length num_ao). r-R is reconstructed in fp64 then
+    # cast to the ao_grad_lap zone — same protocol as the prim-rank diff
+    # above, ensuring bit-exact match between the two coordinate sources
+    # whenever an electron sits on a nucleus.
+    R_carts_ao = aos_data._atomic_center_carts_jnp
+    diff_ao = (r_carts[None, :, :] - R_carts_ao[:, None, :]).astype(dtype_jnp)
+    x, y, z = diff_ao[..., 0], diff_ao[..., 1], diff_ao[..., 2]
+    r2_ao = jnp.sum(diff_ao**2, axis=-1)
+
+    # AO-rank polynomial orders (length num_ao). These are static lists on
+    # the dataclass; ``jnp.asarray`` is constant-folded into the JIT.
+    nx_ao = jnp.asarray(aos_data.polynominal_order_x, dtype=jnp.int32)
+    ny_ao = jnp.asarray(aos_data.polynominal_order_y, dtype=jnp.int32)
+    nz_ao = jnp.asarray(aos_data.polynominal_order_z, dtype=jnp.int32)
+
+    # Static-unrolled integer powers at AO rank. Shifted exponents
+    # (``max(n - 1, 0)``, ``max(n - 2, 0)``) combined with the integer
+    # prefactors (``n``, ``n(n-1)``) express the first and second
+    # derivatives of ``x^n`` in product form, matching the layout used
+    # by the standalone analytic grad/lap kernels.
+    px = _int_pow_unrolled_cart(x, nx_ao, L_MAX)
+    py = _int_pow_unrolled_cart(y, ny_ao, L_MAX)
+    pz = _int_pow_unrolled_cart(z, nz_ao, L_MAX)
+    qpx = _int_pow_unrolled_cart(x, jnp.maximum(nx_ao - 1, 0), L_MAX)
+    qpy = _int_pow_unrolled_cart(y, jnp.maximum(ny_ao - 1, 0), L_MAX)
+    qpz = _int_pow_unrolled_cart(z, jnp.maximum(nz_ao - 1, 0), L_MAX)
+    qppx = _int_pow_unrolled_cart(x, jnp.maximum(nx_ao - 2, 0), L_MAX)
+    qppy = _int_pow_unrolled_cart(y, jnp.maximum(ny_ao - 2, 0), L_MAX)
+    qppz = _int_pow_unrolled_cart(z, jnp.maximum(nz_ao - 2, 0), L_MAX)
+
+    nx_b = nx_ao[:, None].astype(dtype_jnp)
+    ny_b = ny_ao[:, None].astype(dtype_jnp)
+    nz_b = nz_ao[:, None].astype(dtype_jnp)
+
+    P = px * py * pz  # (num_ao, n_elec)
 
     # value finalize: only downcast site (Principle 3b).
-    val = _reduce_primitives_to_aos(phi.astype(dtype_eval), aos_data)
+    val = (NR_ao * P).astype(dtype_eval)
 
     # grad finalize (kept in ao_grad_lap zone — no cast).
-    gx_dup = Kx * (nx_b * qpx) - 2.0 * Z_b * x * phi
-    gy_dup = Ky * (ny_b * qpy) - 2.0 * Z_b * y * phi
-    gz_dup = Kz * (nz_b * qpz) - 2.0 * Z_b * z * phi
-    gx = _reduce_primitives_to_aos(gx_dup, aos_data)
-    gy = _reduce_primitives_to_aos(gy_dup, aos_data)
-    gz = _reduce_primitives_to_aos(gz_dup, aos_data)
+    # ∂_a φ = NR · ∂_a P − 2 x_a · ZNR · P, with
+    # ∂_x P = n_x x^{n_x-1} y^{n_y} z^{n_z}, etc.
+    gx = NR_ao * ((nx_b * qpx) * py * pz) - 2.0 * x * ZNR_ao * P
+    gy = NR_ao * (px * (ny_b * qpy) * pz) - 2.0 * y * ZNR_ao * P
+    gz = NR_ao * (px * py * (nz_b * qpz)) - 2.0 * z * ZNR_ao * P
 
     # lap finalize (kept in ao_grad_lap zone — no cast).
-    lap_dup = (
-        Kx * (nx_b * (nx_b - 1.0) * qppx)
-        + Ky * (ny_b * (ny_b - 1.0) * qppy)
-        + Kz * (nz_b * (nz_b - 1.0) * qppz)
-        - 4.0 * Z_b * (x * Kx * (nx_b * qpx) + y * Ky * (ny_b * qpy) + z * Kz * (nz_b * qpz))
-        + (4.0 * Z_b * Z_b * r2 - 6.0 * Z_b) * phi
+    # ∇²P = Σ_a n_a(n_a-1) x_a^{n_a-2} Π_{b≠a} x_b^{n_b}
+    lapP = (
+        (nx_b * (nx_b - 1.0) * qppx) * py * pz + px * (ny_b * (ny_b - 1.0) * qppy) * pz + px * py * (nz_b * (nz_b - 1.0) * qppz)
     )
-    lap = _reduce_primitives_to_aos(lap_dup, aos_data)
+    # x·∂_xP + y·∂_yP + z·∂_zP = (n_x + n_y + n_z) · P  (Euler identity);
+    # but keep the explicit form for bit-exact match with the legacy
+    # prim-rank rewrite when arithmetic order matters.
+    rdotgradP = x * (nx_b * qpx) * py * pz + y * px * (ny_b * qpy) * pz + z * px * py * (nz_b * qpz)
+    lap = NR_ao * lapP - 4.0 * ZNR_ao * rdotgradP + (4.0 * r2_ao * Z2NR_ao - 6.0 * ZNR_ao) * P
 
     return val, gx, gy, gz, lap
 
