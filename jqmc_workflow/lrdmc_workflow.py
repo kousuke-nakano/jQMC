@@ -54,7 +54,6 @@ import re
 import subprocess
 import time
 from logging import getLogger
-from typing import Optional
 
 from ._error_estimator import (
     _format_duration,
@@ -89,7 +88,7 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
 class LRDMC_Workflow(Workflow):
-    """Single LRDMC (Lattice-Regularized Diffusion Monte Carlo) run.
+    r"""Single LRDMC (Lattice-Regularized Diffusion Monte Carlo) run.
 
     Generates a ``job_type=lrdmc-bra`` (GFMC_n) or ``job_type=lrdmc-tau``
     (GFMC_t) input TOML at a fixed lattice spacing ``alat``, submits
@@ -210,7 +209,7 @@ class LRDMC_Workflow(Workflow):
         are always removed; remote files are removed only when the
         workflow targets a remote machine.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     GFMC_t mode (default)::
 
@@ -278,14 +277,14 @@ class LRDMC_Workflow(Workflow):
     time_projection_tau : float
         Imaginary-time projection step (GFMC_t mode only).
 
-    Notes
+    Notes:
     -----
     * For a^2->0 continuum-limit extrapolation, use
       :class:`LRDMC_Ext_Workflow` instead.
     * The pilot is skipped on re-entrance if an estimation already
       exists in ``workflow_state.toml``.
 
-    See Also
+    See Also:
     --------
     LRDMC_Ext_Workflow : Multi-alat extrapolation wrapper.
     MCMC_Workflow : VMC production sampling (job_type=mcmc).
@@ -553,7 +552,7 @@ class LRDMC_Workflow(Workflow):
                 logger.info(f"  step {i}: already fetched. Skipping.")
                 last_run = i
                 continue
-            elif status_i in ("submitted", "completed"):
+            if status_i in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
@@ -1224,7 +1223,7 @@ class LRDMC_Workflow(Workflow):
         output_file : str, optional
             Stdout filename (basename) of the ``jqmc`` run.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
@@ -1290,7 +1289,7 @@ class LRDMC_Workflow(Workflow):
         output_file : str, optional
             Stdout filename (basename) of the ``jqmc`` run.
 
-        Returns
+        Returns:
         -------
         list of dict or None
             Each dict has keys ``label``, ``Fx``, ``Fx_err``,

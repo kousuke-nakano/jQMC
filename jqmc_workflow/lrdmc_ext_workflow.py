@@ -163,7 +163,7 @@ class LRDMC_Ext_Workflow(Workflow):
         workflow targets a remote machine.  Passed through to each
         child :class:`LRDMC_Workflow`.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     GFMC_t mode (default)::
 
@@ -215,14 +215,14 @@ class LRDMC_Ext_Workflow(Workflow):
     error : str
         Top-level error message (only on failure).
 
-    Notes
+    Notes:
     -----
     * At least two ``alat`` values are required for extrapolation.
       With a single value, per-alat results are returned but no
       extrapolation is performed.
     * Each sub-run directory is named ``lrdmc_alat_<value>/``.
 
-    See Also
+    See Also:
     --------
     LRDMC_Workflow : Single-alat LRDMC run.
     """
@@ -328,7 +328,7 @@ class LRDMC_Ext_Workflow(Workflow):
         alat : float
             Lattice spacing.
 
-        Returns
+        Returns:
         -------
         Container
         """
@@ -400,7 +400,7 @@ class LRDMC_Ext_Workflow(Workflow):
         calibration (``_pilot_a``), error-bar pilot (``_pilot_b``),
         and production phase.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(status, output_files, output_values)``
@@ -490,7 +490,7 @@ class LRDMC_Ext_Workflow(Workflow):
     def _extrapolate_energy(self, restart_chks: list[str]):
         """Run ``jqmc-tool lrdmc extrapolate-energy``.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.

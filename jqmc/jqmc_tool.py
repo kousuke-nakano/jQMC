@@ -93,7 +93,6 @@ log.addHandler(stream_handler)
 @click.group()
 def _cli():
     """The jQMC tools."""
-    pass
 
 
 # trexio_app
@@ -589,7 +588,7 @@ def hamiltonian_convert_wavefunction(
 
     if convert_to == "jsd":
         raise NotImplementedError("Conversion to JSD is not implemented yet.")
-    elif convert_to == "jagp":
+    if convert_to == "jagp":
         # conversion of SD to AGP
         typer.echo("Convert SD to AGP.")
         geminal_data = Geminal_data.convert_from_MOs_to_AOs(geminal_data)

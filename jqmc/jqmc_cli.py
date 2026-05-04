@@ -93,15 +93,13 @@ def _cli():
     """Main function."""
     if len(sys.argv) == 1:
         raise ValueError("Please specify input toml file.")
-    elif len(sys.argv) > 2:
+    if len(sys.argv) > 2:
         raise ValueError("More than one input toml files are not acceptable.")
-    else:
-        toml_file = sys.argv[1]
-        if not os.path.isfile(toml_file):
-            raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
-        else:
-            with open(toml_file) as f:
-                dict_toml = toml.load(f)
+    toml_file = sys.argv[1]
+    if not os.path.isfile(toml_file):
+        raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
+    with open(toml_file) as f:
+        dict_toml = toml.load(f)
 
     # MPI related
     mpi_comm = MPI.COMM_WORLD

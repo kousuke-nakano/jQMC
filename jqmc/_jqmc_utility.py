@@ -38,7 +38,7 @@ See :mod:`jqmc._precision` for details.
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from functools import lru_cache, cache
+from functools import cache
 from logging import getLogger
 
 import numpy as np

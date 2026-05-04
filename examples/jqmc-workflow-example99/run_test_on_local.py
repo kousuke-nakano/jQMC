@@ -317,7 +317,7 @@ def run_diagnostics(base_dir: str) -> bool:
         """Print all fields of a dataclass, truncating stderr_tail."""
         d = dataclasses.asdict(obj)
         # Truncate stderr_tail for readability
-        if "stderr_tail" in d and d["stderr_tail"]:
+        if d.get("stderr_tail"):
             d["stderr_tail"] = f"<{len(d['stderr_tail'])} chars>"
         # For VMC steps, show compact per-step summaries
         if "steps" in d and isinstance(d["steps"], list):

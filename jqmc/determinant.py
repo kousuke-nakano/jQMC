@@ -184,60 +184,54 @@ class Geminal_data:
         """AO Gaussian exponents for spin-up orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
             return self.orb_data_up_spin._exponents_jnp
-        elif isinstance(self.orb_data_up_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data):
             return self.orb_data_up_spin.aos_data._exponents_jnp
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
 
     @property
     def ao_exponents_dn(self) -> jax.Array:
         """AO Gaussian exponents for spin-down orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
             return self.orb_data_dn_spin._exponents_jnp
-        elif isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_dn_spin, MOs_data):
             return self.orb_data_dn_spin.aos_data._exponents_jnp
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
 
     @property
     def ao_coefficients_up(self) -> jax.Array:
         """AO contraction coefficients for spin-up orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
             return self.orb_data_up_spin._coefficients_jnp
-        elif isinstance(self.orb_data_up_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data):
             return self.orb_data_up_spin.aos_data._coefficients_jnp
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
 
     @property
     def ao_coefficients_dn(self) -> jax.Array:
         """AO contraction coefficients for spin-down orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
             return self.orb_data_dn_spin._coefficients_jnp
-        elif isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_dn_spin, MOs_data):
             return self.orb_data_dn_spin.aos_data._coefficients_jnp
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
 
     def _replace_orb_exponents(self, orb_data, new_exp):
         """Helper to replace exponents in an orb_data (AO or MO)."""
         if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
             return orb_data.replace(exponents=new_exp)
-        elif isinstance(orb_data, MOs_data):
+        if isinstance(orb_data, MOs_data):
             new_aos = orb_data.aos_data.replace(exponents=new_exp)
             return orb_data.replace(aos_data=new_aos)
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
     def _replace_orb_coefficients(self, orb_data, new_coeff):
         """Helper to replace coefficients in an orb_data (AO or MO)."""
         if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
             return orb_data.replace(coefficients=new_coeff)
-        elif isinstance(orb_data, MOs_data):
+        if isinstance(orb_data, MOs_data):
             new_aos = orb_data.aos_data.replace(coefficients=new_coeff)
             return orb_data.replace(aos_data=new_aos)
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
     def with_updated_ao_exponents(
         self, new_exp_up: npt.NDArray[np.float64], new_exp_dn: npt.NDArray[np.float64]
@@ -300,13 +294,13 @@ class Geminal_data:
                 orb_data_dn_spin=self.orb_data_dn_spin,
                 lambda_matrix=lambda_new,
             )
-        elif block.name == "lambda_basis_exp":
+        if block.name == "lambda_basis_exp":
             vals = np.asarray(block.values, dtype=np.float64)
             vals = self._symmetrize_ao_basis(vals)
             n_up = len(self.ao_exponents_up)
             new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
-        elif block.name == "lambda_basis_coeff":
+        if block.name == "lambda_basis_coeff":
             vals = np.asarray(block.values, dtype=np.float64)
             vals = self._symmetrize_ao_basis(vals)
             n_up = len(self.ao_coefficients_up)
@@ -415,10 +409,9 @@ class Geminal_data:
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) or isinstance(self.orb_data_up_spin, AOs_cart_data):
             return self.orb_data_up_spin.num_ao
-        elif isinstance(self.orb_data_up_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data):
             return self.orb_data_up_spin.num_mo
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def orb_num_dn(self) -> int:
@@ -436,10 +429,9 @@ class Geminal_data:
         """
         if isinstance(self.orb_data_dn_spin, AOs_sphe_data) or isinstance(self.orb_data_dn_spin, AOs_cart_data):
             return self.orb_data_dn_spin.num_ao
-        elif isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_dn_spin, MOs_data):
             return self.orb_data_dn_spin.num_mo
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def is_mo_representation(self) -> bool:
@@ -468,14 +460,13 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
@@ -492,14 +483,13 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs_grad
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_grad
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_grad
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
@@ -516,14 +506,13 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs_laplacian
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_laplacian
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_laplacian
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def compute_orb_value_grad_lap_api(self) -> Callable[..., tuple]:
@@ -534,14 +523,13 @@ class Geminal_data:
         (``exp``, polynomial chain, ``S_l_m``) is shared across val/grad/lap
         instead of being recomputed three times.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs_value_grad_lap
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_value_grad_lap
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_value_grad_lap
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def to_cartesian(self) -> "Geminal_data":
         """Convert spherical orbitals to Cartesian and transform the lambda matrix.
@@ -686,15 +674,15 @@ class Geminal_data:
     @classmethod
     def convert_from_MOs_to_AOs(cls, geminal_data: "Geminal_data") -> "Geminal_data":
         """Convert MOs to AOs."""
-        if isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data) and isinstance(
-            geminal_data.orb_data_dn_spin, AOs_sphe_data
+        if (
+            isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data)
+            and isinstance(geminal_data.orb_data_dn_spin, AOs_sphe_data)
+        ) or (
+            isinstance(geminal_data.orb_data_up_spin, AOs_cart_data)
+            and isinstance(geminal_data.orb_data_dn_spin, AOs_cart_data)
         ):
             return geminal_data
-        elif isinstance(geminal_data.orb_data_up_spin, AOs_cart_data) and isinstance(
-            geminal_data.orb_data_dn_spin, AOs_cart_data
-        ):
-            return geminal_data
-        elif isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
+        if isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
             # split mo_lambda_matrix
             mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
                 geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
@@ -718,8 +706,7 @@ class Geminal_data:
                 aos_data_dn_spin,
                 aos_lambda_matrix,
             )
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @classmethod
     def convert_from_AOs_to_MOs(

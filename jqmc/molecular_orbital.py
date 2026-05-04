@@ -57,7 +57,6 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit
 
-from ._jqmc_utility import _cart_to_spherical_matrix, _spherical_to_cart_matrix
 
 # myqmc module
 from ._precision import get_dtype_jnp

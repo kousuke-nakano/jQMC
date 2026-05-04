@@ -90,7 +90,7 @@ class FileFrom:
         that are only determined at runtime (e.g. the optimised
         Hamiltonian whose step number depends on convergence).
 
-    Examples
+    Examples:
     --------
     Static filename (step number known in advance)::
 
@@ -115,7 +115,7 @@ class FileFrom:
             workflow=MCMC_Workflow(...),
         )
 
-    See Also
+    See Also:
     --------
     ValueFrom : Declare a scalar-value dependency.
     Launcher  : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
@@ -154,7 +154,7 @@ class ValueFrom:
         * :class:`LRDMC_Ext_Workflow` -- ``extrapolated_energy``,
           ``extrapolated_energy_error``, ``per_alat_results``, ...
 
-    Examples
+    Examples:
     --------
     Feed the MCMC energy into an LRDMC workflow as ``trial_energy``::
 
@@ -167,7 +167,7 @@ class ValueFrom:
 
         FileFrom("vmc-opt", ValueFrom("vmc-opt", "optimized_hamiltonian"))
 
-    See Also
+    See Also:
     --------
     FileFrom : Declare a file dependency.
     Launcher : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
@@ -212,7 +212,7 @@ class Workflow:
         files are removed only when the workflow targets a remote
         machine.  Default is *None* (empty list -- no cleanup).
 
-    Attributes
+    Attributes:
     ----------
     status : WorkflowStatus
         Current lifecycle status.
@@ -227,7 +227,7 @@ class Workflow:
     cleanup_patterns : list[str]
         Glob patterns for post-completion file cleanup.
 
-    Notes
+    Notes:
     -----
     **Subclass contract:**
 
@@ -235,7 +235,7 @@ class Workflow:
       ``(status, output_files, output_values)`` from ``run()``.
     * Call ``super().__init__()`` in your constructor.
 
-    Examples
+    Examples:
     --------
     Minimal custom workflow::
 
@@ -370,12 +370,12 @@ class Workflow:
             MCP tool name (e.g. ``"run_vmc"``).  Checked against
             :func:`allowed_actions` for the current phase and status.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": "submitted", "project_dir": ...}``.
 
-        Raises
+        Raises:
         ------
         ValueError
             If *action* is not allowed in the current phase/status.
@@ -393,7 +393,7 @@ class Workflow:
     async def async_poll(self) -> dict:
         """Check whether the submitted workflow has completed.
 
-        Returns
+        Returns:
         -------
         dict
             Status dict.  Includes ``get_workflow_summary()`` when
@@ -411,12 +411,12 @@ class Workflow:
     async def async_collect(self) -> dict:
         """Collect results from the completed workflow.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": ..., "output_files": [...], **output_values}``.
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If the workflow was not submitted or is still running.
@@ -660,7 +660,7 @@ class Container:
     workflow : Workflow
         The inner :class:`Workflow` instance to execute.
 
-    Attributes
+    Attributes:
     ----------
     output_files : list[str]
         Output filenames (populated after launch).
@@ -671,7 +671,7 @@ class Container:
     project_dir : str
         Absolute path to the project directory.
 
-    Examples
+    Examples:
     --------
     Wrap a VMC optimization in its own directory::
 
@@ -687,7 +687,7 @@ class Container:
         )
         status, files, values = enc.launch()
 
-    See Also
+    See Also:
     --------
     Launcher : Execute multiple ``Container`` objects as a DAG.
     FileFrom : Reference an output file from another workflow.
@@ -721,7 +721,6 @@ class Container:
 
     def _prepare(self):
         """Create project dir, copy input files, write initial state."""
-
         state = read_state(self.project_dir)
         existing_status = state.get("workflow", {}).get("status", "")
 
@@ -760,7 +759,7 @@ class Container:
     def _copy_input_files(self):
         """Copy input files into the project directory.
 
-        Raises
+        Raises:
         ------
         FileNotFoundError
             If a required input file or directory does not exist.
@@ -818,7 +817,7 @@ class Container:
         are **not** validated here because some workflows (e.g.
         ``WF_Workflow``) *produce* them rather than consume them.
 
-        Raises
+        Raises:
         ------
         FileNotFoundError
             With a clear message listing all missing files, raised
@@ -980,7 +979,7 @@ class Container:
         action : str
             MCP tool name for action validation.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": "submitted", "label": ..., "project_dir": ...}``.
@@ -997,7 +996,7 @@ class Container:
     async def async_poll(self) -> dict:
         """Check whether the container's workflow has completed.
 
-        Returns
+        Returns:
         -------
         dict
             Status dict with ``get_workflow_summary()`` when running.
@@ -1014,13 +1013,13 @@ class Container:
     async def async_collect(self) -> dict:
         """Collect results from the completed container workflow.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": ..., "label": ..., "output_files": [...],
             **output_values}``.
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If not submitted or still running.

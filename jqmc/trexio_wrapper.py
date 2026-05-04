@@ -117,9 +117,8 @@ def read_trexio_file(
         # cell_c = trexio.read_cell_c(file_r)
         # k_point = trexio.read_pbc_k_point(file_r)
         raise NotImplementedError
-    else:
-        pbc_flag = False
-        # logger.info("Molecule (Open boundary condition)")
+    pbc_flag = False
+    # logger.info("Molecule (Open boundary condition)")
     logger.info(f"pbc_flag = {pbc_flag}")
 
     # read electron num
@@ -183,8 +182,6 @@ def read_trexio_file(
         # complex_flag = True
         logger.error("Complex WFs are not supported.")
         raise NotImplementedError
-    else:
-        pass
         # logger.info("The WF is real")
         # complex_flag = False
 

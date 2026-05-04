@@ -65,7 +65,7 @@ t_ecp = timefull(compute_ecp_non_local_parts_nearest_neighbors_fast_update, coul
 
 print(f"n_up={n_up}, n_dn={n_dn}")
 print(f"n_AO={gd.orb_data_up_spin.aos_data.num_ao}, n_prim={gd.orb_data_up_spin.aos_data.num_ao_prim}")
-print(f"\nFull functions:")
+print("\nFull functions:")
 print(f"  kinetic_discretized:              {t_kin:.3f} ms")
 print(f"  ecp_non_local_tmove:              {t_ecp:.3f} ms")
 

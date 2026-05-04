@@ -14,7 +14,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap
+from jqmc.atomic_orbital import ShellPrimMap
 from jqmc.determinant import Geminal_data, compute_det_geminal_all_elements
 from jqmc.jastrow_factor import (
     Jastrow_data,
@@ -22,7 +22,6 @@ from jqmc.jastrow_factor import (
     compute_Jastrow_three_body,
 )
 from jqmc._precision import get_tolerance
-from jqmc.molecular_orbital import MOs_data
 from jqmc.trexio_wrapper import read_trexio_file
 from jqmc.wavefunction import (
     VariationalParameterBlock,
@@ -724,7 +723,6 @@ def test_shell_symmetrize_selection_mask():
 
 def test_opt_with_projected_MOs_lambda_basis_conflict():
     """opt_with_projected_MOs should raise ValueError when combined with lambda basis optimization."""
-    from jqmc.jqmc_mcmc import MCMC
 
     # Only opt_lambda_basis_exp/coeff conflict with opt_with_projected_MOs.
     # opt_J3_basis_exp/coeff are allowed because J3 basis does not affect

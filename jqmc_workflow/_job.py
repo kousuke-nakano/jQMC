@@ -63,7 +63,7 @@ def load_queue_data(server_machine_name: str, queue_label: str) -> dict:
     queue_label : str
         Section key in ``queue_data.toml``.
 
-    Returns
+    Returns:
     -------
     dict
         The TOML table for *queue_label*.
@@ -393,7 +393,7 @@ class JobSubmission:
         is performed -- the user specifies the complete command with
         flags in the config.
 
-        Returns
+        Returns:
         -------
         tuple[str, str, str] | None
             ``(command, stdout, stderr)`` on success.

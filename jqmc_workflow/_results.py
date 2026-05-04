@@ -56,7 +56,6 @@ Input_Parameters
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 # -- VMC -----------------------------------------------------------
 
@@ -65,7 +64,7 @@ from typing import Optional
 class VMC_Step_Data:
     """Data for one VMC optimization step.
 
-    Attributes
+    Attributes:
     ----------
     step : int
         Optimization step number (``Optimization step = N/M`` -> N).
@@ -112,7 +111,7 @@ class VMC_Step_Data:
 class VMC_Diagnostic_Data:
     """Aggregated parse result for an entire VMC optimization.
 
-    Attributes
+    Attributes:
     ----------
     steps : list of VMC_Step_Data
         Per-step data in chronological order.
@@ -165,7 +164,7 @@ class VMC_Diagnostic_Data:
 class MCMC_Diagnostic_Data:
     """Parse result for an MCMC sampling run.
 
-    Attributes
+    Attributes:
     ----------
     acceptance_ratio : float or None
         ``Acceptance ratio is X %`` -> X / 100.
@@ -230,7 +229,7 @@ class MCMC_Diagnostic_Data:
 class LRDMC_Diagnostic_Data:
     """Parse result for an LRDMC calculation.
 
-    Attributes
+    Attributes:
     ----------
     survived_walkers_ratio : float or None
         ``Survived walkers ratio = X %`` -> X / 100.
@@ -296,7 +295,7 @@ class LRDMC_Diagnostic_Data:
 class LRDMC_Ext_Diagnostic_Data:
     """Parse result for an LRDMC a^2->0 extrapolation.
 
-    Attributes
+    Attributes:
     ----------
     extrapolated_energy : float or None
         ``For a -> 0 bohr: E = X +- Y Ha.`` -> X.
@@ -335,7 +334,7 @@ class Input_Parameters:
             "<job_type>": { ... all job-type params with defaults ... },
         }
 
-    Attributes
+    Attributes:
     ----------
     actual_opt_steps : int or None
         For VMC: last completed optimization step stored in

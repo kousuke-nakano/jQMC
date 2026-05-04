@@ -96,100 +96,100 @@ def test_spherical_harmonics_debug_vs_production(l, m):
         if (l, m) == (0, 0):
             return 1.0 / 2.0 * np.sqrt(1.0 / np.pi) * r**0.0
         # p orbitals
-        elif (l, m) == (1, -1):
+        if (l, m) == (1, -1):
             return np.sqrt(3.0 / (4 * np.pi)) * y / r
-        elif (l, m) == (1, 0):
+        if (l, m) == (1, 0):
             return np.sqrt(3.0 / (4 * np.pi)) * z / r
-        elif (l, m) == (1, 1):
+        if (l, m) == (1, 1):
             return np.sqrt(3.0 / (4 * np.pi)) * x / r
         # d orbitals
-        elif (l, m) == (2, -2):
+        if (l, m) == (2, -2):
             return 1.0 / 2.0 * np.sqrt(15.0 / (np.pi)) * x * y / r**2
-        elif (l, m) == (2, -1):
+        if (l, m) == (2, -1):
             return 1.0 / 2.0 * np.sqrt(15.0 / (np.pi)) * y * z / r**2
-        elif (l, m) == (2, 0):
+        if (l, m) == (2, 0):
             return 1.0 / 4.0 * np.sqrt(5.0 / (np.pi)) * (3 * z**2 - r**2) / r**2
-        elif (l, m) == (2, 1):
+        if (l, m) == (2, 1):
             return 1.0 / 2.0 * np.sqrt(15.0 / (np.pi)) * x * z / r**2
-        elif (l, m) == (2, 2):
+        if (l, m) == (2, 2):
             return 1.0 / 4.0 * np.sqrt(15.0 / (np.pi)) * (x**2 - y**2) / r**2
         # f orbitals
-        elif (l, m) == (3, -3):
+        if (l, m) == (3, -3):
             return 1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * y * (3 * x**2 - y**2) / r**3
-        elif (l, m) == (3, -2):
+        if (l, m) == (3, -2):
             return 1.0 / 2.0 * np.sqrt(105.0 / (np.pi)) * x * y * z / r**3
-        elif (l, m) == (3, -1):
+        if (l, m) == (3, -1):
             return 1.0 / 4.0 * np.sqrt(21.0 / (2 * np.pi)) * y * (5 * z**2 - r**2) / r**3
-        elif (l, m) == (3, 0):
+        if (l, m) == (3, 0):
             return 1.0 / 4.0 * np.sqrt(7.0 / (np.pi)) * (5 * z**3 - 3 * z * r**2) / r**3
-        elif (l, m) == (3, 1):
+        if (l, m) == (3, 1):
             return 1.0 / 4.0 * np.sqrt(21.0 / (2 * np.pi)) * x * (5 * z**2 - r**2) / r**3
-        elif (l, m) == (3, 2):
+        if (l, m) == (3, 2):
             return 1.0 / 4.0 * np.sqrt(105.0 / (np.pi)) * (x**2 - y**2) * z / r**3
-        elif (l, m) == (3, 3):
+        if (l, m) == (3, 3):
             return 1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * x * (x**2 - 3 * y**2) / r**3
         # g orbitals
-        elif (l, m) == (4, -4):
+        if (l, m) == (4, -4):
             return 3.0 / 4.0 * np.sqrt(35.0 / (np.pi)) * x * y * (x**2 - y**2) / r**4
-        elif (l, m) == (4, -3):
+        if (l, m) == (4, -3):
             return 3.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * y * z * (3 * x**2 - y**2) / r**4
-        elif (l, m) == (4, -2):
+        if (l, m) == (4, -2):
             return 3.0 / 4.0 * np.sqrt(5.0 / (np.pi)) * x * y * (7 * z**2 - r**2) / r**4
-        elif (l, m) == (4, -1):
+        if (l, m) == (4, -1):
             return 3.0 / 4.0 * np.sqrt(5.0 / (2 * np.pi)) * y * (7 * z**3 - 3 * z * r**2) / r**4
-        elif (l, m) == (4, 0):
+        if (l, m) == (4, 0):
             return 3.0 / 16.0 * np.sqrt(1.0 / (np.pi)) * (35 * z**4 - 30 * z**2 * r**2 + 3 * r**4) / r**4
-        elif (l, m) == (4, 1):
+        if (l, m) == (4, 1):
             return 3.0 / 4.0 * np.sqrt(5.0 / (2 * np.pi)) * x * (7 * z**3 - 3 * z * r**2) / r**4
-        elif (l, m) == (4, 2):
+        if (l, m) == (4, 2):
             return 3.0 / 8.0 * np.sqrt(5.0 / (np.pi)) * (x**2 - y**2) * (7 * z**2 - r**2) / r**4
-        elif (l, m) == (4, 3):
+        if (l, m) == (4, 3):
             return 3.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * x * z * (x**2 - 3 * y**2) / r**4
-        elif (l, m) == (4, 4):
+        if (l, m) == (4, 4):
             return 3.0 / 16.0 * np.sqrt(35.0 / (np.pi)) * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2)) / r**4
-        elif (l, m) == (5, -5):
+        if (l, m) == (5, -5):
             return 3.0 / 16.0 * np.sqrt(77.0 / (2 * np.pi)) * (5 * x**4 * y - 10 * x**2 * y**3 + y**5) / r**5
-        elif (l, m) == (5, -4):
+        if (l, m) == (5, -4):
             return 3.0 / 16.0 * np.sqrt(385.0 / np.pi) * 4 * x * y * z * (x**2 - y**2) / r**5
-        elif (l, m) == (5, -3):
+        if (l, m) == (5, -3):
             return 1.0 / 16.0 * np.sqrt(385.0 / (2 * np.pi)) * -1 * (y**3 - 3 * x**2 * y) * (9 * z**2 - r**2) / r**5
-        elif (l, m) == (5, -2):
+        if (l, m) == (5, -2):
             return 1.0 / 8.0 * np.sqrt(1155 / np.pi) * 2 * x * y * (3 * z**3 - z * r**2) / r**5
-        elif (l, m) == (5, -1):
+        if (l, m) == (5, -1):
             return 1.0 / 16.0 * np.sqrt(165 / np.pi) * y * (21 * z**4 - 14 * z**2 * r**2 + r**4) / r**5
-        elif (l, m) == (5, 0):
+        if (l, m) == (5, 0):
             return 1.0 / 16.0 * np.sqrt(11 / np.pi) * (63 * z**5 - 70 * z**3 * r**2 + 15 * z * r**4) / r**5
-        elif (l, m) == (5, 1):
+        if (l, m) == (5, 1):
             return 1.0 / 16.0 * np.sqrt(165 / np.pi) * x * (21 * z**4 - 14 * z**2 * r**2 + r**4) / r**5
-        elif (l, m) == (5, 2):
+        if (l, m) == (5, 2):
             return 1.0 / 8.0 * np.sqrt(1155 / np.pi) * (x**2 - y**2) * (3 * z**3 - z * r**2) / r**5
-        elif (l, m) == (5, 3):
+        if (l, m) == (5, 3):
             return 1.0 / 16.0 * np.sqrt(385.0 / (2 * np.pi)) * (x**3 - 3 * x * y**2) * (9 * z**2 - r**2) / r**5
-        elif (l, m) == (5, 4):
+        if (l, m) == (5, 4):
             return 3.0 / 16.0 * np.sqrt(385.0 / np.pi) * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2)) / r**5
-        elif (l, m) == (5, 5):
+        if (l, m) == (5, 5):
             return 3.0 / 16.0 * np.sqrt(77.0 / (2 * np.pi)) * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4) / r**5
-        elif (l, m) == (6, -6):
+        if (l, m) == (6, -6):
             return 1.0 / 64.0 * np.sqrt(6006.0 / np.pi) * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5) / r**6
-        elif (l, m) == (6, -5):
+        if (l, m) == (6, -5):
             return 3.0 / 32.0 * np.sqrt(2002.0 / np.pi) * z * (5 * x**4 * y - 10 * x**2 * y**3 + y**5) / r**6
-        elif (l, m) == (6, -4):
+        if (l, m) == (6, -4):
             return 3.0 / 32.0 * np.sqrt(91.0 / np.pi) * 4 * x * y * (11 * z**2 - r**2) * (x**2 - y**2) / r**6
-        elif (l, m) == (6, -3):
+        if (l, m) == (6, -3):
             return 1.0 / 32.0 * np.sqrt(2730.0 / np.pi) * -1 * (11 * z**3 - 3 * z * r**2) * (y**3 - 3 * x**2 * y) / r**6
-        elif (l, m) == (6, -2):
+        if (l, m) == (6, -2):
             return 1.0 / 64.0 * np.sqrt(2730.0 / np.pi) * 2 * x * y * (33 * z**4 - 18 * z**2 * r**2 + r**4) / r**6
-        elif (l, m) == (6, -1):
+        if (l, m) == (6, -1):
             return 1.0 / 16.0 * np.sqrt(273.0 / np.pi) * y * (33 * z**5 - 30 * z**3 * r**2 + 5 * z * r**4) / r**6
-        elif (l, m) == (6, 0):
+        if (l, m) == (6, 0):
             return 1.0 / 32.0 * np.sqrt(13.0 / np.pi) * (231 * z**6 - 315 * z**4 * r**2 + 105 * z**2 * r**4 - 5 * r**6) / r**6
-        elif (l, m) == (6, 1):
+        if (l, m) == (6, 1):
             return 1.0 / 16.0 * np.sqrt(273.0 / np.pi) * x * (33 * z**5 - 30 * z**3 * r**2 + 5 * z * r**4) / r**6
-        elif (l, m) == (6, 2):
+        if (l, m) == (6, 2):
             return 1.0 / 64.0 * np.sqrt(2730.0 / np.pi) * (x**2 - y**2) * (33 * z**4 - 18 * z**2 * r**2 + r**4) / r**6
-        elif (l, m) == (6, 3):
+        if (l, m) == (6, 3):
             return 1.0 / 32.0 * np.sqrt(2730.0 / np.pi) * (11 * z**3 - 3 * z * r**2) * (x**3 - 3 * x * y**2) / r**6
-        elif (l, m) == (6, 4):
+        if (l, m) == (6, 4):
             return (
                 3.0
                 / 32.0
@@ -198,12 +198,11 @@ def test_spherical_harmonics_debug_vs_production(l, m):
                 * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2))
                 / r**6
             )
-        elif (l, m) == (6, 5):
+        if (l, m) == (6, 5):
             return 3.0 / 32.0 * np.sqrt(2002.0 / np.pi) * z * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4) / r**6
-        elif (l, m) == (6, 6):
+        if (l, m) == (6, 6):
             return 1.0 / 64.0 * np.sqrt(6006.0 / np.pi) * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6) / r**6
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     num_samples = 1
     R_cart = [0.0, 0.0, 1.0]

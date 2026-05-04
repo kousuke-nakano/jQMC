@@ -243,7 +243,7 @@ def validate_completion(
         previously accepted ``error <= target * 1.05`` (MCMC) or
         ``error <= target * 1.20`` (LRDMC) pass the matching factor.
 
-    Returns
+    Returns:
     -------
     status : CompletionStatus
         ``OK`` / ``FAILED`` / ``INCOMPLETE``.

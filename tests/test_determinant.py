@@ -1732,7 +1732,8 @@ def _build_geminal_inverse(geminal_data, r_up_carts, r_dn_carts):
 def test_streaming_det_state_against_full(trexio_file: str):
     """Det streaming state, after K random single-electron moves, must
     reproduce ``compute_grads_and_laplacian_ln_Det_fast`` at the resulting
-    configuration."""
+    configuration.
+    """
     (
         _,
         _,

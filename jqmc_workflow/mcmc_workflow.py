@@ -43,7 +43,6 @@ import re
 import subprocess
 import time
 from logging import getLogger
-from typing import Optional
 
 from ._error_estimator import (
     _format_duration,
@@ -154,7 +153,7 @@ class MCMC_Workflow(Workflow):
         are always removed; remote files are removed only when the
         workflow targets a remote machine.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     Standalone launch (automatic mode)::
 
@@ -206,14 +205,14 @@ class MCMC_Workflow(Workflow):
         Estimated total measurement steps (automatic mode).
         In fixed-step mode this key is ``estimated_steps``.
 
-    Notes
+    Notes:
     -----
     * The pilot run is skipped on re-entrance if an estimation already
       exists in ``workflow_state.toml``.
     * Continuation runs restart from the most recent ``.h5``
       checkpoint file.
 
-    See Also
+    See Also:
     --------
     VMC_Workflow : Wavefunction optimisation (job_type=vmc).
     LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
@@ -392,7 +391,7 @@ class MCMC_Workflow(Workflow):
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 last_run = i
                 continue
-            elif status in ("submitted", "completed"):
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
@@ -917,7 +916,7 @@ class MCMC_Workflow(Workflow):
         output_file : str, optional
             Stdout filename (basename) of the ``jqmc`` run.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
@@ -978,7 +977,7 @@ class MCMC_Workflow(Workflow):
         output_file : str, optional
             Stdout filename (basename) of the ``jqmc`` run.
 
-        Returns
+        Returns:
         -------
         list of dict or None
             Each dict has keys ``label``, ``Fx``, ``Fx_err``,

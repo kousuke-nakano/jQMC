@@ -48,7 +48,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg as jsp_linalg
 import numpy as np
 from functools import partial
-from jax import jit, lax, vmap
+from jax import jit, vmap
 
 from jqmc.atomic_orbital import AOs_cart_data
 from jqmc.coulomb_potential import (

@@ -303,7 +303,8 @@ def test_dimer_per_atom_counts_match_reference_for_all_S(label, zeta_pair):
 @pytest.mark.parametrize("elem_z", [3, 7])
 def test_linear_triatomic_charge_neutrality(elem_z):
     """For a homonuclear linear triatomic at separation 5 bohr each, every atom
-    receives exactly zeta electrons (charge-neutral assignment)."""
+    receives exactly zeta electrons (charge-neutral assignment).
+    """
     charges = np.array([float(elem_z)] * 3)
     coords = np.array([[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [10.0, 0.0, 0.0]])
     nion = 3

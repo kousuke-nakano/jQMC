@@ -61,7 +61,6 @@ import glob
 import os
 import re
 from logging import getLogger
-from typing import Optional
 
 import toml
 
@@ -95,7 +94,7 @@ def parse_ufloat_short(text: str):
         A single token like ``"+0.0114(14)"``, ``"-1.23(4)"``,
         ``"+3(8)e-05"``, or ``"+3.9(3.5)e-05"``.
 
-    Returns
+    Returns:
     -------
     tuple
         ``(value, uncertainty)`` or ``(None, None)`` on failure.
@@ -142,7 +141,7 @@ def parse_force_table(text: str):
     text : str
         Full stdout from ``jqmc-tool {mcmc,lrdmc} compute-force``.
 
-    Returns
+    Returns:
     -------
     list of dict or None
         Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
@@ -543,7 +542,7 @@ def _parse_vmc_log_text(text: str) -> list:
     This function groups the data by optimization step.  Lines before
     the first ``Optimization step`` header are ignored.
 
-    Returns
+    Returns:
     -------
     list of VMC_Step_Data
         One entry per optimization step found.
@@ -664,7 +663,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
     work_dir : str
         Path to the VMC working directory.
 
-    Returns
+    Returns:
     -------
     VMC_Diagnostic_Data
         Structured parse result containing per-step data and metadata.
@@ -781,7 +780,7 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
     work_dir : str
         Path to the MCMC working directory.
 
-    Returns
+    Returns:
     -------
     MCMC_Diagnostic_Data
         Structured parse result.
@@ -891,7 +890,7 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
     work_dir : str
         Path to the LRDMC working directory.
 
-    Returns
+    Returns:
     -------
     LRDMC_Diagnostic_Data
         Structured parse result.
@@ -1004,7 +1003,7 @@ def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
     work_dir : str
         Path to the LRDMC extrapolation working directory.
 
-    Returns
+    Returns:
     -------
     LRDMC_Ext_Diagnostic_Data
         Structured parse result.
@@ -1083,7 +1082,7 @@ def parse_input_params(work_dir: str) -> Input_Parameters:
     work_dir : str
         Path to the workflow working directory.
 
-    Returns
+    Returns:
     -------
     Input_Parameters
         Structured parameter data with per-input detail.

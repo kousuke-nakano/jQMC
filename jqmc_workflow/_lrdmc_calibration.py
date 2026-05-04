@@ -66,12 +66,12 @@ def get_num_electrons(hamiltonian_file: str) -> int:
     hamiltonian_file : str
         Path to ``hamiltonian_data.h5``.
 
-    Returns
+    Returns:
     -------
     int
         Total electron count ``num_electron_up + num_electron_dn``.
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If the electron counts cannot be found in the file.
@@ -103,7 +103,7 @@ def parse_survived_walkers_ratio(output_file: str) -> float | None:
     output_file : str
         Path to the jqmc stdout file.
 
-    Returns
+    Returns:
     -------
     float or None
         Survived walkers ratio as a fraction, or *None* if not found.
@@ -144,13 +144,13 @@ def fit_num_projection_per_measurement(
     target_ratio : float
         Target survived-walkers ratio (e.g. 0.97).
 
-    Returns
+    Returns:
     -------
     int
         Optimal ``num_projection_per_measurement`` (rounded up to the nearest
         even integer, minimum 2).
 
-    Raises
+    Raises:
     ------
     RuntimeError
         If the linear fit cannot determine a positive root.
@@ -223,7 +223,7 @@ def scale_num_projection_per_measurement(
     alat : float
         Target lattice spacing (bohr).
 
-    Returns
+    Returns:
     -------
     int
         Scaled ``num_projection_per_measurement`` (rounded up to nearest even

@@ -47,7 +47,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc._precision import get_tolerance_min
 from jqmc.determinant import Geminal_data
 from jqmc.hamiltonians import Hamiltonian_data
 from jqmc.jastrow_factor import (
@@ -414,7 +414,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
 
     def fake_run(self, num_mcmc_steps: int = 0, max_time=None):
         """No-op MCMC run to skip sampling in the unit test."""
-        return None
+        return
 
     def fake_get_dln_WF(
         self,

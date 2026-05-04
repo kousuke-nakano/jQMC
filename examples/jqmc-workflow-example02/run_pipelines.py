@@ -144,7 +144,7 @@ def run_pyscf(base_dir: str) -> float | None:
     if os.path.isfile(trexio_path):
         print(f"  [skip] {TREXIO_FILE} already exists.")
     else:
-        print(f"  [run]  pySCF for water ...")
+        print("  [run]  pySCF for water ...")
         script_path = os.path.join(base_dir, "_local_pyscf.py")
         with open(script_path, "w") as f:
             f.write(
@@ -313,7 +313,7 @@ def print_summary_table(
     """Print a summary table of energies and wall times."""
     print()
     print("=" * 120)
-    print(f"  Walker-scaling Benchmark Summary  (water, ccECP/cc-pVTZ, JSD)")
+    print("  Walker-scaling Benchmark Summary  (water, ccECP/cc-pVTZ, JSD)")
     print(
         f"  MCMC: {NUM_MCMC_STEPS_MCMC} steps,  LRDMC: {NUM_MCMC_STEPS_LRDMC} steps (nmpm={NUM_MCMC_PER_MEASUREMENT}, a={ALAT})"
     )

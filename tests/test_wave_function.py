@@ -725,7 +725,8 @@ def _build_A_inv_from_carts(geminal_data, r_up_jnp, r_dn_jnp):
 def _streaming_step_consistency_one(wavefunction_data, r_up0, r_dn0, K, atol, rtol, seed=0):
     """Run K random single-electron moves through the streaming state and
     compare the resulting kinetic energies with a fresh fast-update call at
-    the final configuration."""
+    the final configuration.
+    """
     rng = np.random.RandomState(seed)
     r_up = np.asarray(r_up0, dtype=np.float64).copy()
     r_dn = np.asarray(r_dn0, dtype=np.float64).copy()
@@ -839,7 +840,8 @@ def _build_wavefunction_J3(trexio_file, j2_type="exp", with_J1=False, with_J2=Tr
 def test_streaming_kinetic_energy_step_consistency(trexio_file):
     """K=32 random single-electron moves advanced via the streaming kinetic
     state must reproduce the fresh fast-update kinetic energy at the resulting
-    configuration within strict tolerance."""
+    configuration within strict tolerance.
+    """
     wf, gem = _build_wavefunction_J3(trexio_file)
     n_up = gem.num_electron_up
     n_dn = gem.num_electron_dn
@@ -854,7 +856,8 @@ def test_streaming_kinetic_energy_step_consistency(trexio_file):
 def test_streaming_kinetic_drift_accumulation(K):
     """Drift accumulation: K-step advance vs fresh init at config_K must stay
     within ``loose`` tolerance even at K=1000, which sets the safety margin
-    for ``num_mcmc_per_measurement``."""
+    for ``num_mcmc_per_measurement``.
+    """
     wf, gem = _build_wavefunction_J3("H2_ae_ccpvdz_cart.h5")
     rng = np.random.RandomState(1)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
@@ -869,7 +872,8 @@ def test_streaming_kinetic_drift_accumulation(K):
 )
 def test_streaming_kinetic_edge_cases(trexio_file):
     """Edge cases: small electron counts and ``N_up != N_dn`` (Li, N) must
-    still match the fresh fast-update result."""
+    still match the fresh fast-update result.
+    """
     wf, gem = _build_wavefunction_J3(trexio_file)
     rng = np.random.RandomState(3)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
@@ -881,7 +885,8 @@ def test_streaming_kinetic_edge_cases(trexio_file):
 @pytest.mark.parametrize("jastrow_combo", ["J3_only", "J1_J3", "J2_J3", "J1_J2_J3"])
 def test_streaming_kinetic_jastrow_combinations(jastrow_combo):
     """Streaming path must work for every J3-containing Jastrow combination
-    (PR1 dispatch requires J3 + ``jastrow_nn_data is None``)."""
+    (PR1 dispatch requires J3 + ``jastrow_nn_data is None``).
+    """
     with_J1 = "J1" in jastrow_combo
     with_J2 = "J2" in jastrow_combo
     wf, gem = _build_wavefunction_J3("water_ccecp_ccpvqz.h5", with_J1=with_J1, with_J2=with_J2)
@@ -895,7 +900,8 @@ def test_streaming_kinetic_jastrow_combinations(jastrow_combo):
 def test_streaming_kinetic_walker_axis_vmap():
     """``vmap`` over the walker axis must produce results equal to the
     independent per-walker streaming chains. Confirms the state pytree carries
-    walkers correctly along the leading axis."""
+    walkers correctly along the leading axis.
+    """
     wf, gem = _build_wavefunction_J3("H2_ae_ccpvdz_cart.h5")
     n_walkers = 4
     rng = np.random.RandomState(7)

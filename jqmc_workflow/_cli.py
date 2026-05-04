@@ -49,7 +49,6 @@ from logging import Formatter, StreamHandler, getLogger
 
 import toml
 import typer
-import yaml
 
 from ._config import get_config_dir, template_dir
 
@@ -284,7 +283,7 @@ class Monitor:
                     logger.info(f"  Job {stored_job_id} is RUNNING on {server}.")
                 else:
                     logger.info(f"  Job {stored_job_id} is NOT in the queue on {server}.")
-                    logger.info(f"  (it may have finished or been cancelled)")
+                    logger.info("  (it may have finished or been cancelled)")
             finally:
                 machine.ssh_close()
         except Exception as ex:

@@ -85,7 +85,7 @@ class WF_Workflow(Workflow):
         ``"sphe"`` -> convert to spherical-harmonic AOs,
         ``None``    -> keep the original representation.
 
-    Example
+    Example:
     -------
     >>> wf = WF_Workflow(
     ...     trexio_file="molecular.h5",
@@ -97,13 +97,13 @@ class WF_Workflow(Workflow):
     ... )
     >>> status, out_files, out_values = wf.launch()
 
-    Notes
+    Notes:
     -----
     This workflow runs **locally** -- no remote job submission is
     involved.  It calls ``jqmc-tool trexio convert-to`` via
     :func:`subprocess.run`.
 
-    See Also
+    See Also:
     --------
     VMC_Workflow : Optimise the wavefunction produced by this step.
     """
@@ -175,7 +175,7 @@ class WF_Workflow(Workflow):
     async def run(self) -> tuple:
         """Run the TREXIO->hamiltonian conversion (locally).
 
-        Returns
+        Returns:
         -------
         tuple
             ``(status, output_files, output_values)``

@@ -42,7 +42,6 @@ import os
 import re
 import time
 from logging import getLogger
-from typing import Optional
 
 from ._error_estimator import (
     _format_duration,
@@ -65,7 +64,7 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
 class VMC_Workflow(Workflow):
-    """VMC (Variational Monte Carlo) Jastrow / orbital optimisation workflow.
+    r"""VMC (Variational Monte Carlo) Jastrow / orbital optimisation workflow.
 
     Generates a ``job_type=vmc`` input TOML, submits ``jqmc``, monitors
     until completion, and collects the optimised
@@ -184,7 +183,7 @@ class VMC_Workflow(Workflow):
         are always removed; remote files are removed only when the
         workflow targets a remote machine.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     Standalone launch (automatic mode)::
 
@@ -253,7 +252,7 @@ class VMC_Workflow(Workflow):
     energy_slope_std : float
         Standard deviation of the energy slope.
 
-    Notes
+    Notes:
     -----
     * The pilot uses a small number of opt steps (``pilot_vmc_steps``)
       just to estimate the error.  The real optimisation happens in
@@ -261,7 +260,7 @@ class VMC_Workflow(Workflow):
     * The estimation is stored in ``workflow_state.toml`` under
       ``[estimation]``; on re-entrance the pilot is skipped.
 
-    See Also
+    See Also:
     --------
     MCMC_Workflow : VMC production sampling (job_type=mcmc).
     LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
@@ -506,7 +505,7 @@ class VMC_Workflow(Workflow):
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 last_run = i
                 continue
-            elif status in ("submitted", "completed"):
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
@@ -736,7 +735,7 @@ class VMC_Workflow(Workflow):
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 last_run = i
                 continue
-            elif status in ("submitted", "completed"):
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
@@ -995,7 +994,7 @@ class VMC_Workflow(Workflow):
     def _parse_all_snr(output_file):
         """Parse all signal-to-noise ratios from a VMC output file.
 
-        Returns
+        Returns:
         -------
         list[float]
             All ``max(|f|/|std f|)`` values in order, one per
@@ -1024,7 +1023,7 @@ class VMC_Workflow(Workflow):
         Uses the existing ``_parse_vmc_log_text()`` parser to obtain
         :class:`VMC_Step_Data` and returns the energy/error pairs.
 
-        Returns
+        Returns:
         -------
         list[tuple[float, float]]
             ``[(E_1, sigma_1), (E_2, sigma_2), ...]`` in file order.
@@ -1058,7 +1057,7 @@ class VMC_Workflow(Workflow):
         energy_errors : list[float]
             Statistical error per step (length *N*, positive).
 
-        Returns
+        Returns:
         -------
         slope : float
             Weighted least-squares slope *b*.
@@ -1090,7 +1089,7 @@ class VMC_Workflow(Workflow):
         Extracts the energy from the *last* optimization step, which
         reflects the optimized wavefunction quality.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.

@@ -1363,7 +1363,7 @@ class ShellPrimMap:
         num_full: Total number of primitives in the full array.
     """
 
-    __slots__ = ("unique_indices", "prim_to_unique", "num_unique", "num_full")
+    __slots__ = ("num_full", "num_unique", "prim_to_unique", "unique_indices")
 
     def __init__(self, unique_indices: np.ndarray, prim_to_unique: np.ndarray):
         """Build the prim<->unique-AO index mapping from precomputed arrays."""
@@ -3055,7 +3055,7 @@ def _compute_S_l_m_debug(
         return np.sum(
             [
                 scipy.special.binom(m_abs, p) * x ** (p) * y ** (m_abs - p) * np.cos((m_abs - p) * (np.pi / 2.0))
-                for p in range(0, m_abs + 1)
+                for p in range(m_abs + 1)
             ]
         )
 
@@ -3063,7 +3063,7 @@ def _compute_S_l_m_debug(
         return np.sum(
             [
                 scipy.special.binom(m_abs, p) * x ** (p) * y ** (m_abs - p) * np.sin((m_abs - p) * (np.pi / 2.0))
-                for p in range(0, m_abs + 1)
+                for p in range(m_abs + 1)
             ]
         )
 
@@ -3083,7 +3083,7 @@ def _compute_S_l_m_debug(
     def Lambda_lm(r_norm: float, z: float) -> float:
         return np.sqrt(
             (2 - int(m_abs == 0)) * scipy.special.factorial(l - m_abs) / scipy.special.factorial(l + m_abs)
-        ) * np.sum([lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs) for k in range(0, int((l - m_abs) / 2) + 1)])
+        ) * np.sum([lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs) for k in range(int((l - m_abs) / 2) + 1)])
 
     # solid harmonics eveluated in Cartesian coord. (x,y,z):
     if m >= 0:

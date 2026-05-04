@@ -38,37 +38,32 @@ lint.extend-ignore = [
     "SIM108",  # ternary if-else (sometimes if-block is more readable)
     # --- TODO: currently-violating rules; fix and remove from this list ---
     # bugbear
-    "B007", "B010", "B904", "B905",
+    "B007", "B904", "B905",
     # flake8-comprehensions
-    "C401", "C408", "C409", "C414", "C416", "C419", "C420",
+    "C401", "C408", "C409", "C414", "C416", "C419",
     # pydocstyle
-    "D101", "D102", "D103", "D104", "D105", "D107", "D200", "D202",
-    "D205", "D209", "D210", "D212", "D301", "D403", "D415", "D416",
+    "D101", "D102", "D103", "D104", "D105", "D107",
+    "D205", "D301", "D415",
     # pycodestyle errors
-    "E101", "E401", "E402", "E701", "E702", "E721", "E902",
+    "E101", "E402", "E701", "E702", "E721", "E902",
     # pyflakes
-    "F401", "F541", "F811", "F841",
+    "F841",
     # logging-format
     "G003",
     # numpy
     "NPY002",
     # performance
     "PERF401", "PERF402",
-    # flake8-pie
-    "PIE790", "PIE808",
     # flake8-pytest-style
     "PT006", "PT012", "PT018",
     # flake8-return
-    "RET501", "RET503", "RET504", "RET505", "RET506", "RET507", "RET508",
+    "RET503", "RET504",
     # ruff-specific (RUF001/002/003 are ENFORCED -- never add here)
-    "RUF005", "RUF010", "RUF019", "RUF021", "RUF022", "RUF023",
-    "RUF046", "RUF059",
+    "RUF005", "RUF022", "RUF046", "RUF059",
     # flake8-simplify
-    "SIM101", "SIM102", "SIM103", "SIM105", "SIM114", "SIM115", "SIM118", "SIM300",
+    "SIM101", "SIM102", "SIM103", "SIM105", "SIM115", "SIM118",
     # flake8-print
     "T201",
-    # pycodestyle warnings
-    "W291", "W293", "W605",
 ]
 exclude = ["jqmc/obsolete", "prototypes"]
 

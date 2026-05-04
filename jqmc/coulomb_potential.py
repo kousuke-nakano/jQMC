@@ -320,8 +320,7 @@ class Coulomb_potential_data:
         """
         if self.ecp_flag:
             return np.array(self.structure_data.atomic_numbers) - np.array(self.z_cores)
-        else:
-            return np.array(self.structure_data.atomic_numbers)
+        return np.array(self.structure_data.atomic_numbers)
 
     @property
     def _global_max_ang_mom_plus_1(self) -> int:

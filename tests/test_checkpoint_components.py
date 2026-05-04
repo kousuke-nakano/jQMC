@@ -20,7 +20,6 @@ from jqmc._checkpoint import (
     load_observables_from_checkpoint,
     load_optax_state,
     load_rank_checkpoint,
-    merge_rank_checkpoints,
     save_optax_state,
     save_rank_checkpoint,
 )
@@ -167,7 +166,6 @@ class TestRankCheckpoint:
         assert os.path.exists(rank_file)
 
         # Now merge into a single checkpoint (simulate rank 0)
-        from jqmc._checkpoint import merge_rank_checkpoints
 
         # We need a Hamiltonian_data for merging -- use a minimal mock
         merged = str(tmp_path / "restart.h5")

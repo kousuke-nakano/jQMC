@@ -457,8 +457,11 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad_lap (fp64) -> mo_grad (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
+    # Autodiff differentiates compute_MOs -> compute_AOs (ao_eval, fp32 in
+    # mixed mode); analytic path uses compute_AOs_grad (ao_grad_lap, fp64).
+    # Achievable agreement is bounded by ao_eval (the fp32 forward kernel the
+    # autodiff side runs through), not by ao_grad_lap or mo_grad.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap", "mo_grad"], "strict")
     assert not np.any(np.isnan(np.asarray(grad_x_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_x_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol, rtol=rtol)
@@ -525,8 +528,11 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad_lap (fp64) -> mo_lap (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
+    # Autodiff differentiates compute_MOs -> compute_AOs (ao_eval, fp32 in
+    # mixed mode); analytic path uses compute_AOs_laplacian (ao_grad_lap,
+    # fp64). Achievable agreement is bounded by ao_eval (the fp32 forward
+    # kernel the autodiff side runs through), not by ao_grad_lap or mo_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_lap_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_lap_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol, rtol=rtol)
@@ -536,7 +542,6 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
 def test_MOs_sphe_to_cart():
     """Ensure spherical -> Cartesian conversion preserves MO values up to l=6."""
-
     rng = np.random.default_rng(0)
 
     nucleus_index = []
@@ -627,7 +632,6 @@ def test_MOs_sphe_to_cart():
 
 def test_MOs_cart_to_sphe():
     """Ensure Cartesian -> spherical conversion preserves MO values up to l=6."""
-
     rng = np.random.default_rng(1)
 
     nucleus_index = []

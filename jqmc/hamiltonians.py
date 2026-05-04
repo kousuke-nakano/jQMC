@@ -441,7 +441,7 @@ def _load_item(item: h5py.Group | h5py.Dataset | Any) -> Any:
             elif val.dtype.kind == "O" and val.size > 0 and isinstance(val.flat[0], bytes):
                 val = np.array([v.decode("utf-8") for v in val.flat]).reshape(val.shape)
         return val
-    elif isinstance(item, h5py.Group):
+    if isinstance(item, h5py.Group):
         if item.attrs.get("_is_list"):
             lst = []
             # Combine keys from subgroups/datasets and attributes
@@ -457,25 +457,23 @@ def _load_item(item: h5py.Group | h5py.Dataset | Any) -> Any:
                 elif k in item.attrs:
                     lst.append(item.attrs[k])
             return lst
-        elif item.attrs.get("_is_dict"):
+        if item.attrs.get("_is_dict"):
             d = {}
             for k in item.keys():
                 d[k] = _load_item(item[k])
             return d
-        else:
-            # Dataclass or generic group
-            class_name = item.attrs.get("_class_name")
-            module_name = item.attrs.get("_module_name")
-            if class_name and module_name:
-                module = importlib.import_module(module_name)
-                sub_cls = getattr(module, class_name)
-                return _load_dataclass_from_hdf5(sub_cls, item)
-            else:
-                # Fallback for dicts saved without _is_dict or unknown structures
-                d = {}
-                for k in item.keys():
-                    d[k] = _load_item(item[k])
-                return d
+        # Dataclass or generic group
+        class_name = item.attrs.get("_class_name")
+        module_name = item.attrs.get("_module_name")
+        if class_name and module_name:
+            module = importlib.import_module(module_name)
+            sub_cls = getattr(module, class_name)
+            return _load_dataclass_from_hdf5(sub_cls, item)
+        # Fallback for dicts saved without _is_dict or unknown structures
+        d = {}
+        for k in item.keys():
+            d[k] = _load_item(item[k])
+        return d
     return item
 
 

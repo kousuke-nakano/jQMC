@@ -40,7 +40,6 @@ Supports FileFrom / ValueFrom dependencies.
 import asyncio
 import os
 import pathlib
-from datetime import datetime
 from logging import (
     FileHandler,
     Formatter,
@@ -81,13 +80,13 @@ class Launcher:
         If ``True``, render the dependency graph to ``dependency_graph.png``
         (requires the ``graphviz`` Python package).
 
-    Raises
+    Raises:
     ------
     ValueError
         If workflow labels are duplicated or a dependency references an
         undefined workflow label.
 
-    Examples
+    Examples:
     --------
     Typical three-stage QMC pipeline::
 
@@ -133,14 +132,14 @@ class Launcher:
         )
         launcher.launch()
 
-    Notes
+    Notes:
     -----
     * The launcher changes the working directory during execution and
       restores it afterwards.
     * If a workflow fails, all downstream dependents are automatically
       skipped.
 
-    See Also
+    See Also:
     --------
     Container : Wraps a workflow in a project directory.
     FileFrom : File dependency placeholder.
@@ -379,11 +378,10 @@ class Launcher:
             p = pathlib.Path(filepath)
             return p.resolve().relative_to(pathlib.Path(self.root_dir).resolve())
 
-        elif isinstance(dep_obj, ValueFrom):
+        if isinstance(dep_obj, ValueFrom):
             return cw.output_values.get(dep_obj.key)
 
-        else:
-            raise ValueError(f"Unknown dependency type: {dep_obj}")
+        raise ValueError(f"Unknown dependency type: {dep_obj}")
 
     def _resolve_variables(self, cw: Container):
         """Replace all dependency placeholders in cw with resolved values."""
@@ -464,8 +462,7 @@ class Launcher:
                 if pending:
                     logger.error(f"Deadlock! Remaining: {pending}")
                     break
-                else:
-                    break
+                break
 
             # Wait for at least one task to complete
             done_tasks, _ = await asyncio.wait(running.values(), return_when=asyncio.FIRST_COMPLETED)

@@ -342,8 +342,7 @@ class Machine:
 
         if self.machine_type == "local":
             return self._run_local(command_r)
-        else:
-            return self._run_remote(command_r)
+        return self._run_remote(command_r)
 
     def _run_local(self, command_r: str, max_retries: int = 10):
         for attempt in range(max_retries):

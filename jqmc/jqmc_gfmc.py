@@ -52,7 +52,6 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
-from jax.scipy import linalg as jsp_linalg
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
@@ -3617,16 +3616,15 @@ class _GFMC_t_debug:
                     if tau_left <= 0.0:  # '= is very important!!'
                         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                         break
-                    else:
-                        # electron position update
-                        # random choice
-                        # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
-                        jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                        cdf = jnp.cumsum(non_diagonal_move_probabilities)
-                        random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
-                        k = jnp.searchsorted(cdf, random_value)
-                        r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
-                        r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
+                    # electron position update
+                    # random choice
+                    # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
+                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                    cdf = jnp.cumsum(non_diagonal_move_probabilities)
+                    random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                    k = jnp.searchsorted(cdf, random_value)
+                    r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
+                    r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
                 projection_counter_list[i_walker] = projection_counter
                 e_L_list[i_walker] = e_L
@@ -4800,7 +4798,6 @@ class GFMC_n:
                 ``None`` (default) on the legacy path; the callees fall back to fresh
                 AO evaluation when ``j3_state is None``.
                 """
-
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 

@@ -55,7 +55,6 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
@@ -1884,9 +1883,7 @@ class MCMC:
         _need_full_dE = return_matrices and g is not None and collective_obs is not None
         if _need_full_dE:
             pass  # keep full dE_matrix; will slice after computing dE_SR
-        elif _cpi_for_dln is not None:
-            dE_matrix = dE_matrix[:, :, chosen_param_index]
-        elif chosen_param_index is not None and not (return_matrices and g is not None):
+        elif _cpi_for_dln is not None or (chosen_param_index is not None and not (return_matrices and g is not None)):
             dE_matrix = dE_matrix[:, :, chosen_param_index]
         # else: LM fallback (no collective_obs) -- keep full dE_matrix, slice later
 
@@ -1917,7 +1914,7 @@ class MCMC:
             assert collective_obs.shape == (N,), f"collective_obs shape {collective_obs.shape} != ({N},)"
             assert K_dE >= K, f"dE must be full when collective_obs is used: K_dE={K_dE} < K={K}"
         else:
-            assert K == K_dE, f"O and dE dimension mismatch: K={K} != K_dE={K_dE}"
+            assert K_dE == K, f"O and dE dimension mismatch: K={K} != K_dE={K_dE}"
         if g is not None:
             assert g.shape[0] == K_dE, f"g dimension {g.shape[0]} != K_dE={K_dE}"
 

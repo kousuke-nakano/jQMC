@@ -45,7 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc._precision import get_tolerance_min
 from jqmc.hamiltonians import Hamiltonian_data
 from jqmc.jastrow_factor import (
     Jastrow_data,

@@ -57,7 +57,7 @@ def resolve_with_defaults(section_name: str, explicit_params: dict) -> dict:
         ``{param_name: value_or_None}``.  *None* entries are replaced
         by the corresponding default from ``cli_parameters``.
 
-    Returns
+    Returns:
     -------
     dict
         Resolved parameters with no *None* values (unless the default
@@ -87,7 +87,7 @@ def get_default_parameters(job_type: str) -> dict:
     job_type : str
         One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
 
-    Returns
+    Returns:
     -------
     dict
         ``{"control": {...}, job_type: {...}}``
@@ -124,12 +124,12 @@ def generate_input_toml(
     with_comments : bool
         If True, insert inline comments from ``cli_parameters["*_comments"]``.
 
-    Returns
+    Returns:
     -------
     str
         The absolute path of the written file.
 
-    Examples
+    Examples:
     --------
     >>> generate_input_toml(
     ...     "mcmc",
@@ -201,16 +201,15 @@ def _toml_value(v) -> str:
     """Format a Python value as a TOML literal."""
     if isinstance(v, bool):
         return "true" if v else "false"
-    elif isinstance(v, str):
+    if isinstance(v, str):
         return f'"{v}"'
-    elif isinstance(v, (int, float)):
+    if isinstance(v, (int, float)):
         return str(v)
-    elif isinstance(v, dict):
+    if isinstance(v, dict):
         # Inline table
         inner = ", ".join(f"{k} = {_toml_value(val)}" for k, val in v.items())
         return "{" + inner + "}"
-    elif isinstance(v, list):
+    if isinstance(v, list):
         inner = ", ".join(_toml_value(item) for item in v)
         return f"[{inner}]"
-    else:
-        return repr(v)
+    return repr(v)

@@ -114,7 +114,7 @@ def _ensure_flax_trace_level_compat() -> None:
 
     # Mark as patched to prevent repeated checks; do not mutate further when the
     # attribute exists but already works.
-    setattr(trace_level, "_jqmc_patched", True)
+    trace_level._jqmc_patched = True
 
 
 def _flatten_params_with_treedef(params: Any) -> tuple[jnp.ndarray, Any, list[tuple[int, ...]]]:
@@ -1392,14 +1392,11 @@ class Jastrow_three_body_data:
             NotImplementedError:
                 If the instances of orb_data is neither AOs_data nor MOs_data.
         """
-        if isinstance(self.orb_data, AOs_sphe_data):
+        if isinstance(self.orb_data, AOs_sphe_data) or isinstance(self.orb_data, AOs_cart_data):
             return compute_AOs
-        elif isinstance(self.orb_data, AOs_cart_data):
-            return compute_AOs
-        elif isinstance(self.orb_data, MOs_data):
+        if isinstance(self.orb_data, MOs_data):
             return compute_MOs
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def _j_matrix_jnp(self) -> jax.Array:
@@ -1413,40 +1410,36 @@ class Jastrow_three_body_data:
         """AO Gaussian exponents (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
             return self.orb_data._exponents_jnp
-        elif isinstance(self.orb_data, MOs_data):
+        if isinstance(self.orb_data, MOs_data):
             return self.orb_data.aos_data._exponents_jnp
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     @property
     def ao_coefficients(self) -> jax.Array:
         """AO contraction coefficients (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
             return self.orb_data._coefficients_jnp
-        elif isinstance(self.orb_data, MOs_data):
+        if isinstance(self.orb_data, MOs_data):
             return self.orb_data.aos_data._coefficients_jnp
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     def with_updated_ao_exponents(self, new_exp: npt.NDArray[np.float64]) -> "Jastrow_three_body_data":
         """Return a new instance with updated AO exponents."""
         if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
             return self.replace(orb_data=self.orb_data.replace(exponents=new_exp))
-        elif isinstance(self.orb_data, MOs_data):
+        if isinstance(self.orb_data, MOs_data):
             new_aos = self.orb_data.aos_data.replace(exponents=new_exp)
             return self.replace(orb_data=self.orb_data.replace(aos_data=new_aos))
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     def with_updated_ao_coefficients(self, new_coeff: npt.NDArray[np.float64]) -> "Jastrow_three_body_data":
         """Return a new instance with updated AO contraction coefficients."""
         if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
             return self.replace(orb_data=self.orb_data.replace(coefficients=new_coeff))
-        elif isinstance(self.orb_data, MOs_data):
+        if isinstance(self.orb_data, MOs_data):
             new_aos = self.orb_data.aos_data.replace(coefficients=new_coeff)
             return self.replace(orb_data=self.orb_data.replace(aos_data=new_aos))
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     @classmethod
     def init_jastrow_three_body_data(

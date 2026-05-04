@@ -80,9 +80,7 @@ from .jastrow_factor import (
     _init_grads_laplacian_Jastrow_one_body_streaming_state,
     _init_grads_laplacian_Jastrow_three_body_streaming_state,
     _init_grads_laplacian_Jastrow_two_body_streaming_state,
-    compute_grads_and_laplacian_Jastrow_one_body,
     compute_grads_and_laplacian_Jastrow_part,
-    compute_grads_and_laplacian_Jastrow_two_body,
     compute_Jastrow_part,
 )
 from .molecular_orbital import MOs_data

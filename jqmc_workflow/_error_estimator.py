@@ -87,7 +87,7 @@ def estimate_required_steps(
         Minimum number of steps to return (e.g. warmup + bin_blocks).
         Default 0 (no minimum).
 
-    Returns
+    Returns:
     -------
     int
         Estimated number of steps for the production run.
@@ -143,7 +143,7 @@ def estimate_additional_steps(
     min_additional : int
         Floor on additional steps to avoid trivially short runs.
 
-    Returns
+    Returns:
     -------
     int
         Number of *additional* steps to run.
@@ -171,7 +171,7 @@ def estimate_additional_steps(
 def suffixed_name(filename: str, index: int) -> str:
     """Insert an integer suffix before the file extension.
 
-    Examples
+    Examples:
     --------
     >>> suffixed_name("input.toml", 0)
     'input_0.toml'
@@ -185,7 +185,7 @@ def suffixed_name(filename: str, index: int) -> str:
 def _format_duration(seconds: float) -> str:
     """Format a duration in seconds as a human-readable string.
 
-    Examples
+    Examples:
     --------
     >>> _format_duration(90)
     '1m 30s'
@@ -241,7 +241,7 @@ def parse_net_time(output_file: str) -> float | None:
     output_file : str
         Path to the jQMC stdout/stderr output file.
 
-    Returns
+    Returns:
     -------
     float or None
         Net time in seconds, or *None* if the pattern is not found.

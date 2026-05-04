@@ -1,6 +1,5 @@
 # read turborvb WF and PPs and generate jQMC WF and PP instances.
 import sys
-import pickle
 import json
 
 import numpy as np

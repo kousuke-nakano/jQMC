@@ -125,7 +125,7 @@ def run_pyscf(base_dir: str) -> float | None:
     if os.path.isfile(trexio_path):
         print(f"  [skip] {TREXIO_FILE} already exists.")
     else:
-        print(f"  [run]  pySCF for water ...")
+        print("  [run]  pySCF for water ...")
         script_path = os.path.join(base_dir, "_local_pyscf.py")
         with open(script_path, "w") as f:
             f.write(
@@ -160,7 +160,7 @@ def build_pipeline() -> tuple[
 ]:
     """Build Container list for J3 + MCMC / LRDMC.
 
-    Returns
+    Returns:
     -------
     all_workflows : list[Container]
         Flat list of all containers (for Launcher).

@@ -4,8 +4,7 @@ from pathlib import Path
 
 
 def sync_readme(readme_path):
-    """
-    Reads a README file, looks for <!-- include: filepath --> markers,
+    """Reads a README file, looks for <!-- include: filepath --> markers,
     and updates the following code block with the content of the file.
     """
     try:

@@ -1752,7 +1752,8 @@ def test_streaming_J2_state_against_full(j2b_type, n_up, n_dn):
 def test_streaming_J3_state_against_full(trexio_file):
     """K random single-electron moves advanced via the J3 streaming state must
     match a fresh init at the resulting configuration (and the existing analytic
-    full computation) within strict tolerance."""
+    full computation) within strict tolerance.
+    """
     import os
 
     from jqmc.jastrow_factor import (
