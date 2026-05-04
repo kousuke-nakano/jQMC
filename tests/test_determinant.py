@@ -1077,12 +1077,6 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
-    # Initialization
-    r_up_carts = []
-    r_dn_carts = []
-
-    total_electrons = 0
-
     if coulomb_potential_data.ecp_flag:
         charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
     else:
@@ -1090,72 +1084,42 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
 
     coords = structure_data._positions_cart_np
 
-    # Place electrons around each nucleus
-    for i in range(len(coords)):
-        charge = charges[i]
-        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
-
-        # Retrieve the position coordinates
-        x, y, z = coords[i]
-
-        # Place electrons
-        for _ in range(num_electrons):
-            # Calculate distance range
-            distance = np.random.uniform(0.5 / charge, 1.5 / charge)
-            theta = np.random.uniform(0, np.pi)
-            phi = np.random.uniform(0, 2 * np.pi)
-
-            # Convert spherical to Cartesian coordinates
-            dx = distance * np.sin(theta) * np.cos(phi)
-            dy = distance * np.sin(theta) * np.sin(phi)
-            dz = distance * np.cos(theta)
-
-            # Position of the electron
-            electron_position = np.array([x + dx, y + dy, z + dz])
-
-            # Assign spin
-            if len(r_up_carts) < num_electron_up:
-                r_up_carts.append(electron_position)
-            else:
-                r_dn_carts.append(electron_position)
-
-        total_electrons += num_electrons
-
-    # Handle surplus electrons
-    remaining_up = num_electron_up - len(r_up_carts)
-    remaining_dn = num_electron_dn - len(r_dn_carts)
-
-    # Randomly place any remaining electrons
-    for _ in range(remaining_up):
-        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-    for _ in range(remaining_dn):
-        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-
-    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
-    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
-
-    """
-    mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn])
-
-    # generate matrices for the test
-    ao_lambda_matrix_paired = np.dot(
-        mos_data_up.mo_coefficients.T,
-        np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
-    )
-    ao_lambda_matrix_unpaired = np.dot(mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired)
-    ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
-
-    geminal_ao_data = Geminal_data(
-        num_electron_up=num_electron_up,
-        num_electron_dn=num_electron_dn,
-        orb_data_up_spin=aos_data,
-        orb_data_dn_spin=aos_data,
-        lambda_matrix=ao_lambda_matrix,
-    )
-    """
-
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     geminal_ao_data.sanity_check()
+
+    # Generate electron configuration far from determinant nodes so that
+    # numerical 2nd derivatives are well-conditioned.
+    def _generate_config():
+        r_up = []
+        r_dn = []
+        for i in range(len(coords)):
+            charge = charges[i]
+            num_electrons = int(np.round(charge))
+            x, y, z = coords[i]
+            for _ in range(num_electrons):
+                distance = np.random.uniform(0.5 / max(charge, 1), 1.5 / max(charge, 1))
+                theta = np.random.uniform(0, np.pi)
+                phi = np.random.uniform(0, 2 * np.pi)
+                dx = distance * np.sin(theta) * np.cos(phi)
+                dy = distance * np.sin(theta) * np.sin(phi)
+                dz = distance * np.cos(theta)
+                if len(r_up) < num_electron_up:
+                    r_up.append(np.array([x + dx, y + dy, z + dz]))
+                else:
+                    r_dn.append(np.array([x + dx, y + dy, z + dz]))
+        for _ in range(num_electron_up - len(r_up)):
+            r_up.append(np.random.choice(coords) + np.random.normal(scale=0.2, size=3))
+        for _ in range(num_electron_dn - len(r_dn)):
+            r_dn.append(np.random.choice(coords) + np.random.normal(scale=0.2, size=3))
+        return np.array(r_up).reshape(-1, 3), np.array(r_dn).reshape(-1, 3)
+
+    for _ in range(500):
+        r_up_carts, r_dn_carts = _generate_config()
+        det_val = compute_det_geminal_all_elements(geminal_data=geminal_ao_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+        if abs(det_val) > 1e-8:
+            break
+    else:
+        pytest.skip("Could not find electron configuration sufficiently far from determinant node")
 
     grad_ln_D_up_numerical, grad_ln_D_dn_numerical, lap_ln_D_up_numerical, lap_ln_D_dn_numerical = (
         _compute_grads_and_laplacian_ln_Det_debug(

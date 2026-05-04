@@ -2829,94 +2829,44 @@ def _compute_grads_and_laplacian_ln_Det_debug(
     grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T / det_geminal
 
     #############################################################
-    # Laplacian part
+    # Laplacian part (4th-order central finite differences)
+    # f''(x) ≈ (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h²)
     #############################################################
 
-    diff_h2 = 1.0e-4  # for laplacian
+    diff_h2 = 1.0e-3  # larger h viable with 4th-order stencil (O(h⁴) truncation)
 
     laplacian_ln_D_up = np.zeros(len(r_up_carts))
     laplacian_ln_D_dn = np.zeros(len(r_dn_carts))
 
+    def _det_up(r_up):
+        return compute_det_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up, r_dn_carts=r_dn_carts)
+
+    def _det_dn(r_dn):
+        return compute_det_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn)
+
+    def _fd4_second_deriv(eval_fn, r_carts, r_i, dim, h, f0):
+        """4th-order central FD for f''(x)."""
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[r_i][dim] += h
+        r_p2[r_i][dim] += 2 * h
+        r_m1[r_i][dim] -= h
+        r_m2[r_i][dim] -= 2 * h
+        return (-eval_fn(r_p2) + 16 * eval_fn(r_p1) - 30 * f0 + 16 * eval_fn(r_m1) - eval_fn(r_m2)) / (12 * h**2)
+
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up2_carts = r_up_carts.copy()
-        diff_p_y_r_up2_carts = r_up_carts.copy()
-        diff_p_z_r_up2_carts = r_up_carts.copy()
-        diff_p_x_r_up2_carts[r_i][0] += diff_h2
-        diff_p_y_r_up2_carts[r_i][1] += diff_h2
-        diff_p_z_r_up2_carts[r_i][2] += diff_h2
-
-        det_geminal_p_x_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_p_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_p_y_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_p_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_p_z_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_p_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        diff_m_x_r_up2_carts = r_up_carts.copy()
-        diff_m_y_r_up2_carts = r_up_carts.copy()
-        diff_m_z_r_up2_carts = r_up_carts.copy()
-        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
-
-        det_geminal_m_x_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_m_y_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_m_z_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        """ mathematically correct, but numerically unstablle
-        gradgrad_x_up = (
-            np.log(np.abs(det_geminal_p_x_up2))
-            + np.log(np.abs(det_geminal_m_x_up2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_y_up = (
-            np.log(np.abs(det_geminal_p_y_up2))
-            + np.log(np.abs(det_geminal_m_y_up2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_z_up = (
-            np.log(np.abs(det_geminal_p_z_up2))
-            + np.log(np.abs(det_geminal_m_z_up2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-        """
-
-        # compute f''(x)
-        gradgrad_x_up = (det_geminal_p_x_up2 + det_geminal_m_x_up2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_y_up = (det_geminal_p_y_up2 + det_geminal_m_y_up2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_z_up = (det_geminal_p_z_up2 + det_geminal_m_z_up2 - 2.0 * det_geminal) / (diff_h2**2)
+        gradgrad_x_up = _fd4_second_deriv(_det_up, r_up_carts, r_i, 0, diff_h2, det_geminal)
+        gradgrad_y_up = _fd4_second_deriv(_det_up, r_up_carts, r_i, 1, diff_h2, det_geminal)
+        gradgrad_z_up = _fd4_second_deriv(_det_up, r_up_carts, r_i, 2, diff_h2, det_geminal)
 
         _grad_x_up = grad_x_up[r_i]
         _grad_y_up = grad_y_up[r_i]
         _grad_z_up = grad_z_up[r_i]
 
-        # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
+        # d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
         laplacian_ln_D_up[r_i] = (
             (gradgrad_x_up * det_geminal - _grad_x_up**2) / det_geminal**2
             + (gradgrad_y_up * det_geminal - _grad_y_up**2) / det_geminal**2
@@ -2925,84 +2875,15 @@ def _compute_grads_and_laplacian_ln_Det_debug(
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn2_carts = r_dn_carts.copy()
-        diff_p_y_r_dn2_carts = r_dn_carts.copy()
-        diff_p_z_r_dn2_carts = r_dn_carts.copy()
-        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
-        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
-        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
-
-        det_geminal_p_x_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_x_r_dn2_carts,
-        )
-        det_geminal_p_y_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_y_r_dn2_carts,
-        )
-        det_geminal_p_z_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_z_r_dn2_carts,
-        )
-
-        diff_m_x_r_dn2_carts = r_dn_carts.copy()
-        diff_m_y_r_dn2_carts = r_dn_carts.copy()
-        diff_m_z_r_dn2_carts = r_dn_carts.copy()
-        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
-
-        det_geminal_m_x_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_x_r_dn2_carts,
-        )
-        det_geminal_m_y_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_y_r_dn2_carts,
-        )
-        det_geminal_m_z_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_z_r_dn2_carts,
-        )
-
-        """ mathematically correct, but numerically unstable
-        gradgrad_x_dn = (
-            np.log(np.abs(det_geminal_p_x_dn2))
-            + np.log(np.abs(det_geminal_m_x_dn2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_y_dn = (
-            np.log(np.abs(det_geminal_p_y_dn2))
-            + np.log(np.abs(det_geminal_m_y_dn2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_z_dn = (
-            np.log(np.abs(det_geminal_p_z_dn2))
-            + np.log(np.abs(det_geminal_m_z_dn2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-        """
-
-        # compute f''(x)
-        gradgrad_x_dn = (det_geminal_p_x_dn2 + det_geminal_m_x_dn2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_y_dn = (det_geminal_p_y_dn2 + det_geminal_m_y_dn2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_z_dn = (det_geminal_p_z_dn2 + det_geminal_m_z_dn2 - 2.0 * det_geminal) / (diff_h2**2)
+        gradgrad_x_dn = _fd4_second_deriv(_det_dn, r_dn_carts, r_i, 0, diff_h2, det_geminal)
+        gradgrad_y_dn = _fd4_second_deriv(_det_dn, r_dn_carts, r_i, 1, diff_h2, det_geminal)
+        gradgrad_z_dn = _fd4_second_deriv(_det_dn, r_dn_carts, r_i, 2, diff_h2, det_geminal)
 
         _grad_x_dn = grad_x_dn[r_i]
         _grad_y_dn = grad_y_dn[r_i]
         _grad_z_dn = grad_z_dn[r_i]
 
-        # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
+        # d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
         laplacian_ln_D_dn[r_i] = (
             (gradgrad_x_dn * det_geminal - _grad_x_dn**2) / det_geminal**2
             + (gradgrad_y_dn * det_geminal - _grad_y_dn**2) / det_geminal**2

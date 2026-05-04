@@ -119,8 +119,18 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
     r_cart_min, r_cart_max = -2.0, +2.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+    # Generate electron configuration away from wavefunction nodes to ensure
+    # numerical 2nd derivatives are well-conditioned (|Psi| >> 0).
+    from jqmc.wavefunction import evaluate_wavefunction
+
+    for _ in range(200):
+        r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+        r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+        psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
+        if abs(psi_val) > 1e-8:
+            break
+    else:
+        pytest.skip("Could not find electron configuration sufficiently far from node")
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
