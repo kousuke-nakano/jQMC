@@ -38,7 +38,7 @@ See :mod:`jqmc._precision` for details.
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from functools import lru_cache
+from functools import lru_cache, cache
 from logging import getLogger
 
 import numpy as np
@@ -565,7 +565,7 @@ def _generate_init_electron_configurations_debug(
     return r_carts_up, r_carts_dn, up_owner, dn_owner
 
 
-@lru_cache(maxsize=None)
+@cache
 def _cart_to_spherical_matrix(l: int) -> np.ndarray:
     """Precomputed cart -> real-spherical transform for angular momentum ``l`` (0-6).
 

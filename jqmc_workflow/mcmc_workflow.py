@@ -230,23 +230,23 @@ class MCMC_Workflow(Workflow):
         num_mcmc_bin_blocks: int = 5,
         num_mcmc_warmup_steps: int = 0,
         # -- [mcmc] section parameters --
-        Dt: Optional[float] = None,
-        epsilon_AS: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
-        atomic_force: Optional[bool] = None,
-        use_swct: Optional[bool] = None,
-        parameter_derivatives: Optional[bool] = None,
+        Dt: float | None = None,
+        epsilon_AS: float | None = None,
+        num_mcmc_per_measurement: int | None = None,
+        atomic_force: bool | None = None,
+        use_swct: bool | None = None,
+        parameter_derivatives: bool | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
-        num_mcmc_steps: Optional[int] = None,
+        num_mcmc_steps: int | None = None,
         pilot_steps: int = 100,
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         max_continuation: int = 1,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -892,7 +892,7 @@ class MCMC_Workflow(Workflow):
 
     # -- Utility methods -------------------------------------------
 
-    def _find_restart_chk(self, work_dir: str) -> Optional[str]:
+    def _find_restart_chk(self, work_dir: str) -> str | None:
         """Locate the MCMC restart checkpoint file in *work_dir*."""
         for pattern in ["restart.h5", "mcmc.h5", "*.h5"]:
             matches = sorted(glob.glob(os.path.join(work_dir, pattern)))
@@ -900,7 +900,7 @@ class MCMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: str | None = None):
         """Parse energy from *output_file* or run ``jqmc-tool mcmc compute-energy``.
 
         When *output_file* is given the energy is read directly from
@@ -962,7 +962,7 @@ class MCMC_Workflow(Workflow):
             return float(match.group(1)), float(match.group(2))
         return None, None
 
-    def _compute_force(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+    def _compute_force(self, restart_chk: str, work_dir: str, output_file: str | None = None):
         """Parse forces from *output_file* or run ``jqmc-tool mcmc compute-force``.
 
         When *output_file* is given, forces are read directly from

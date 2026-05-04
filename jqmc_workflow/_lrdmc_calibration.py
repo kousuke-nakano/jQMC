@@ -92,7 +92,7 @@ def get_num_electrons(hamiltonian_file: str) -> int:
 _SURVIVED_PATTERN = re.compile(r"Survived walkers ratio\s*=\s*(\d+\.?\d*)\s*%")
 
 
-def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
+def parse_survived_walkers_ratio(output_file: str) -> float | None:
     """Parse the survived walkers ratio from an LRDMC output file.
 
     Searches for the line
@@ -111,7 +111,7 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
     """
     last_value = None
     try:
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             for line in f:
                 m = _SURVIVED_PATTERN.search(line)
                 if m:
@@ -125,8 +125,8 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
 
 
 def fit_num_projection_per_measurement(
-    x_values: List[int],
-    y_values: List[float],
+    x_values: list[int],
+    y_values: list[float],
     target_ratio: float,
 ) -> int:
     r"""Determine the optimal ``num_projection_per_measurement`` by linear fit.

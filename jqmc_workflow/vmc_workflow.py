@@ -278,39 +278,39 @@ class VMC_Workflow(Workflow):
         number_of_walkers: int = 4,
         max_time: int = 86400,
         # -- [vmc] section parameters --
-        Dt: Optional[float] = None,
-        epsilon_AS: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
-        num_mcmc_warmup_steps: Optional[int] = None,
-        num_mcmc_bin_blocks: Optional[int] = None,
-        wf_dump_freq: Optional[int] = None,
-        opt_J1_param: Optional[bool] = None,
-        opt_J2_param: Optional[bool] = None,
-        opt_J3_param: Optional[bool] = None,
-        opt_JNN_param: Optional[bool] = None,
-        opt_lambda_param: Optional[bool] = None,
-        opt_with_projected_MOs: Optional[bool] = None,
-        opt_J3_basis_exp: Optional[bool] = None,
-        opt_J3_basis_coeff: Optional[bool] = None,
-        opt_lambda_basis_exp: Optional[bool] = None,
-        opt_lambda_basis_coeff: Optional[bool] = None,
-        optimizer_kwargs: Optional[dict] = None,
+        Dt: float | None = None,
+        epsilon_AS: float | None = None,
+        num_mcmc_per_measurement: int | None = None,
+        num_mcmc_warmup_steps: int | None = None,
+        num_mcmc_bin_blocks: int | None = None,
+        wf_dump_freq: int | None = None,
+        opt_J1_param: bool | None = None,
+        opt_J2_param: bool | None = None,
+        opt_J3_param: bool | None = None,
+        opt_JNN_param: bool | None = None,
+        opt_lambda_param: bool | None = None,
+        opt_with_projected_MOs: bool | None = None,
+        opt_J3_basis_exp: bool | None = None,
+        opt_J3_basis_coeff: bool | None = None,
+        opt_lambda_basis_exp: bool | None = None,
+        opt_lambda_basis_coeff: bool | None = None,
+        optimizer_kwargs: dict | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
-        num_mcmc_steps: Optional[int] = None,
+        num_mcmc_steps: int | None = None,
         pilot_mcmc_steps: int = 50,
         pilot_vmc_steps: int = 5,
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         max_continuation: int = 1,
-        target_snr: Optional[float] = None,
+        target_snr: float | None = None,
         snr_avg_window: int = 5,
-        energy_slope_sigma_threshold: Optional[float] = None,
+        energy_slope_sigma_threshold: float | None = None,
         energy_slope_window_size: int = 5,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -958,7 +958,7 @@ class VMC_Workflow(Workflow):
         converged = converged_snr and converged_slope
         return converged, converged_snr, converged_slope
 
-    def _find_restart_chk(self, work_dir: str) -> Optional[str]:
+    def _find_restart_chk(self, work_dir: str) -> str | None:
         """Locate a VMC restart checkpoint file in *work_dir*."""
         for pattern in ["restart.h5", "vmc.h5", "*.h5"]:
             matches = sorted(glob.glob(os.path.join(work_dir, pattern)))
@@ -978,7 +978,7 @@ class VMC_Workflow(Workflow):
         energy_pattern = re.compile(r"E\s*=\s*([+-]?\d+\.\d+(?:[eE][+-]?\d+)?)\s*\+\-\s*(\d+\.\d+(?:[eE][+-]?\d+)?)")
         last_match = None
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 for line in f:
                     m = energy_pattern.search(line)
                     if m:
@@ -1008,7 +1008,7 @@ class VMC_Workflow(Workflow):
         snr_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)")
         values = []
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 for line in f:
                     m = snr_pattern.search(line)
                     if m:
@@ -1033,7 +1033,7 @@ class VMC_Workflow(Workflow):
         if not os.path.isfile(output_file):
             return []
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 text = f.read()
             from ._output_parser import _parse_vmc_log_text
 
@@ -1101,7 +1101,7 @@ class VMC_Workflow(Workflow):
         energy_pattern = re.compile(r"E\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*\+\-\s*(\d+\.?\d*(?:[eE][+-]?\d+)?)")
         last_match = None
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 for line in f:
                     m = energy_pattern.search(line)
                     if m:

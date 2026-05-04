@@ -207,7 +207,7 @@ def repair_forces_from_output(work_dir: str) -> bool:
 
     # Read and parse the force table from the output file
     try:
-        with open(last_out, "r") as f:
+        with open(last_out) as f:
             text = f.read()
     except Exception:
         return False
@@ -364,12 +364,12 @@ _RE_XLA_DEVICE_LIST = re.compile(r"\[([^\]]+)\]")
 # -- Internal helpers ----------------------------------------------
 
 
-def _read_text(path: str) -> Optional[str]:
+def _read_text(path: str) -> str | None:
     """Read a text file, returning *None* if it doesn't exist or can't be read."""
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", errors="replace") as fh:
+        with open(path, errors="replace") as fh:
             return fh.read()
     except OSError as exc:
         logger.debug("Cannot read %s: %s", path, exc)
@@ -406,7 +406,7 @@ def _find_input_files(work_dir: str) -> list:
     return [path for _, path in files]
 
 
-def _find_hamiltonian_h5(work_dir: str) -> Optional[str]:
+def _find_hamiltonian_h5(work_dir: str) -> str | None:
     """Extract ``[control] hamiltonian_h5`` from input TOML files in *work_dir*.
 
     Uses ``workflow_state.toml`` ``[[jobs]]`` to locate input files.
@@ -549,8 +549,8 @@ def _parse_vmc_log_text(text: str) -> list:
         One entry per optimization step found.
     """
     steps: list[VMC_Step_Data] = []
-    current: Optional[VMC_Step_Data] = None
-    total_opt_steps: Optional[int] = None
+    current: VMC_Step_Data | None = None
+    total_opt_steps: int | None = None
 
     for line in text.splitlines():
         # -- Optimization step header --

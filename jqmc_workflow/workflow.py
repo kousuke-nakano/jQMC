@@ -250,14 +250,14 @@ class Workflow:
                 return self.status, ["result.h5"], {"energy": -1.23}
     """
 
-    def __init__(self, project_dir: Optional[str] = None, cleanup_patterns: Optional[List[str]] = None):
+    def __init__(self, project_dir: str | None = None, cleanup_patterns: list[str] | None = None):
         self.status: WorkflowStatus = WorkflowStatus.PENDING
         self.phase: ScientificPhase = ScientificPhase.INIT
-        self.output_files: List[str] = []
+        self.output_files: list[str] = []
         self.output_values: dict = {}
-        self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
-        self._bg_task: Optional[asyncio.Task] = None
-        self.cleanup_patterns: List[str] = cleanup_patterns or []
+        self.project_dir: str | None = os.path.abspath(project_dir) if project_dir else None
+        self._bg_task: asyncio.Task | None = None
+        self.cleanup_patterns: list[str] = cleanup_patterns or []
 
     # -- Filename generation (per-job run_id) ----------------------
 
@@ -696,11 +696,11 @@ class Container:
 
     def __init__(
         self,
-        label: Optional[str] = "workflow",
-        dirname: Optional[str] = "workflow",
-        input_files: Optional[list] = None,
-        rename_input_files: Optional[list] = None,
-        workflow: Optional[Workflow] = None,
+        label: str | None = "workflow",
+        dirname: str | None = "workflow",
+        input_files: list | None = None,
+        rename_input_files: list | None = None,
+        workflow: Workflow | None = None,
     ):
         self.label = label
         self.dirname = dirname
@@ -709,10 +709,10 @@ class Container:
         self.workflow = workflow or Workflow()
 
         # Output placeholders (populated after launch)
-        self.output_files: List[str] = []
+        self.output_files: list[str] = []
         self.output_values: dict = {}
         self.status = "init"
-        self._bg_task: Optional[asyncio.Task] = None
+        self._bg_task: asyncio.Task | None = None
 
         # Directories
         self.root_dir = os.getcwd()

@@ -100,7 +100,7 @@ def _cli():
         if not os.path.isfile(toml_file):
             raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
         else:
-            with open(toml_file, "r") as f:
+            with open(toml_file) as f:
                 dict_toml = toml.load(f)
 
     # MPI related

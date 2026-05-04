@@ -178,7 +178,7 @@ class JobSubmission:
             self.server_machine.name,
             self.job_submission_template,
         )
-        with open(template_path, "r") as f:
+        with open(template_path) as f:
             lines = f.readlines()
 
         def replace_kw(lines, keyword, value):

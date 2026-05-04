@@ -76,7 +76,7 @@ class Machine:
 
         # Load machine data
         try:
-            with open(self.machine_info_yaml, "r") as yf:
+            with open(self.machine_info_yaml) as yf:
                 self.data = yaml.safe_load(yf)[machine]
         except FileNotFoundError:
             logger.error(f"Config file {self.machine_info_yaml} not found!")
@@ -159,7 +159,7 @@ class Machine:
         ssh_config = paramiko.SSHConfig()
         config_file = os.path.join(os.getenv("HOME"), ".ssh/config")
         try:
-            with open(config_file, "r") as fh:
+            with open(config_file) as fh:
                 ssh_config.parse(fh)
         except FileNotFoundError:
             logger.error(f"SSH config file ({config_file}) is required.")
@@ -172,7 +172,7 @@ class Machine:
         except KeyError:
             from io import StringIO
 
-            with open(config_file, "r") as fh:
+            with open(config_file) as fh:
                 original = fh.read()
             # Disable CanonicalizeHostname to avoid the paramiko bug
             patched = re.sub(

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Sequence
+from collections.abc import Sequence
 
 import jax.numpy as jnp
 import numpy as np

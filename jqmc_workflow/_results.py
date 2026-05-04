@@ -95,16 +95,16 @@ class VMC_Step_Data:
     """
 
     step: int
-    energy: Optional[float] = None
-    energy_error: Optional[float] = None
-    max_force: Optional[float] = None
-    max_force_error: Optional[float] = None
-    signal_to_noise_ratio: Optional[float] = None
-    avg_walker_weight: Optional[float] = None
-    acceptance_ratio: Optional[float] = None
-    total_time_sec: Optional[float] = None
-    precompilation_time_sec: Optional[float] = None
-    net_time_sec: Optional[float] = None
+    energy: float | None = None
+    energy_error: float | None = None
+    max_force: float | None = None
+    max_force_error: float | None = None
+    signal_to_noise_ratio: float | None = None
+    avg_walker_weight: float | None = None
+    acceptance_ratio: float | None = None
+    total_time_sec: float | None = None
+    precompilation_time_sec: float | None = None
+    net_time_sec: float | None = None
     timing_breakdown: dict = field(default_factory=dict)
 
 
@@ -146,15 +146,15 @@ class VMC_Diagnostic_Data:
     """
 
     steps: list = field(default_factory=list)  # list[VMC_Step_Data]
-    total_opt_steps: Optional[int] = None
-    total_opt_time_sec: Optional[float] = None
+    total_opt_steps: int | None = None
+    total_opt_time_sec: float | None = None
     opt_timing_breakdown: dict = field(default_factory=dict)
-    optimized_hamiltonian: Optional[str] = None
-    restart_checkpoint: Optional[str] = None
-    num_mpi_processes: Optional[int] = None
-    num_walkers_per_process: Optional[int] = None
-    jax_backend: Optional[str] = None
-    jax_devices: Optional[list] = None
+    optimized_hamiltonian: str | None = None
+    restart_checkpoint: str | None = None
+    num_mpi_processes: int | None = None
+    num_walkers_per_process: int | None = None
+    jax_backend: str | None = None
+    jax_devices: list | None = None
     stderr_tail: str = ""
 
 
@@ -205,21 +205,21 @@ class MCMC_Diagnostic_Data:
         Last portion of stderr (up to 200 lines).
     """
 
-    acceptance_ratio: Optional[float] = None
-    avg_walker_weight: Optional[float] = None
-    total_time_sec: Optional[float] = None
-    precompilation_time_sec: Optional[float] = None
-    net_time_sec: Optional[float] = None
+    acceptance_ratio: float | None = None
+    avg_walker_weight: float | None = None
+    total_time_sec: float | None = None
+    precompilation_time_sec: float | None = None
+    net_time_sec: float | None = None
     timing_breakdown: dict = field(default_factory=dict)
-    energy: Optional[float] = None
-    energy_error: Optional[float] = None
-    atomic_forces: Optional[list] = None
-    hamiltonian_data_file: Optional[str] = None
-    restart_checkpoint: Optional[str] = None
-    num_mpi_processes: Optional[int] = None
-    num_walkers_per_process: Optional[int] = None
-    jax_backend: Optional[str] = None
-    jax_devices: Optional[list] = None
+    energy: float | None = None
+    energy_error: float | None = None
+    atomic_forces: list | None = None
+    hamiltonian_data_file: str | None = None
+    restart_checkpoint: str | None = None
+    num_mpi_processes: int | None = None
+    num_walkers_per_process: int | None = None
+    jax_backend: str | None = None
+    jax_devices: list | None = None
     stderr_tail: str = ""
 
 
@@ -271,21 +271,21 @@ class LRDMC_Diagnostic_Data:
         Last portion of stderr (up to 200 lines).
     """
 
-    survived_walkers_ratio: Optional[float] = None
-    avg_num_projections: Optional[float] = None
-    total_time_sec: Optional[float] = None
-    precompilation_time_sec: Optional[float] = None
-    net_time_sec: Optional[float] = None
+    survived_walkers_ratio: float | None = None
+    avg_num_projections: float | None = None
+    total_time_sec: float | None = None
+    precompilation_time_sec: float | None = None
+    net_time_sec: float | None = None
     timing_breakdown: dict = field(default_factory=dict)
-    energy: Optional[float] = None
-    energy_error: Optional[float] = None
-    atomic_forces: Optional[list] = None
-    hamiltonian_data_file: Optional[str] = None
-    restart_checkpoint: Optional[str] = None
-    num_mpi_processes: Optional[int] = None
-    num_walkers_per_process: Optional[int] = None
-    jax_backend: Optional[str] = None
-    jax_devices: Optional[list] = None
+    energy: float | None = None
+    energy_error: float | None = None
+    atomic_forces: list | None = None
+    hamiltonian_data_file: str | None = None
+    restart_checkpoint: str | None = None
+    num_mpi_processes: int | None = None
+    num_walkers_per_process: int | None = None
+    jax_backend: str | None = None
+    jax_devices: list | None = None
     stderr_tail: str = ""
 
 
@@ -308,8 +308,8 @@ class LRDMC_Ext_Diagnostic_Data:
         Last portion of stderr (up to 200 lines).
     """
 
-    extrapolated_energy: Optional[float] = None
-    extrapolated_energy_error: Optional[float] = None
+    extrapolated_energy: float | None = None
+    extrapolated_energy_error: float | None = None
     per_alat_results: list = field(default_factory=list)
     stderr_tail: str = ""
 
@@ -346,5 +346,5 @@ class Input_Parameters:
         in ``workflow_state.toml``.
     """
 
-    actual_opt_steps: Optional[int] = None
+    actual_opt_steps: int | None = None
     per_input: list = field(default_factory=list)  # list[dict]

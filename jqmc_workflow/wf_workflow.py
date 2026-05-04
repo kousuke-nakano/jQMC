@@ -113,14 +113,14 @@ class WF_Workflow(Workflow):
         self,
         trexio_file: str = "trexio.h5",
         hamiltonian_file: str = "hamiltonian_data.h5",
-        j1_parameter: Optional[float] = None,
-        j1_type: Optional[str] = None,
-        j2_parameter: Optional[float] = None,
-        j2_type: Optional[str] = None,
-        j3_basis_type: Optional[str] = None,
-        j_nn_type: Optional[str] = None,
-        j_nn_params: Optional[List[str]] = None,
-        ao_conv_to: Optional[str] = None,
+        j1_parameter: float | None = None,
+        j1_type: str | None = None,
+        j2_parameter: float | None = None,
+        j2_type: str | None = None,
+        j3_basis_type: str | None = None,
+        j_nn_type: str | None = None,
+        j_nn_params: list[str] | None = None,
+        ao_conv_to: str | None = None,
     ):
         super().__init__()
         self.trexio_file = trexio_file

@@ -212,7 +212,7 @@ class Data_transfer:
                     self.server_machine.ssh_open()
                     try:
                         entries = self.server_machine.sftp.listdir(server_dir)
-                    except IOError:
+                    except OSError:
                         entries = []
                     matched = [e for e in entries if fnmatch.fnmatch(e, pattern)]
                     expanded.extend(matched)

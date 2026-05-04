@@ -184,7 +184,7 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
         if not os.path.isfile(filepath):
             continue  # not fetched yet -- nothing to check
         try:
-            with open(filepath, "r", errors="replace") as f:
+            with open(filepath, errors="replace") as f:
                 # Read only the tail (last 8 KiB) for efficiency;
                 # "Program ends ..." is always the last log line.
                 f.seek(0, 2)

@@ -429,7 +429,7 @@ def _save_dataclass_to_hdf5(group: h5py.Group, obj: Any) -> None:
         _save_item(group, field.name, value)
 
 
-def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
+def _load_item(item: h5py.Group | h5py.Dataset | Any) -> Any:
     """Helper to load an item from HDF5."""
     if isinstance(item, h5py.Dataset):
         val = item[()]
@@ -479,7 +479,7 @@ def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
     return item
 
 
-def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
+def _load_dataclass_from_hdf5(cls: type[T], group: h5py.Group) -> T:
     """Recursively load a dataclass from an HDF5 group.
 
     Args:

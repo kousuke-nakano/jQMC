@@ -411,7 +411,7 @@ class AOs_cart_data:
         """
         self.structure_data.sanity_check()
 
-    def _build_uncontracted_aos(self) -> "AOs_cart_data":
+    def _build_uncontracted_aos(self) -> AOs_cart_data:
         """Return an uncontracted AO dataset by unique exponents per AO."""
         seen = set()
         new_nucleus_index = []
@@ -1057,7 +1057,7 @@ class AOs_sphe_data:
 
         self.structure_data.sanity_check()
 
-    def _build_uncontracted_aos(self) -> "AOs_sphe_data":
+    def _build_uncontracted_aos(self) -> AOs_sphe_data:
         """Return an uncontracted AO dataset by unique exponents per AO."""
         seen = set()
         new_nucleus_index = []
@@ -1405,7 +1405,7 @@ class ShellPrimMap:
     # ---- constructors ----
 
     @classmethod
-    def from_aos_data(cls, aos_data: "AOs_sphe_data | AOs_cart_data") -> "ShellPrimMap":
+    def from_aos_data(cls, aos_data: AOs_sphe_data | AOs_cart_data) -> ShellPrimMap:
         """Build a shell map from an AO dataclass instance."""
         # Build-time copy of fp64 basis-data storage (see _precision.py exemption for
         # basis-data storage accessors); used only for shell identity and indexing.
@@ -1452,7 +1452,7 @@ class ShellPrimMap:
         return cls(np.array(unique_prim_indices, dtype=np.int32), prim_to_unique)
 
     @classmethod
-    def concat(cls, map_a: "ShellPrimMap", map_b: "ShellPrimMap") -> "ShellPrimMap":
+    def concat(cls, map_a: ShellPrimMap, map_b: ShellPrimMap) -> ShellPrimMap:
         """Concatenate two shell maps (e.g. up + dn) into a single map."""
         unique_indices = np.concatenate(
             [

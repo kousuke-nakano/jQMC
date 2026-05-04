@@ -119,7 +119,7 @@ max_col = max(f10jasmatrix.col)
 assert max_row == max_col
 const_jas_orb_index = max_row
 
-j1_matrix = np.zeros((ao_num_count))
+j1_matrix = np.zeros(ao_num_count)
 
 for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
     if col == const_jas_orb_index and row != const_jas_orb_index:

@@ -242,7 +242,7 @@ class Monitor:
             logger.info("")
             logger.info("  workflow_state.toml:")
             logger.info("  " + "-" * 40)
-            with open(state_file, "r") as f:
+            with open(state_file) as f:
                 for line in f:
                     logger.info(f"    {line.rstrip()}")
             logger.info("  " + "-" * 40)

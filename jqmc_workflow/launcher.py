@@ -150,7 +150,7 @@ class Launcher:
 
     def __init__(
         self,
-        workflows: Optional[List[Container]] = None,
+        workflows: list[Container] | None = None,
         log_level: str = "INFO",
         log_name: str = "jqmc_workflow.log",
         draw_graph: bool = False,

@@ -305,25 +305,25 @@ class LRDMC_Workflow(Workflow):
         num_gfmc_warmup_steps: int = 0,
         num_gfmc_collect_steps: int = 5,
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
-        time_projection_tau: Optional[float] = 0.10,
-        target_survived_walkers_ratio: Optional[float] = None,
-        num_projection_per_measurement: Optional[int] = None,
-        non_local_move: Optional[str] = None,
-        E_scf: Optional[float] = None,
-        atomic_force: Optional[bool] = None,
-        use_swct: Optional[bool] = None,
-        epsilon_PW: Optional[float] = None,
+        time_projection_tau: float | None = 0.10,
+        target_survived_walkers_ratio: float | None = None,
+        num_projection_per_measurement: int | None = None,
+        non_local_move: str | None = None,
+        E_scf: float | None = None,
+        atomic_force: bool | None = None,
+        use_swct: bool | None = None,
+        epsilon_PW: float | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
         pilot_steps: int = 100,
-        num_gfmc_projections: Optional[int] = None,
-        pilot_queue_label: Optional[str] = None,
+        num_gfmc_projections: int | None = None,
+        pilot_queue_label: str | None = None,
         max_continuation: int = 1,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -1195,7 +1195,7 @@ class LRDMC_Workflow(Workflow):
 
     # -- Utility methods -------------------------------------------
 
-    def _find_restart_chk(self, work_dir: str) -> Optional[str]:
+    def _find_restart_chk(self, work_dir: str) -> str | None:
         """Locate the LRDMC restart checkpoint file in *work_dir*."""
         for pattern in ["restart.h5", "lrdmc.h5", "*.h5"]:
             matches = sorted(glob.glob(os.path.join(work_dir, pattern)))
@@ -1203,7 +1203,7 @@ class LRDMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: str | None = None):
         """Parse energy from *output_file* or run ``jqmc-tool lrdmc compute-energy``.
 
         When *output_file* is given the energy is read directly from
@@ -1274,7 +1274,7 @@ class LRDMC_Workflow(Workflow):
             return float(match.group(1)), float(match.group(2))
         return None, None
 
-    def _compute_force(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+    def _compute_force(self, restart_chk: str, work_dir: str, output_file: str | None = None):
         """Parse forces from *output_file* or run ``jqmc-tool lrdmc compute-force``.
 
         When *output_file* is given, forces are read directly from

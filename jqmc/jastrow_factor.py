@@ -48,7 +48,8 @@ from collections.abc import Callable
 from logging import getLogger
 
 # jqmc module
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
 
 # jax modules
 import jax

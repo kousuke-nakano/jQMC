@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LRDMC_Ext_Workflow -- LRDMC extrapolation to the a^2->0 limit.
 
 Orchestrates multiple :class:`LRDMC_Workflow` runs at different lattice
@@ -232,10 +231,10 @@ class LRDMC_Ext_Workflow(Workflow):
     def __init__(
         self,
         server_machine_name: str = "localhost",
-        alat_list: Optional[List[float]] = None,
+        alat_list: list[float] | None = None,
         hamiltonian_file: str = "hamiltonian_data.h5",
         queue_label: str = "default",
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         jobname_prefix: str = "jqmc-lrdmc",
         number_of_walkers: int = 4,
         max_time: int = 86400,
@@ -244,24 +243,24 @@ class LRDMC_Ext_Workflow(Workflow):
         num_gfmc_warmup_steps: int = 0,
         num_gfmc_collect_steps: int = 5,
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
-        time_projection_tau: Optional[float] = 0.10,
-        target_survived_walkers_ratio: Optional[float] = None,
-        num_projection_per_measurement: Optional[Union[int, Dict[float, int]]] = None,
-        non_local_move: Optional[str] = None,
-        E_scf: Optional[float] = None,
-        atomic_force: Optional[bool] = None,
-        use_swct: Optional[bool] = None,
-        epsilon_PW: Optional[float] = None,
+        time_projection_tau: float | None = 0.10,
+        target_survived_walkers_ratio: float | None = None,
+        num_projection_per_measurement: int | dict[float, int] | None = None,
+        non_local_move: str | None = None,
+        E_scf: float | None = None,
+        atomic_force: bool | None = None,
+        use_swct: bool | None = None,
+        epsilon_PW: float | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
         pilot_steps: int = 100,
-        num_gfmc_projections: Optional[int] = None,
+        num_gfmc_projections: int | None = None,
         max_continuation: int = 5,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -489,7 +488,7 @@ class LRDMC_Ext_Workflow(Workflow):
         self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
-    def _extrapolate_energy(self, restart_chks: List[str]):
+    def _extrapolate_energy(self, restart_chks: list[str]):
         """Run ``jqmc-tool lrdmc extrapolate-energy``.
 
         Returns

@@ -251,7 +251,7 @@ def parse_net_time(output_file: str) -> float | None:
         return None
 
     try:
-        with open(output_file, "r", errors="replace") as fh:
+        with open(output_file, errors="replace") as fh:
             text = fh.read()
     except OSError as exc:
         logger.debug(f"parse_net_time: cannot read {output_file}: {exc}")
