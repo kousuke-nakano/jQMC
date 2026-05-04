@@ -3,7 +3,7 @@
 name: jqmc full test
 
 on:
-  pull_request:
+  push:
     branches: [ "main" ]
     paths-ignore:
       - '.gitignore'
@@ -54,11 +54,11 @@ jobs:
     #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
     #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Test jqmc (intra-software comparisons)
+    - name: Test jqmc FP64 (intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail
-        pytest -s -v tests/test_init_electron_configurations.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_structure.py --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_init_electron_configurations.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_structure.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_AOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_MOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_determinant.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
@@ -72,14 +72,41 @@ jobs:
         pytest -s -v tests/test_checkpoint_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_checkpoint_gfmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_ao_basis_optimization.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_mixed_precision.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_mixed_precision.py  --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc (inter-software comparisons)
+    - name: Test jqmc FP32+FP64 (intra-software comparisons)
+      run: |
+        pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_init_electron_configurations.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_structure.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_AOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_MOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_determinant.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_jastrow.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_wave_function.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_ecps.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_swct.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_mcmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_lrdmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_checkpoint_components.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_checkpoint_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_checkpoint_gfmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_ao_basis_optimization.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_mixed_precision.py  --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+
+    - name: Test jqmc FP64 (inter-software comparisons)
       run: |
         pytest -s -v tests/test_comparison_with_turborvb_ECP.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_comparison_with_turborvb_AE.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc (QMC kernels without MPI)
+    - name: Test jqmc FP32+FP64 (QMC kernels without MPI)
+      run: |
+        pytest -s -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+        pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
+
+    - name: Test jqmc FP64 (QMC kernels without MPI)
       run: |
         pytest -s -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
