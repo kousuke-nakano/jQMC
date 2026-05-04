@@ -215,7 +215,12 @@ def test_compute_local_energy_fast(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
-    atol, rtol = get_tolerance("local_energy", "strict")
+    # e_L crosses ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic/local_energy
+    # zones; the achievable agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic", "local_energy"),
+        "strict",
+    )
     for _ in range(10):
         r_up = jnp.array(first_nucleus + rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)

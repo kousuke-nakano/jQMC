@@ -175,16 +175,29 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # T_L crosses ao_eval/jastrow_eval/jastrow_grad_lap/wf_kinetic zones; the
+    # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(K_analytic, K_auto, atol=atol, rtol=rtol)
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
-    """Debug vs autodiff kinetic energy per-electron arrays."""
+    """Debug vs autodiff kinetic energy per-electron arrays.
+
+    The debug path computes ``-1/2 · ∇²Psi / Psi`` via central finite differences
+    on Psi (h = 2e-4); under mixed precision the fp32 round-off in ao_eval /
+    jastrow_eval propagates into Psi at ~1e-7 and is amplified by 1/h² = 2.5e7,
+    giving an O(1) relative error in the FD Laplacian. Marked ``numerical_diff``
+    so conftest skips it under ``--precision-mode=mixed``.
+    """
     (
         _,
         aos_data,
@@ -294,7 +307,12 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # T_L crosses ao_eval/jastrow_eval/jastrow_grad_lap/wf_kinetic zones; the
+    # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
     np.testing.assert_allclose(K_elements_up_auto, K_elements_up_analytic, atol=atol, rtol=rtol)
@@ -362,7 +380,13 @@ def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
         geminal_inverse=A_inv,
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # Fast-update path crosses ao_eval/jastrow_eval/jastrow_grad_lap/det_ratio/
+    # wf_kinetic zones; the achievable agreement is bounded by the weakest
+    # (fp32 in mixed for ao_eval / jastrow_eval / jastrow_grad_lap).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "det_ratio", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(ke_up_fast, ke_up_debug, atol=atol, rtol=rtol)
@@ -444,7 +468,22 @@ def test_debug_and_jax_discretized_kinetic_energy(trexio_file: str):
         RT=RT,
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # Discretized kinetic energy (LRDMC) crosses ao_eval/jastrow_eval/
+    # jastrow_grad_lap/jastrow_ratio/det_ratio/wf_ratio/wf_kinetic zones; the
+    # fast_update path uses Sherman-Morrison ratios. Agreement is bounded by
+    # the weakest (fp32 in mixed for ao_eval / jastrow_* zones).
+    atol, rtol = get_tolerance_min(
+        (
+            "ao_eval",
+            "jastrow_eval",
+            "jastrow_grad_lap",
+            "jastrow_ratio",
+            "det_ratio",
+            "wf_ratio",
+            "wf_kinetic",
+        ),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
