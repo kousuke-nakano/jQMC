@@ -171,7 +171,7 @@ def _assert_eval_shape_dtype(fn, expected, label, *args, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# A. AO zone (orb_eval → float32 in mixed)
+# A. AO zone (orb_eval -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -202,7 +202,7 @@ class TestAODtype:
 
 
 # ---------------------------------------------------------------------------
-# B. MO zone (orb_eval → float32 in mixed)
+# B. MO zone (orb_eval -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -228,7 +228,7 @@ class TestMODtype:
 
 
 # ---------------------------------------------------------------------------
-# C. Jastrow zone (jastrow → float32 in mixed)
+# C. Jastrow zone (jastrow -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -280,7 +280,7 @@ class TestJastrowDtype:
 
 
 # ---------------------------------------------------------------------------
-# D. Geminal zone (geminal → float32 in mixed)
+# D. Geminal zone (geminal -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -298,7 +298,7 @@ class TestGeminalDtype:
 
 
 # ---------------------------------------------------------------------------
-# E. Determinant zone (determinant → float64 in mixed)
+# E. Determinant zone (determinant -> float64 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -329,7 +329,7 @@ class TestDeterminantDtype:
 
 
 # ---------------------------------------------------------------------------
-# F. Coulomb zone (coulomb → float32 in mixed)
+# F. Coulomb zone (coulomb -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -368,7 +368,7 @@ class TestCoulombDtype:
 
 
 # ---------------------------------------------------------------------------
-# G. Kinetic zone (kinetic → float64 in mixed)
+# G. Kinetic zone (kinetic -> float64 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -471,12 +471,12 @@ class TestGeminalFastUpdateDtype:
         return _load_trexio("water_ccecp_ccpvqz.h5")
 
     def test_geminal_up_one_row_output_dtype(self, water_data):
-        # Use [0:1] to get shape (1, 3) — compute_orb_api requires (N, 3), not (3,)
+        # Use [0:1] to get shape (1, 3) -- compute_orb_api requires (N, 3), not (3,)
         row = compute_geminal_up_one_row_elements(water_data["geminal_data"], water_data["r_up"][0:1], water_data["r_dn"])
         _assert_dtype(row, get_dtype_jnp("det_ratio"), "compute_geminal_up_one_row_elements")
 
     def test_geminal_dn_one_column_output_dtype(self, water_data):
-        # Use [0:1] to get shape (1, 3) — compute_orb_api requires (N, 3), not (3,)
+        # Use [0:1] to get shape (1, 3) -- compute_orb_api requires (N, 3), not (3,)
         col = compute_geminal_dn_one_column_elements(water_data["geminal_data"], water_data["r_up"], water_data["r_dn"][0:1])
         _assert_dtype(col, get_dtype_jnp("det_ratio"), "compute_geminal_dn_one_column_elements")
 

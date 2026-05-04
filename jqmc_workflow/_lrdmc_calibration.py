@@ -1,4 +1,4 @@
-"""LRDMC calibration utilities — survived walkers ratio.
+"""LRDMC calibration utilities -- survived walkers ratio.
 
 Provides helper functions for determining the optimal
 ``num_projection_per_measurement`` based on a target survived-walkers ratio.
@@ -56,7 +56,7 @@ import h5py
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
-# ── HDF5 electron count ──────────────────────────────────────────
+# -- HDF5 electron count ------------------------------------------
 
 
 def get_num_electrons(hamiltonian_file: str) -> int:
@@ -87,7 +87,7 @@ def get_num_electrons(hamiltonian_file: str) -> int:
         raise RuntimeError(f"Cannot read electron counts from {hamiltonian_file}: {e}") from e
 
 
-# ── Survived walkers ratio parsing ───────────────────────────────
+# -- Survived walkers ratio parsing -------------------------------
 
 _SURVIVED_PATTERN = re.compile(r"Survived walkers ratio\s*=\s*(\d+\.?\d*)\s*%")
 
@@ -97,7 +97,7 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
 
     Searches for the line
     ``Survived walkers ratio = <value> %``
-    and returns the **last** occurrence as a fraction (0.0–1.0).
+    and returns the **last** occurrence as a fraction (0.0-1.0).
 
     Parameters
     ----------
@@ -121,7 +121,7 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
     return last_value
 
 
-# ── Linear fitting ───────────────────────────────────────────────
+# -- Linear fitting -----------------------------------------------
 
 
 def fit_num_projection_per_measurement(
@@ -141,7 +141,7 @@ def fit_num_projection_per_measurement(
     x_values : list[int]
         ``num_projection_per_measurement`` values used in calibration runs.
     y_values : list[float]
-        Corresponding survived-walkers ratios (fractions, 0.0–1.0).
+        Corresponding survived-walkers ratios (fractions, 0.0-1.0).
     target_ratio : float
         Target survived-walkers ratio (e.g. 0.97).
 

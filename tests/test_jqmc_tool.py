@@ -423,7 +423,7 @@ def _write_chk(path, objs):
         meta.attrs["driver_type"] = "MCMC"
         meta.attrs["mpi_size"] = len(objs)
 
-        # hamiltonian_data — minimal stub for force tests
+        # hamiltonian_data -- minimal stub for force tests
         first = objs[0]
         if hasattr(first, "hamiltonian_data"):
             _write_minimal_hamiltonian(f, first.hamiltonian_data)

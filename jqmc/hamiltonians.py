@@ -200,7 +200,7 @@ def compute_local_energy(
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
     dtype_jnp = get_dtype_jnp("local_energy")
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). Each
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Each
     # downstream consumer (compute_kinetic_energy, compute_coulomb_potential)
     # casts to its own zone at the use site.
 
@@ -233,10 +233,10 @@ def compute_local_energy_fast(
 
     Identical to :func:`compute_local_energy` but avoids re-computing the
     LU decomposition of the geminal matrix by reusing ``geminal_inverse``
-    supplied by the caller (e.g. the Sherman–Morrison inverse maintained
+    supplied by the caller (e.g. the Sherman-Morrison inverse maintained
     inside the MCMC loop).  When the geminal matrix is near-singular the
     fresh LU decomposition inside :func:`compute_local_energy` produces
-    NaN, whereas the Sherman–Morrison inverse has already been regularized
+    NaN, whereas the Sherman-Morrison inverse has already been regularized
     by the AS acceptance/rejection, making this variant numerically safer.
 
     Args:
@@ -250,7 +250,7 @@ def compute_local_energy_fast(
             Rotation matrix (R.T) used for the non-local ECP part.
         geminal_inverse (jnpt.ArrayLike):
             Precomputed inverse of the geminal matrix ``G(r_up_carts, r_dn_carts)``
-            with shape ``(N_up, N_up)``.  Typically the Sherman–Morrison running
+            with shape ``(N_up, N_up)``.  Typically the Sherman-Morrison running
             inverse from the MCMC loop.
 
     Returns:
@@ -261,12 +261,12 @@ def compute_local_energy_fast(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialized LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse -- the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """
     dtype_jnp = get_dtype_jnp("local_energy")
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). Each
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Each
     # downstream consumer casts to its own zone at the use site.
 
     T_up_elements, T_dn_elements = compute_kinetic_energy_all_elements_fast_update(
@@ -315,7 +315,7 @@ def _compute_local_energy_auto(
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
     dtype_jnp = get_dtype_jnp("local_energy")
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). Each
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Each
     # downstream consumer casts to its own zone at the use site.
 
     T = _compute_kinetic_energy_auto(
@@ -514,7 +514,7 @@ def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
 
             # Convert np.ndarray or list/tuple to jax.Array for fields typed as jax.Array.
             # Note: fields typed `npt.NDArray[np.float64]` (string-form annotation) must
-            # NOT trigger this branch — they are stored as numpy arrays. Exclude both
+            # NOT trigger this branch -- they are stored as numpy arrays. Exclude both
             # "ndarray" (resolved form) and "NDArray" (npt alias form).
             if (
                 isinstance(val, (np.ndarray, list, tuple))

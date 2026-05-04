@@ -68,12 +68,12 @@ def _generate_init_electron_configurations(
     Algorithm:
         1. Compute the deterministic atom-assignment templates for spin-up and
            spin-down electrons by replaying the original state machine **once**.
-           These templates depend only on (charges, coords) — every walker
+           These templates depend only on (charges, coords) -- every walker
            shares them.
         2. Tile the templates to shape ``(num_walkers, ned)``.
         3. For the only branch in the original that uses per-walker randomness
-           — Phase 1b "extra up" electrons when
-           ``tot_num_electron_up > sum(zeta - occup_dn)`` — draw the random
+           -- Phase 1b "extra up" electrons when
+           ``tot_num_electron_up > sum(zeta - occup_dn)`` -- draw the random
            atom indices in one batched ``np.random.randint`` call.
         4. Draw all spherical random offsets in one batched call per spin and
            add them to the chosen atomic coordinates.
@@ -148,7 +148,7 @@ def _generate_init_electron_configurations(
     n_random_extras = 0  # trailing electrons whose owner is random per walker
 
     if ned_up <= sum_up_needed:
-        # Case 1: place exactly into the up_needed slots — fully deterministic.
+        # Case 1: place exactly into the up_needed slots -- fully deterministic.
         ptr = 0
         for iup in range(ned_up):
             while True:
@@ -267,7 +267,7 @@ def _generate_init_electron_configurations_debug(
         dn_owner (np.ndarray of shape (num_walkers, tot_num_electron_dn), dtype=int):
             For each walker `iw` and each down-electron `k`, the atom-index it was assigned to.
     """
-    # Fixed random displacement range (±dst/2 in each coordinate)
+    # Fixed random displacement range (+/-dst/2 in each coordinate)
     min_dst = 0.1
     max_dst = 1.0
 
@@ -277,7 +277,7 @@ def _generate_init_electron_configurations_debug(
     nion = coords.shape[0]
     zeta = np.array([int(round(c)) for c in charges], dtype=int)
 
-    # 2) max_dn_per_atom = floor(zeta[i]/2) for Hund’s rule on down-electrons
+    # 2) max_dn_per_atom = floor(zeta[i]/2) for Hund's rule on down-electrons
     max_dn_per_atom = zeta // 2
 
     # 3) Build ion_seq so that each next index is the atom farthest from the previous
@@ -308,19 +308,19 @@ def _generate_init_electron_configurations_debug(
     # 6) Loop over walkers
     for iw in range(num_walkers):
         # 6.1) Reset per-walker occupancy
-        occup_total = np.zeros(nion, dtype=int)  # total electrons (↑+↓) on each atom
+        occup_total = np.zeros(nion, dtype=int)  # total electrons (up+dn) on each atom
         occup_dn = np.zeros(nion, dtype=int)  # how many down-electrons on each atom
         occup_up = np.zeros(nion, dtype=int)  # how many up-electrons on each atom
         cdown = 0
         cup = 0
 
-        # 6.2) Compute any “extra” beyond sum(zeta)
+        # 6.2) Compute any "extra" beyond sum(zeta)
         nel = tot_num_electron_up + tot_num_electron_dn
         ztot = int(np.sum(zeta))
         nelupeff = nel - ztot if nel > ztot else 0
 
         # -----------------------------------------
-        # Phase 1a: Place all down-electrons under Hund’s limit first
+        # Phase 1a: Place all down-electrons under Hund's limit first
         # -----------------------------------------
         ned_dn = tot_num_electron_dn
         down_positions = np.zeros((ned_dn, 3), dtype=dtype_np)
@@ -346,7 +346,7 @@ def _generate_init_electron_configurations_debug(
                         cond = occup_total[atom] < zeta[atom]
 
                 if cond:
-                    # Place one ↓-electron around coords[atom] + random_offset
+                    # Place one dn-electron around coords[atom] + random_offset
                     x0, y0, z0 = coords[atom]
                     distance = np.random.uniform(min_dst, max_dst)
                     theta = np.random.uniform(0, np.pi)
@@ -382,7 +382,7 @@ def _generate_init_electron_configurations_debug(
                 j_counter += 1
 
         # -----------------------------------------
-        # Phase 1b: Place up-electrons exactly to “fill to zeta” if possible
+        # Phase 1b: Place up-electrons exactly to "fill to zeta" if possible
         # -----------------------------------------
         # Compute how many up each atom needs to reach zeta:
         up_needed = zeta - occup_dn  # array of length nion
@@ -391,7 +391,7 @@ def _generate_init_electron_configurations_debug(
         ned_up = tot_num_electron_up
         up_positions = np.zeros((ned_up, 3), dtype=dtype_np)
 
-        # Case 1: ned_up <= sum_up_needed → place ned_up among those up_needed slots
+        # Case 1: ned_up <= sum_up_needed -> place ned_up among those up_needed slots
         if ned_up <= sum_up_needed:
             ptr = 0
             for iup in range(ned_up):
@@ -399,7 +399,7 @@ def _generate_init_electron_configurations_debug(
                 while not placed:
                     atom = ion_seq[ptr % nion]
                     if occup_up[atom] < up_needed[atom]:
-                        # Place one ↑-electron here
+                        # Place one up-electron here
                         x0, y0, z0 = coords[atom]
                         distance = np.random.uniform(min_dst, max_dst)
                         theta = np.random.uniform(0, np.pi)
@@ -433,9 +433,9 @@ def _generate_init_electron_configurations_debug(
                         placed = True
                     ptr += 1
 
-        # Case 2: ned_up > sum_up_needed → give each atom its up_needed, then place extras
+        # Case 2: ned_up > sum_up_needed -> give each atom its up_needed, then place extras
         else:
-            # (a) first satisfy every atom’s up_needed
+            # (a) first satisfy every atom's up_needed
             cnt = 0
             for atom in ion_seq:
                 to_give = int(up_needed[atom])
@@ -471,7 +471,7 @@ def _generate_init_electron_configurations_debug(
                     cnt += 1
                     cup += 1
 
-            # (b) now place the “extra” up = ned_up - sum_up_needed on any atom (fallback)
+            # (b) now place the "extra" up = ned_up - sum_up_needed on any atom (fallback)
             extra_up = ned_up - sum_up_needed
             for _ in range(extra_up):
                 idx = int(np.floor(np.random.rand() * nion))
@@ -508,11 +508,11 @@ def _generate_init_electron_configurations_debug(
                 cup += 1
 
         # -----------------------------------------
-        # Phase 2: If “extra” electrons remain (nelupeff > 0), place them now.
+        # Phase 2: If "extra" electrons remain (nelupeff > 0), place them now.
         #          (This is almost never needed if tot_up+tot_dn == sum(zeta), but we include it for completeness.)
         # -----------------------------------------
         if nelupeff > 1:
-            # 2a) extra down beyond Hund’s limit
+            # 2a) extra down beyond Hund's limit
             sum_dn_assigned = int(np.sum(occup_dn))
             extra_dn = ned_dn - sum_dn_assigned
             for _ in range(extra_dn):
@@ -567,7 +567,7 @@ def _generate_init_electron_configurations_debug(
 
 @lru_cache(maxsize=None)
 def _cart_to_spherical_matrix(l: int) -> np.ndarray:
-    """Precomputed cart -> real-spherical transform for angular momentum ``l`` (0–6).
+    """Precomputed cart -> real-spherical transform for angular momentum ``l`` (0-6).
 
     The matrix has shape ``((l+1)(l+2)/2, 2l+1)`` and satisfies
     ``A_sph = A_cart @ T`` under the normalization used in the codebase. Values

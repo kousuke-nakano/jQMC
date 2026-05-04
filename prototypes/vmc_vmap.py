@@ -113,12 +113,12 @@ for i_mcmc in range(num_mcmc):
             # total number of electrons
             total_electrons = len(latest_r_up_carts) + len(latest_r_dn_carts)
 
-            # 0〜total_electrons-1からランダムに選択
+            # 0~total_electrons-1からランダムに選択
             key, subkey = jax.random.split(key)
             rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=total_electrons)
 
             # "up"か"dn"を判定するためのブーリアン値
-            # is_up == Trueならup、Falseならdn
+            # is_up == Trueならup,Falseならdn
             is_up = rand_num < len(latest_r_up_carts)
 
             # upから選ぶ電子index
@@ -137,7 +137,7 @@ for i_mcmc in range(num_mcmc):
                 is_up, latest_r_up_carts[selected_electron_index], latest_r_dn_carts[selected_electron_index]
             )
 
-            # スピンを数値（0: up, 1: dn）で持つ
+            # スピンを数値(0: up, 1: dn)で持つ
             selected_electron_spin = jnp.where(is_up, 0, 1)
 
             sigma = 1.0
@@ -146,7 +146,7 @@ for i_mcmc in range(num_mcmc):
             key, subkey = jax.random.split(key)
             g = jax.random.normal(subkey, shape=()) * sigma
 
-            # 0〜2の範囲でランダムなインデックスを選択
+            # 0~2の範囲でランダムなインデックスを選択
             key, subkey = jax.random.split(key)
             random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 

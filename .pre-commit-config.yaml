@@ -11,6 +11,22 @@ repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.15.12
   hooks:
-  #- id: ruff
-  #  args: [ "--fix", "--show-fixes" ]
+  - id: ruff
+    name: ruff (ambiguous unicode only)
+    args: ["--select", "RUF001,RUF002,RUF003", "--no-fix"]
   - id: ruff-format
+
+- repo: local
+  hooks:
+  - id: ascii-only
+    name: Reject non-ASCII bytes in Python sources
+    entry: scripts/check_ascii.sh
+    language: system
+    types: [python]
+    exclude: '^(jqmc/obsolete/|prototypes/)'
+    pass_filenames: true
+  - id: ascii-only-commit-msg
+    name: Reject non-ASCII bytes in commit message
+    entry: scripts/check_ascii.sh
+    language: system
+    stages: [commit-msg]

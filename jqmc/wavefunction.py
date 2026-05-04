@@ -731,7 +731,7 @@ def evaluate_ln_wavefunction_fast(
     Identical to :func:`evaluate_ln_wavefunction` in the forward direction.
     The backward pass (used when computing :math:`\partial\ln\Psi/\partial c`
     via JAX autodiff) replaces the fresh LU decomposition of the geminal matrix
-    with ``geminal_inv`` — the Sherman-Morrison running inverse — so that
+    with ``geminal_inv`` -- the Sherman-Morrison running inverse -- so that
     near-singular configurations (``epsilon_AS > 0``) do not produce NaN
     gradients.
 
@@ -751,7 +751,7 @@ def evaluate_ln_wavefunction_fast(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialized LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse -- the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect parameter gradients (``O_matrix`` / SR).
     """
@@ -989,8 +989,8 @@ def _compute_kinetic_energy_all_elements_debug(
     """See compute_kinetic_energy_api.
 
     Uses 4th-order central finite differences for the Laplacian:
-        f''(x) ≈ (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h²)
-    This allows a larger step size h while maintaining accuracy (O(h⁴) truncation error).
+        f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
+    This allows a larger step size h while maintaining accuracy (O(h^4) truncation error).
     """
     diff_h = 1.0e-3  # larger h is viable with 4th-order stencil
 
@@ -1003,7 +1003,7 @@ def _compute_kinetic_energy_all_elements_debug(
         return evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn)
 
     def _fd4_second_deriv(eval_fn, r_carts, i, d, h):
-        """4th-order central FD for d²f/dx²."""
+        """4th-order central FD for d^2f/dx^2."""
         r_p1 = r_carts.copy()
         r_p2 = r_carts.copy()
         r_m1 = r_carts.copy()
@@ -1172,7 +1172,7 @@ def compute_kinetic_energy_all_elements_fast_update(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialized LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse -- the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """
@@ -1237,7 +1237,7 @@ def _compute_kinetic_energy_all_elements_fast_update_debug(
 # Maintains enough auxiliary information to advance the per-electron kinetic
 # energies after a single-electron move without recomputing them from
 # scratch. PR1 (devel-speedup-lrdmc-incremental) enables this only for the
-# J3 part — J1, J2 and the determinant gradients/Laplacians are still
+# J3 part -- J1, J2 and the determinant gradients/Laplacians are still
 # recomputed fresh inside ``_advance_*``. Subsequent PRs will replace those
 # fresh recomputes with rank-1 updates while keeping the public per-electron
 # fields (``grad_J_up`` etc.) shape-stable.
@@ -1258,9 +1258,9 @@ class Kinetic_streaming_state:
       determinant per-electron grad/lap fields below mirror its outputs).
     - ``grad_J_up`` / ``grad_J_dn``: total Jastrow per-electron gradient.
     - ``lap_J_up`` / ``lap_J_dn``: total Jastrow per-electron Laplacian.
-    - ``grad_ln_D_up`` / ``grad_ln_D_dn``: per-electron ``∇ln|Det|`` from the
+    - ``grad_ln_D_up`` / ``grad_ln_D_dn``: per-electron ``nablaln|Det|`` from the
       geminal at the current ``A_old_inv``.
-    - ``lap_ln_D_up`` / ``lap_ln_D_dn``: per-electron ``∇²ln|Det|``.
+    - ``lap_ln_D_up`` / ``lap_ln_D_dn``: per-electron ``nabla^2ln|Det|``.
     """
 
     j1_state: Jastrow_one_body_streaming_state | None = struct.field(pytree_node=True, default=None)
@@ -1287,7 +1287,7 @@ def _kinetic_energy_from_grads_laps(
     lap_ln_D_up,
     lap_ln_D_dn,
 ):
-    """Common assembly: ``-(1/2) * (∇²ln Ψ + ||∇ln Ψ||²)`` per electron."""
+    """Common assembly: ``-(1/2) * (nabla^2ln Psi + ||nablaln Psi||^2)`` per electron."""
     dtype_jnp = get_dtype_jnp("wf_kinetic")
     grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
     grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
@@ -1322,7 +1322,7 @@ def _init_kinetic_energy_all_elements_streaming_state(
     Note: ``geminal_inverse`` must be the inverse of ``G(r_up, r_dn)`` (the
     same invariant as :func:`compute_kinetic_energy_all_elements_fast_update`).
     """
-    # Per-electron Jastrow grad/lap (sum of J1/J2/J3/NN parts) — used as the
+    # Per-electron Jastrow grad/lap (sum of J1/J2/J3/NN parts) -- used as the
     # initial total. Sub-states below are populated for the streaming path.
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
@@ -1331,7 +1331,7 @@ def _init_kinetic_energy_all_elements_streaming_state(
     )
 
     # Cast totals to the jastrow_grad_lap zone so init and advance store
-    # ``grad_J_*`` / ``lap_J_*`` in the same dtype (Principle 3b — required
+    # ``grad_J_*`` / ``lap_J_*`` in the same dtype (Principle 3b -- required
     # for fori_loop carry-shape stability under mixed precision, where
     # ``advance`` reassembles the totals from streaming sub-states that
     # live in the jastrow_grad_lap zone).
@@ -1341,7 +1341,7 @@ def _init_kinetic_energy_all_elements_streaming_state(
     lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
     lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
 
-    # Determinant streaming state — drives grad_ln_D_*/lap_ln_D_* fields.
+    # Determinant streaming state -- drives grad_ln_D_*/lap_ln_D_* fields.
     det_state = _init_grads_laplacian_ln_Det_streaming_state(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
@@ -1408,7 +1408,7 @@ def _advance_kinetic_energy_all_elements_streaming_state(
 
     PR1+PR2+PR3 scope: J1, J2, J3, and det sub-states are all updated
     incrementally. NN three-body falls back to a fresh
-    ``compute_grads_and_laplacian_Jastrow_part`` call (defensive — the
+    ``compute_grads_and_laplacian_Jastrow_part`` call (defensive -- the
     streaming dispatch in ``jqmc_gfmc.py`` excludes the NN case so this
     branch is unreachable in production).
 
@@ -1491,7 +1491,7 @@ def _advance_kinetic_energy_all_elements_streaming_state(
     lap_J_up = lap_J1_up + lap_J2_up + lap_J3_up
     lap_J_dn = lap_J1_dn + lap_J2_dn + lap_J3_dn
 
-    # NN three-body (autodiff path) — defensive fallback. The streaming
+    # NN three-body (autodiff path) -- defensive fallback. The streaming
     # dispatch in ``jqmc_gfmc.py`` already routes NN-on cases to the legacy
     # body, so this branch is unreachable in production.
     if jastrow_data.jastrow_nn_data is not None:

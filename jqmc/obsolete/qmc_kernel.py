@@ -225,7 +225,7 @@ class MCMC:
             # base_dn_sum = sum(base_dn_list)
 
             # 5) Compute how many extra up/down electrons are needed to reach the target totals
-            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
+            extra_up = tot_num_electron_up - base_up_sum  # positive -> need more up; negative -> need more down
 
             # 6) Initialize final per-atom assignment lists
             assign_up = base_up_list.copy()
@@ -572,7 +572,7 @@ class MCMC:
                 rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=total_electrons)
 
                 # boolen: "up" or "dn"
-                # is_up == True -> up、False -> dn
+                # is_up == True -> up,False -> dn
                 is_up = rand_num < len(r_up_carts)
 
                 # an index chosen from up electons
@@ -1593,7 +1593,7 @@ class GFMC_fixed_projection_time:
             # base_dn_sum = sum(base_dn_list)
 
             # 5) Compute how many extra up/down electrons are needed to reach the target totals
-            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
+            extra_up = tot_num_electron_up - base_up_sum  # positive -> need more up; negative -> need more down
 
             # 6) Initialize final per-atom assignment lists
             assign_up = base_up_list.copy()
@@ -2393,7 +2393,7 @@ class GFMC_fixed_projection_time:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -2496,7 +2496,7 @@ class GFMC_fixed_projection_time:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -2556,7 +2556,7 @@ class GFMC_fixed_projection_time:
             end_ = time.perf_counter()
             logger.debug(f"    reconfig: step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -2861,7 +2861,7 @@ class GFMC_fixed_num_projection:
             # base_dn_sum = sum(base_dn_list)
 
             # 5) Compute how many extra up/down electrons are needed to reach the target totals
-            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
+            extra_up = tot_num_electron_up - base_up_sum  # positive -> need more up; negative -> need more down
 
             # 6) Initialize final per-atom assignment lists
             assign_up = base_up_list.copy()
@@ -4177,7 +4177,7 @@ class GFMC_fixed_num_projection:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -4270,7 +4270,7 @@ class GFMC_fixed_num_projection:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -4330,7 +4330,7 @@ class GFMC_fixed_num_projection:
             end_ = time.perf_counter()
             logger.debug(f"    reconfig: step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -5143,7 +5143,7 @@ class QMC:
                 displs = [sum(counts[:i]) for i in range(P)]
                 N_local = counts[mpi_rank]  # number of rows this rank will receive
 
-                # Build send buffers by slicing X and Xw into P row‑chunks
+                # Build send buffers by slicing X and Xw into P row-chunks
                 # Each chunk is flattened so we can send in one go.
                 sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
 
@@ -5159,7 +5159,7 @@ class QMC:
                 # Allocate receive buffers
                 recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
 
-                # Perform the all‑to‑all variable‑sized exchange
+                # Perform the all-to-all variable-sized exchange
                 mpi_comm.Alltoallv([sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE])
 
                 # Reshape the flat receive buffer into a 3D array
@@ -5167,7 +5167,7 @@ class QMC:
                 buf_X = recvbuf_X.reshape(P, N_local, M)
 
                 # Rearrange into final 2D arrays of shape (N_local, M * P)
-                #    by stacking each source’s M columns side by side
+                #    by stacking each source's M columns side by side
                 X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
                 logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
 
@@ -5233,7 +5233,7 @@ class QMC:
                     # X_re_local: shape (N_local, M_total)
                     X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
 
-                    # Solve (X^T X + εI)^(-1) @ F
+                    # Solve (X^T X + epsI)^(-1) @ F
                     F_local_list = list(F_local)
                     F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
                     F_total = np.array(F_list)

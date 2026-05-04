@@ -116,7 +116,7 @@ print(f"  det ratio (rank-1):  {t_det:.3f} ms")
 print(f"  jastrow ratio:       {t_jas:.3f} ms")
 print(f"  combined:            {t_det + t_jas:.3f} ms  (kinetic full = {t_kin:.3f} ms)")
 
-# ── 3b Jastrow breakdown ──────────────────────────────────────────────────────
+# -- 3b Jastrow breakdown ------------------------------------------------------
 trexio_file2 = TREXIO_FILE
 _, aos_data_for_j3, _, _, _, coulomb_data2 = read_trexio_file(trexio_file2, store_tuple=True)
 

@@ -329,7 +329,7 @@ class MCMC_multiple_walkers:
                 rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=self.__total_electrons)
 
                 # boolen: "up" or "dn"
-                # is_up == True -> up、False -> dn
+                # is_up == True -> up,False -> dn
                 is_up = rand_num < len(latest_r_up_carts)
 
                 # an index chosen from up electons

@@ -1,4 +1,4 @@
-"""WF_Workflow — TREXIO to hamiltonian_data.h5 conversion.
+"""WF_Workflow -- TREXIO to hamiltonian_data.h5 conversion.
 
 Wraps ``jqmc-tool trexio convert-to`` which converts a TREXIO file (.h5)
 into the internal ``hamiltonian_data.h5`` format, optionally attaching
@@ -82,9 +82,9 @@ class WF_Workflow(Workflow):
         Extra NN Jastrow parameters (``-jp key=value``).
     ao_conv_to : str, optional
         Convert AOs after building the Hamiltonian (``--ao-conv-to``).
-        ``"cart"``  → convert to Cartesian AOs,
-        ``"sphe"`` → convert to spherical-harmonic AOs,
-        ``None``    → keep the original representation.
+        ``"cart"``  -> convert to Cartesian AOs,
+        ``"sphe"`` -> convert to spherical-harmonic AOs,
+        ``None``    -> keep the original representation.
 
     Example
     -------
@@ -100,7 +100,7 @@ class WF_Workflow(Workflow):
 
     Notes
     -----
-    This workflow runs **locally** — no remote job submission is
+    This workflow runs **locally** -- no remote job submission is
     involved.  It calls ``jqmc-tool trexio convert-to`` via
     :func:`subprocess.run`.
 
@@ -174,7 +174,7 @@ class WF_Workflow(Workflow):
         }
 
     async def run(self) -> tuple:
-        """Run the TREXIO→hamiltonian conversion (locally).
+        """Run the TREXIO->hamiltonian conversion (locally).
 
         Returns
         -------

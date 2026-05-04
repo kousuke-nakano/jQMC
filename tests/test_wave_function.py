@@ -202,9 +202,9 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
 def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
     """Debug vs autodiff kinetic energy per-electron arrays.
 
-    The debug path computes ``-1/2 · ∇²Psi / Psi`` via central finite differences
+    The debug path computes ``-1/2 * nabla^2Psi / Psi`` via central finite differences
     on Psi (h = 2e-4); under mixed precision the fp32 round-off in ao_eval /
-    jastrow_eval propagates into Psi at ~1e-7 and is amplified by 1/h² = 2.5e7,
+    jastrow_eval propagates into Psi at ~1e-7 and is amplified by 1/h^2 = 2.5e7,
     giving an O(1) relative error in the FD Laplacian. Marked ``numerical_diff``
     so conftest skips it under ``--precision-mode=mixed``.
     """
@@ -761,7 +761,7 @@ def _streaming_step_consistency_one(wavefunction_data, r_up0, r_dn0, K, atol, rt
             moved_index = idx
 
         # rebuild A_inv at the new configuration (mirrors what Sherman-Morrison
-        # produces in the GFMC loop, modulo round-off — comparing at the same
+        # produces in the GFMC loop, modulo round-off -- comparing at the same
         # numerical reference here).
         A_inv = _build_A_inv_from_carts(wavefunction_data.geminal_data, jnp.asarray(r_up), jnp.asarray(r_dn))
         state = _advance_kinetic_energy_all_elements_streaming_state(

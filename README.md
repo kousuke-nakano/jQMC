@@ -122,6 +122,8 @@ git-commit. Pre-commit is set-up and used in the following way:
 - Installed by `pip install pre-commit`, `conda install pre_commit` or see
   https://pre-commit.com/#install.
 - pre-commit hook is installed by `pre-commit install`.
+- commit-msg hook (rejects non-ASCII bytes in commit messages) is
+  installed by `pre-commit install --hook-type commit-msg`.
 - pre-commit hook is run by `pre-commit run --all-files`.
 
 Unless running pre-commit, pre-commit.ci may push the fix at PR by github

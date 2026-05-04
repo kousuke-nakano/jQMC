@@ -464,7 +464,7 @@ def _get_min_dist_rel_R_cart_jnp(
     if dtype is None:
         dtype = jnp.float64
     # Subtract in the passed dtype (the caller chain is responsible for keeping
-    # high precision up to this point — see Principle 3b in jqmc._precision)
+    # high precision up to this point -- see Principle 3b in jqmc._precision)
     # and cast only the *result* down to the local zone.
     R_cart = structure_data._positions_cart_jnp[i_atom]
     diff = (R_cart - r_cart).astype(dtype)

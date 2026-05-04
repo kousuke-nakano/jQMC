@@ -1,7 +1,7 @@
 """Launcher: DAG-based parallel workflow executor for jqmc-workflow.
 
 True DAG execution: as soon as ALL predecessors of a node complete,
-that node starts immediately — no waiting for the entire "layer".
+that node starts immediately -- no waiting for the entire "layer".
 Supports FileFrom / ValueFrom dependencies.
 """
 
@@ -68,7 +68,7 @@ class Launcher:
     infers the dependency graph from :class:`FileFrom` / :class:`ValueFrom`
     references, and executes workflows with *true DAG parallelism*: as soon
     as **all** predecessors of a node complete, that node starts immediately
-    — there is no layer-based grouping.
+    -- there is no layer-based grouping.
 
     Parameters
     ----------
@@ -157,20 +157,20 @@ class Launcher:
     ):
         workflows = workflows or []
 
-        # ── Logger setup ──────────────────────────────────────────
+        # -- Logger setup ------------------------------------------
         self._setup_logger(log_level, log_name)
 
         from ._header_footer import _print_header
 
         _print_header()
 
-        # ── Resolve config dir early (CWD is still the user dir) ──
+        # -- Resolve config dir early (CWD is still the user dir) --
         from ._config import get_config_dir
 
         _cfg = get_config_dir()
         logger.debug(f"Config dir resolved to: {_cfg}")
 
-        # ── Attributes ────────────────────────────────────────────
+        # -- Attributes --------------------------------------------
         self.root_dir = os.getcwd()
 
         self.workflows = workflows
@@ -201,7 +201,7 @@ class Launcher:
         logger.info("-" * 50)
         logger.info("")
 
-    # ── Logger setup ──────────────────────────────────────────────
+    # -- Logger setup ----------------------------------------------
 
     def _setup_logger(self, log_level: str, log_name: str):
         global _loggers_initialized
@@ -229,7 +229,7 @@ class Launcher:
 
         _loggers_initialized[name] = True
 
-    # ── Dependency graph ──────────────────────────────────────────
+    # -- Dependency graph ------------------------------------------
 
     def _build_dependency_graph(self) -> dict:
         """Walk all workflow attributes to find dependency placeholders."""
@@ -240,7 +240,7 @@ class Launcher:
             self._collect_deps(cw, dep_labels)
             dep_dict[cw.label] = tuple(dep_labels)
 
-        # Validate — all dependency labels must exist
+        # Validate -- all dependency labels must exist
         all_labels = set(self.workflows_by_label.keys())
         for label, deps in dep_dict.items():
             missing = set(deps) - all_labels
@@ -293,7 +293,7 @@ class Launcher:
         G.render("dependency_graph", cleanup=True)
         logger.info("Dependency graph saved to dependency_graph.png")
 
-    # ── Session / job queries (MCP adapter layer) ───────────────
+    # -- Session / job queries (MCP adapter layer) ---------------
 
     def get_session_state(self) -> dict:
         """Aggregate the status of all workflows, dependency graph, and progress.
@@ -359,7 +359,7 @@ class Launcher:
         history.sort(key=lambda j: j.get("submitted_at", ""))
         return history
 
-    # ── Variable resolution ───────────────────────────────────────
+    # -- Variable resolution ---------------------------------------
 
     def _get_value(self, dep_obj):
         """Resolve a FileFrom / ValueFrom to its actual value."""
@@ -412,7 +412,7 @@ class Launcher:
             elif isinstance(value, Workflow):
                 self._resolve_obj(value)
 
-    # ── Execution: true DAG parallelism ───────────────────────────
+    # -- Execution: true DAG parallelism ---------------------------
 
     def launch(self):
         asyncio.run(self.async_launch())
@@ -421,7 +421,7 @@ class Launcher:
         """Execute all workflows respecting DAG dependencies.
 
         As soon as ALL predecessors of a node complete, that node
-        starts immediately — no layer-based grouping.
+        starts immediately -- no layer-based grouping.
         """
         completed = set()
         failed = set()

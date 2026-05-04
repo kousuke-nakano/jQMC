@@ -310,7 +310,7 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
 
 
 def test_geminal_sphe_to_cart_AOs_data():
-    """Round-trip AOs l<=6: spherical→Cartesian keeps geminal values/grads."""
+    """Round-trip AOs l<=6: spherical->Cartesian keeps geminal values/grads."""
     # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
@@ -350,7 +350,7 @@ def test_geminal_sphe_to_cart_AOs_data():
 
 
 def test_geminal_cart_to_sphe_AOs_data():
-    """Round-trip AOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    """Round-trip AOs l<=6: Cartesian->spherical keeps geminal values/grads."""
     # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
@@ -392,7 +392,7 @@ def test_geminal_cart_to_sphe_AOs_data():
 
 
 def test_geminal_sphe_to_cart_MOs_data():
-    """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps geminal values/grads."""
+    """Round-trip MOs built on l<=6 AOs: spherical->Cartesian keeps geminal values/grads."""
     # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad/mo_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(
@@ -439,7 +439,7 @@ def test_geminal_sphe_to_cart_MOs_data():
 
 
 def test_geminal_cart_to_sphe_MOs_data():
-    """Round-trip MOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    """Round-trip MOs l<=6: Cartesian->spherical keeps geminal values/grads."""
     # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad/mo_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(
@@ -822,7 +822,7 @@ def test_grads_and_laplacian_fast_update(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    # Debug helper above is autodiff through compute_ln_det → bottlenecked by
+    # Debug helper above is autodiff through compute_ln_det -> bottlenecked by
     # ao_eval (fp32 in mixed mode); fast path is fp64 (ao_grad_lap), so the
     # achievable agreement is bounded by ao_eval, not det_grad_lap.
     atol, rtol = get_tolerance_min(["ao_eval", "det_grad_lap"], "strict")
@@ -1267,7 +1267,7 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    # Auto path is autodiff through compute_ln_det → bottlenecked by ao_eval
+    # Auto path is autodiff through compute_ln_det -> bottlenecked by ao_eval
     # (fp32 in mixed mode); analytic path is fp64 (ao_grad_lap), so achievable
     # agreement is bounded by ao_eval, not det_grad_lap.
     atol, rtol = get_tolerance_min(["ao_eval", "det_grad_lap"], "strict")
@@ -1501,7 +1501,7 @@ def _make_geminal_with_lambda(lam, num_up=1, num_dn=1):
 
 
 def test_symmetrize_lambda_square_symmetric():
-    """L1-1: square symmetric lambda → 0.5*(mat+mat.T)."""
+    """L1-1: square symmetric lambda -> 0.5*(mat+mat.T)."""
     rng = np.random.RandomState(0)
     n = 5
     lam_sym = rng.randn(n, n)
@@ -1516,7 +1516,7 @@ def test_symmetrize_lambda_square_symmetric():
 
 
 def test_symmetrize_lambda_square_nonsymmetric():
-    """L1-2: square non-symmetric lambda → no-op."""
+    """L1-2: square non-symmetric lambda -> no-op."""
     rng = np.random.RandomState(1)
     n = 5
     lam_nonsym = rng.randn(n, n)
@@ -1529,7 +1529,7 @@ def test_symmetrize_lambda_square_nonsymmetric():
 
 
 def test_symmetrize_lambda_rect_paired_symmetric():
-    """L1-3: rectangular lambda, paired sub-block symmetric → only paired part symmetrized."""
+    """L1-3: rectangular lambda, paired sub-block symmetric -> only paired part symmetrized."""
     rng = np.random.RandomState(2)
     n_up = 3
     n_extra = 2
@@ -1549,7 +1549,7 @@ def test_symmetrize_lambda_rect_paired_symmetric():
 
 
 def test_symmetrize_lambda_rect_paired_nonsymmetric():
-    """L1-4: rectangular lambda, paired sub-block non-symmetric → no-op."""
+    """L1-4: rectangular lambda, paired sub-block non-symmetric -> no-op."""
     rng = np.random.RandomState(3)
     n_up = 3
     n_extra = 2
@@ -1565,7 +1565,7 @@ def test_symmetrize_lambda_rect_paired_nonsymmetric():
 
 
 def test_symmetrize_lambda_none():
-    """L1-5: lambda_matrix=None → no-op."""
+    """L1-5: lambda_matrix=None -> no-op."""
     gd_none = Geminal_data(lambda_matrix=None)
     mat = np.random.RandomState(4).randn(3, 3)
     result = gd_none.symmetrize_lambda(mat)
@@ -1573,7 +1573,7 @@ def test_symmetrize_lambda_none():
 
 
 def test_symmetrize_lambda_1d():
-    """L1-6: 1-D lambda (ndim!=2) → no-op."""
+    """L1-6: 1-D lambda (ndim!=2) -> no-op."""
     gd = _make_geminal_with_lambda(np.array([1.0, 2.0, 3.0]))
     mat = np.random.RandomState(5).randn(3, 3)
     result = gd.symmetrize_lambda(mat)

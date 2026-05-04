@@ -3,9 +3,9 @@
 Given a short pilot run and a desired target statistical error, estimates
 the number of measurement steps required for a production run.
 
-The central-limit-theorem scaling σ ∝ 1/√N is used:
+The central-limit-theorem scaling sigma prop 1/sqrtN is used:
 
-    N_required = ⌈ N_pilot × (σ_pilot / σ_target)² ⌉
+    N_required = ceil( N_pilot x (sigma_pilot / sigma_target)^2 )
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -127,10 +127,10 @@ def estimate_additional_steps(
     are needed to bring the error from *current_error* down to
     *target_error*.
 
-    Uses σ ∝ 1/√N:
+    Uses sigma prop 1/sqrtN:
 
-        N_total = ⌈ accumulated_steps × (current_error / target_error)² ⌉
-        additional = N_total − accumulated_steps
+        N_total = ceil( accumulated_steps x (current_error / target_error)^2 )
+        additional = N_total - accumulated_steps
 
     Parameters
     ----------
@@ -214,7 +214,7 @@ def _format_duration(seconds: float) -> str:
     return f"{days}d {h}h {m}m"
 
 
-# ── Patterns for "Net" times in jQMC output ──────────────────
+# -- Patterns for "Net" times in jQMC output ------------------
 
 # LRDMC: "Net GFMC time without pre-compilations =  2832.326 sec."
 _RE_NET_GFMC = re.compile(

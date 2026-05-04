@@ -47,12 +47,17 @@ jobs:
         python -m pip install flake8 pytest pytest-cov
         python -m pip install .
 
-    #- name: Lint jqmc with flake8
-    #  run: |
-    #    # stop the build if there are Python syntax errors or undefined names
-    #    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-    #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-    #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Lint (pre-commit, currently-enforced hooks)
+      # Runs hooks declared in .pre-commit-config.yaml:
+      #   - ruff (RUF001/002/003 ambiguous-unicode only, --no-fix)
+      #   - ruff-format
+      #   - ascii-only (scripts/check_ascii.sh)
+      #   - trailing-whitespace, end-of-file-fixer, check-added-large-files
+      # To enforce additional ruff rules, fix the violations listed in
+      # `lint.extend-ignore` in pyproject.toml and remove them from that list.
+      run: |
+        python -m pip install pre-commit
+        pre-commit run --all-files
 
     - name: Test jqmc FP64/FP32+FP64 (intra-software comparisons)
       run: |

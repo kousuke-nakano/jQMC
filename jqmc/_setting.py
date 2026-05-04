@@ -80,10 +80,10 @@ rtol_consistency = 1.0e-6
 # zone's current dtype and returns ``(atol, rtol)``.
 #
 # Levels:
-#   strict — two exact implementations of the same quantity (debug vs
+#   strict -- two exact implementations of the same quantity (debug vs
 #            production, analytic vs autodiff).  Difference is pure
 #            floating-point round-off.
-#   loose  — comparison involving numerical differentiation or quadrature.
+#   loose  -- comparison involving numerical differentiation or quadrature.
 #            Finite-difference truncation error dominates, so tolerances
 #            are much wider.
 _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
@@ -98,8 +98,8 @@ _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
 # appropriate value for the current precision zone.
 #
 # Constants:
-#   machine_precision — floor for safe ratio in diagnostics.
-#   rcond_svd         — threshold for SVD pseudoinverse of the geminal matrix.
+#   machine_precision -- floor for safe ratio in diagnostics.
+#   rcond_svd         -- threshold for SVD pseudoinverse of the geminal matrix.
 _EPS_DTYPE_AWARE: dict[str, dict[str, float]] = {
     "machine_precision": {"float64": 1e-38, "float32": 1e-38},
     "rcond_svd": {"float64": 1e-20, "float32": 1e-16},

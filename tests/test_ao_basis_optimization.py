@@ -755,6 +755,6 @@ def test_opt_with_projected_MOs_lambda_basis_conflict():
 
     # J3_basis_exp=True should NOT conflict with opt_with_projected_MOs
     flags_j3 = [True, False, False, False]  # opt_J3_basis_exp=True
-    # This should not raise — J3 basis does not affect MO projection overlap
+    # This should not raise -- J3 basis does not affect MO projection overlap
     if opt_with_projected_MOs and any(flags_j3[2:]):
         raise ValueError("Should not reach here")

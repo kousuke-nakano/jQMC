@@ -1,6 +1,6 @@
 """Structured result types for jQMC output parsing.
 
-These dataclasses represent **facts only** — deterministic data extracted
+These dataclasses represent **facts only** -- deterministic data extracted
 from jQMC stdout/stderr and associated files.  They contain no heuristic
 judgments; diagnostic analysis (failure categorization, convergence
 assessment, etc.) belongs to a higher-level layer (e.g. jqmc-mcp).
@@ -58,7 +58,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-# ── VMC ───────────────────────────────────────────────────────────
+# -- VMC -----------------------------------------------------------
 
 
 @dataclass
@@ -68,21 +68,21 @@ class VMC_Step_Data:
     Attributes
     ----------
     step : int
-        Optimization step number (``Optimization step = N/M`` → N).
+        Optimization step number (``Optimization step = N/M`` -> N).
     energy : float or None
-        Total energy ``E = X +- Y`` → X  (Ha).
+        Total energy ``E = X +- Y`` -> X  (Ha).
     energy_error : float or None
-        Energy statistical error → Y  (Ha).
+        Energy statistical error -> Y  (Ha).
     max_force : float or None
-        Maximum force ``Max f = X +- Y`` → X  (Ha/a.u.).
+        Maximum force ``Max f = X +- Y`` -> X  (Ha/a.u.).
     max_force_error : float or None
-        Force error → Y  (Ha/a.u.).
+        Force error -> Y  (Ha/a.u.).
     signal_to_noise_ratio : float or None
         ``Max of signal-to-noise of f = max(|f|/|std f|) = X``.
     avg_walker_weight : float or None
         ``Average of walker weights is X``.
     acceptance_ratio : float or None
-        ``Acceptance ratio is X %`` → X / 100.
+        ``Acceptance ratio is X %`` -> X / 100.
     total_time_sec : float or None
         ``Total elapsed time for MCMC N steps. = X sec.``
     precompilation_time_sec : float or None
@@ -117,7 +117,7 @@ class VMC_Diagnostic_Data:
     steps : list of VMC_Step_Data
         Per-step data in chronological order.
     total_opt_steps : int or None
-        Total optimization steps (``Optimization step = N/M`` → M).
+        Total optimization steps (``Optimization step = N/M`` -> M).
     total_opt_time_sec : float or None
         ``Total elapsed time for optimization N steps. = X sec.``
     opt_timing_breakdown : dict
@@ -130,11 +130,11 @@ class VMC_Diagnostic_Data:
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found (indicates abnormal termination).
     num_mpi_processes : int or None
-        ``The number of MPI process = N.`` → N.
+        ``The number of MPI process = N.`` -> N.
     num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` → N.
+        ``The number of walkers assigned for each MPI process = N.`` -> N.
     jax_backend : str or None
-        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
         Set to ``"cpu"`` when the log says
         ``Running on CPUs or single GPU``.
     jax_devices : list or None
@@ -158,7 +158,7 @@ class VMC_Diagnostic_Data:
     stderr_tail: str = ""
 
 
-# ── MCMC ──────────────────────────────────────────────────────────
+# -- MCMC ----------------------------------------------------------
 
 
 @dataclass
@@ -168,7 +168,7 @@ class MCMC_Diagnostic_Data:
     Attributes
     ----------
     acceptance_ratio : float or None
-        ``Acceptance ratio is X %`` → X / 100.
+        ``Acceptance ratio is X %`` -> X / 100.
     avg_walker_weight : float or None
         ``Average of walker weights is X``.
     total_time_sec : float or None
@@ -194,11 +194,11 @@ class MCMC_Diagnostic_Data:
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found.
     num_mpi_processes : int or None
-        ``The number of MPI process = N.`` → N.
+        ``The number of MPI process = N.`` -> N.
     num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` → N.
+        ``The number of walkers assigned for each MPI process = N.`` -> N.
     jax_backend : str or None
-        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
     jax_devices : list or None
         Parsed list of global XLA device strings.
     stderr_tail : str
@@ -223,7 +223,7 @@ class MCMC_Diagnostic_Data:
     stderr_tail: str = ""
 
 
-# ── LRDMC ─────────────────────────────────────────────────────────
+# -- LRDMC ---------------------------------------------------------
 
 
 @dataclass
@@ -233,7 +233,7 @@ class LRDMC_Diagnostic_Data:
     Attributes
     ----------
     survived_walkers_ratio : float or None
-        ``Survived walkers ratio = X %`` → X / 100.
+        ``Survived walkers ratio = X %`` -> X / 100.
     avg_num_projections : float or None
         ``Average of the number of projections = X``.
     total_time_sec : float or None
@@ -260,11 +260,11 @@ class LRDMC_Diagnostic_Data:
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found.
     num_mpi_processes : int or None
-        ``The number of MPI process = N.`` → N.
+        ``The number of MPI process = N.`` -> N.
     num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` → N.
+        ``The number of walkers assigned for each MPI process = N.`` -> N.
     jax_backend : str or None
-        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
     jax_devices : list or None
         Parsed list of global XLA device strings.
     stderr_tail : str
@@ -289,17 +289,17 @@ class LRDMC_Diagnostic_Data:
     stderr_tail: str = ""
 
 
-# ── LRDMC extrapolation ──────────────────────────────────────────
+# -- LRDMC extrapolation ------------------------------------------
 
 
 @dataclass
 class LRDMC_Ext_Diagnostic_Data:
-    """Parse result for an LRDMC a²→0 extrapolation.
+    """Parse result for an LRDMC a^2->0 extrapolation.
 
     Attributes
     ----------
     extrapolated_energy : float or None
-        ``For a -> 0 bohr: E = X +- Y Ha.`` → X.
+        ``For a -> 0 bohr: E = X +- Y Ha.`` -> X.
     extrapolated_energy_error : float or None
         Y from the above.
     per_alat_results : list of dict
@@ -314,7 +314,7 @@ class LRDMC_Ext_Diagnostic_Data:
     stderr_tail: str = ""
 
 
-# ── Input parameters ──────────────────────────────────────────────
+# -- Input parameters ----------------------------------------------
 
 
 @dataclass

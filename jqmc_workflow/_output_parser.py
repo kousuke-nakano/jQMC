@@ -2,7 +2,7 @@
 
 This module extracts **facts only** from jQMC log files using regular
 expressions.  It contains no heuristic judgments or convergence assessments
-— those belong to a higher-level diagnostics layer (e.g. jqmc-mcp).
+-- those belong to a higher-level diagnostics layer (e.g. jqmc-mcp).
 
 The parser unifies and extends the scattered parse logic previously found
 in ``vmc_workflow._parse_output``, ``vmc_workflow._parse_all_snr``,
@@ -14,13 +14,13 @@ for VMC (the old parsers only kept the last value).
 Public API
 ----------
 parse_vmc_output(work_dir)
-    Parse VMC optimization stdout/stderr → VMC_Diagnostic_Data.
+    Parse VMC optimization stdout/stderr -> VMC_Diagnostic_Data.
 parse_mcmc_output(work_dir)
-    Parse MCMC sampling stdout/stderr → MCMC_Diagnostic_Data.
+    Parse MCMC sampling stdout/stderr -> MCMC_Diagnostic_Data.
 parse_lrdmc_output(work_dir)
-    Parse LRDMC stdout/stderr → LRDMC_Diagnostic_Data.
+    Parse LRDMC stdout/stderr -> LRDMC_Diagnostic_Data.
 parse_input_params(toml_path)
-    Extract key parameters from a TOML input file → Input_Parameters.
+    Extract key parameters from a TOML input file -> Input_Parameters.
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -77,17 +77,17 @@ from ._results import (
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
-# ── Atomic-force table parser ─────────────────────────────────────
+# -- Atomic-force table parser -------------------------------------
 
 
 def parse_ufloat_short(text: str):
-    """Parse uncertainties short format, e.g. ``+0.123(45)`` → (0.123, 0.045).
+    """Parse uncertainties short format, e.g. ``+0.123(45)`` -> (0.123, 0.045).
 
     Handles several notations produced by jqmc:
 
-    * ``+0.0114(14)``   — integer uncertainty digits in last decimal place
-    * ``+3(8)e-05``     — scientific notation with integer uncertainty
-    * ``+3.9(3.5)e-05`` — scientific notation with decimal uncertainty
+    * ``+0.0114(14)``   -- integer uncertainty digits in last decimal place
+    * ``+3(8)e-05``     -- scientific notation with integer uncertainty
+    * ``+3.9(3.5)e-05`` -- scientific notation with decimal uncertainty
 
     Parameters
     ----------
@@ -226,7 +226,7 @@ def repair_forces_from_output(work_dir: str) -> bool:
     return True
 
 
-# ── Compiled regex patterns ───────────────────────────────────────
+# -- Compiled regex patterns ---------------------------------------
 #
 # All patterns are compiled once at module level for efficiency.
 
@@ -311,7 +311,7 @@ _RE_TOTAL_GFMC = re.compile(
 # "Pre-compilation time for GFMC = 167.674 sec."
 _RE_PRECOMP_GFMC = re.compile(r"Pre-compilation time for GFMC\s*=\s*([\d.]+(?:[eE][+-]?\d+)?)\s*sec")
 
-# Per-branching timing breakdown (msec) — GFMC
+# Per-branching timing breakdown (msec) -- GFMC
 _RE_TIME_PROJECTION = re.compile(
     r"Projection(?:\s+time per branching|\s+between branching)\s*=\s*([\d.]+(?:[eE][+-]?\d+)?)\s*msec"
 )
@@ -341,7 +341,7 @@ _STDERR_TAIL_LINES = 200
 # "Dump restart checkpoint file(s) to restart.h5."
 _RE_RESTART_CHECKPOINT = re.compile(r"Dump restart checkpoint file\(s\) to\s+(\S+)\.\s*$", re.MULTILINE)
 
-# ── Run-level metadata (header section, appears once per output file) ──
+# -- Run-level metadata (header section, appears once per output file) --
 
 # "The number of MPI process = 4."
 _RE_MPI_PROCESSES = re.compile(r"The number of MPI process\s*=\s*(\d+)")
@@ -361,7 +361,7 @@ _RE_XLA_GLOBAL_HEADER = re.compile(r"\*{3}\s*XLA Global devices recognized by JA
 _RE_XLA_DEVICE_LIST = re.compile(r"\[([^\]]+)\]")
 
 
-# ── Internal helpers ──────────────────────────────────────────────
+# -- Internal helpers ----------------------------------------------
 
 
 def _read_text(path: str) -> Optional[str]:
@@ -469,7 +469,7 @@ def _parse_run_metadata(text: str) -> dict:
                 meta["jax_backend"] = "cpu"
             continue
 
-    # XLA Global devices — parse from the full text (may span lines)
+    # XLA Global devices -- parse from the full text (may span lines)
     m_header = _RE_XLA_GLOBAL_HEADER.search(text)
     if m_header:
         # The device list is on the next non-empty line after the header
@@ -520,7 +520,7 @@ def _find_output_files(work_dir: str) -> list:
     return [path for _, path in files]
 
 
-# ── VMC parser ────────────────────────────────────────────────────
+# -- VMC parser ----------------------------------------------------
 
 
 def _parse_vmc_log_text(text: str) -> list:
@@ -553,7 +553,7 @@ def _parse_vmc_log_text(text: str) -> list:
     total_opt_steps: Optional[int] = None
 
     for line in text.splitlines():
-        # ── Optimization step header ──
+        # -- Optimization step header --
         m = _RE_OPT_STEP.search(line)
         if m:
             step_num = int(m.group(1))
@@ -565,25 +565,25 @@ def _parse_vmc_log_text(text: str) -> list:
         if current is None:
             continue
 
-        # ── Net MCMC time ──
+        # -- Net MCMC time --
         m = _RE_NET_MCMC.search(line)
         if m:
             current.net_time_sec = float(m.group(1))
             continue
 
-        # ── Total MCMC time ──
+        # -- Total MCMC time --
         m = _RE_TOTAL_MCMC.search(line)
         if m:
             current.total_time_sec = float(m.group(1))
             continue
 
-        # ── Pre-compilation MCMC time ──
+        # -- Pre-compilation MCMC time --
         m = _RE_PRECOMP_MCMC.search(line)
         if m:
             current.precompilation_time_sec = float(m.group(1))
             continue
 
-        # ── Per-step MCMC timing breakdown (msec) ──
+        # -- Per-step MCMC timing breakdown (msec) --
         m = _RE_TIME_MCMC_UPDATE.search(line)
         if m:
             current.timing_breakdown["mcmc_update"] = float(m.group(1))
@@ -617,32 +617,32 @@ def _parse_vmc_log_text(text: str) -> list:
             current.timing_breakdown["misc"] = float(m.group(1))
             continue
 
-        # ── Walker weight ──
+        # -- Walker weight --
         m = _RE_WALKER_WEIGHT.search(line)
         if m:
             current.avg_walker_weight = float(m.group(1))
             continue
 
-        # ── Acceptance ratio ──
+        # -- Acceptance ratio --
         m = _RE_ACCEPTANCE.search(line)
         if m:
             current.acceptance_ratio = float(m.group(1)) / 100.0
             continue
 
-        # ── Signal-to-noise (must be checked BEFORE energy) ──
+        # -- Signal-to-noise (must be checked BEFORE energy) --
         m = _RE_SNR.search(line)
         if m:
             current.signal_to_noise_ratio = float(m.group(1))
             continue
 
-        # ── Max force (must be checked BEFORE energy) ──
+        # -- Max force (must be checked BEFORE energy) --
         m = _RE_MAX_FORCE.search(line)
         if m:
             current.max_force = float(m.group(1))
             current.max_force_error = float(m.group(2))
             continue
 
-        # ── Energy ──
+        # -- Energy --
         m = _RE_ENERGY.search(line)
         if m:
             current.energy = float(m.group(1))
@@ -675,7 +675,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
         logger.warning("parse_vmc_output: directory not found: %s", work_dir)
         return result
 
-    # ── Discover and parse stdout files ──
+    # -- Discover and parse stdout files --
     output_files = _find_output_files(work_dir)
     all_steps: list[VMC_Step_Data] = []
 
@@ -688,7 +688,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
 
     result.steps = all_steps
 
-    # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
+    # -- Run-level metadata (MPI, walkers, JAX) from first output file --
     if output_files:
         first_text = _read_text(output_files[0])
         if first_text:
@@ -703,7 +703,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
                 if m:
                     result.total_opt_steps = int(m.group(2))
 
-            # ── Optimization-level timing (appears once after all steps) ──
+            # -- Optimization-level timing (appears once after all steps) --
             m = _RE_TOTAL_OPT.search(last_text)
             if m:
                 result.total_opt_time_sec = float(m.group(1))
@@ -722,7 +722,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
                 if m_bd:
                     result.opt_timing_breakdown[key] = float(m_bd.group(1))
 
-    # ── optimized hamiltonian ──
+    # -- optimized hamiltonian --
     # Find hamiltonian_data_opt_step_*.h5 and sort numerically by step.
     h5_pattern = os.path.join(work_dir, "hamiltonian_data_opt_step_*.h5")
     h5_files = glob.glob(h5_pattern)
@@ -740,7 +740,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
             work_dir,
         )
 
-    # ── restart checkpoint ──
+    # -- restart checkpoint --
     # Search all output files for the last "Dump restart checkpoint" line.
     for fpath in reversed(output_files):
         text = _read_text(fpath)
@@ -750,7 +750,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
             if result.restart_checkpoint is not None:
                 break
 
-    # ── stderr tail ──
+    # -- stderr tail --
     stderr_candidates = [
         os.path.join(work_dir, "stderr"),
         os.path.join(work_dir, "err"),
@@ -765,7 +765,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
     return result
 
 
-# ── MCMC parser ───────────────────────────────────────────────────
+# -- MCMC parser ---------------------------------------------------
 
 
 def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
@@ -794,7 +794,7 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
 
     output_files = _find_output_files(work_dir)
 
-    # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
+    # -- Run-level metadata (MPI, walkers, JAX) from first output file --
     if output_files:
         first_text = _read_text(output_files[0])
         if first_text:
@@ -809,27 +809,27 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
             break
 
     if last_text:
-        # Walker weight — take the last occurrence
+        # Walker weight -- take the last occurrence
         for m in _RE_WALKER_WEIGHT.finditer(last_text):
             result.avg_walker_weight = float(m.group(1))
 
-        # Acceptance ratio — take the last occurrence
+        # Acceptance ratio -- take the last occurrence
         for m in _RE_ACCEPTANCE.finditer(last_text):
             result.acceptance_ratio = float(m.group(1)) / 100.0
 
-        # Total time — take the last occurrence
+        # Total time -- take the last occurrence
         for m in _RE_TOTAL_MCMC.finditer(last_text):
             result.total_time_sec = float(m.group(1))
 
-        # Pre-compilation time — take the last occurrence
+        # Pre-compilation time -- take the last occurrence
         for m in _RE_PRECOMP_MCMC.finditer(last_text):
             result.precompilation_time_sec = float(m.group(1))
 
-        # Net time — take the last occurrence
+        # Net time -- take the last occurrence
         for m in _RE_NET_MCMC.finditer(last_text):
             result.net_time_sec = float(m.group(1))
 
-        # Per-step timing breakdown (msec) — take last occurrence of each
+        # Per-step timing breakdown (msec) -- take last occurrence of each
         _mcmc_breakdown_patterns = [
             (_RE_TIME_MCMC_UPDATE, "mcmc_update"),
             (_RE_TIME_E_L, "e_L"),
@@ -844,14 +844,14 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
             for m in pattern.finditer(last_text):
                 result.timing_breakdown[key] = float(m.group(1))
 
-        # Restart checkpoint — take the last occurrence
+        # Restart checkpoint -- take the last occurrence
         for m in _RE_RESTART_CHECKPOINT.finditer(last_text):
             result.restart_checkpoint = m.group(1)
 
-    # ── hamiltonian_data_file from input TOML ──
+    # -- hamiltonian_data_file from input TOML --
     result.hamiltonian_data_file = _find_hamiltonian_h5(work_dir)
 
-    # ── Energy & forces from workflow_state.toml result section ──
+    # -- Energy & forces from workflow_state.toml result section --
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if os.path.isfile(state_path):
         try:
@@ -866,7 +866,7 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
         except Exception:
             pass
 
-    # ── stderr tail ──
+    # -- stderr tail --
     for name in ("stderr", "err"):
         text = _read_text(os.path.join(work_dir, name))
         if text:
@@ -876,7 +876,7 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
     return result
 
 
-# ── LRDMC parser ──────────────────────────────────────────────────
+# -- LRDMC parser --------------------------------------------------
 
 
 def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
@@ -904,7 +904,7 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
 
     output_files = _find_output_files(work_dir)
 
-    # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
+    # -- Run-level metadata (MPI, walkers, JAX) from first output file --
     if output_files:
         first_text = _read_text(output_files[0])
         if first_text:
@@ -919,27 +919,27 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
             break
 
     if last_text:
-        # Survived walkers ratio — take the last occurrence
+        # Survived walkers ratio -- take the last occurrence
         for m in _RE_SURVIVED.finditer(last_text):
             result.survived_walkers_ratio = float(m.group(1)) / 100.0
 
-        # Average number of projections — take the last occurrence
+        # Average number of projections -- take the last occurrence
         for m in _RE_AVG_PROJECTIONS.finditer(last_text):
             result.avg_num_projections = float(m.group(1))
 
-        # Total GFMC time — take the last occurrence
+        # Total GFMC time -- take the last occurrence
         for m in _RE_TOTAL_GFMC.finditer(last_text):
             result.total_time_sec = float(m.group(1))
 
-        # Pre-compilation GFMC time — take the last occurrence
+        # Pre-compilation GFMC time -- take the last occurrence
         for m in _RE_PRECOMP_GFMC.finditer(last_text):
             result.precompilation_time_sec = float(m.group(1))
 
-        # Net GFMC time — take the last occurrence
+        # Net GFMC time -- take the last occurrence
         for m in _RE_NET_GFMC.finditer(last_text):
             result.net_time_sec = float(m.group(1))
 
-        # Per-branching timing breakdown (msec) — take last occurrence of each
+        # Per-branching timing breakdown (msec) -- take last occurrence of each
         _gfmc_breakdown_patterns = [
             (_RE_TIME_PROJECTION, "projection"),
             (_RE_TIME_OBSERVABLE, "observable"),
@@ -958,14 +958,14 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
             for m in pattern.finditer(last_text):
                 result.timing_breakdown[key] = float(m.group(1))
 
-        # Restart checkpoint — take the last occurrence
+        # Restart checkpoint -- take the last occurrence
         for m in _RE_RESTART_CHECKPOINT.finditer(last_text):
             result.restart_checkpoint = m.group(1)
 
-    # ── hamiltonian_data_file from input TOML ──
+    # -- hamiltonian_data_file from input TOML --
     result.hamiltonian_data_file = _find_hamiltonian_h5(work_dir)
 
-    # ── Energy & forces from workflow_state.toml result section ──
+    # -- Energy & forces from workflow_state.toml result section --
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if os.path.isfile(state_path):
         try:
@@ -980,7 +980,7 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
         except Exception:
             pass
 
-    # ── stderr tail ──
+    # -- stderr tail --
     for name in ("stderr", "err"):
         text = _read_text(os.path.join(work_dir, name))
         if text:
@@ -990,7 +990,7 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
     return result
 
 
-# ── LRDMC extrapolation parser ────────────────────────────────────
+# -- LRDMC extrapolation parser ------------------------------------
 
 
 def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
@@ -1027,7 +1027,7 @@ def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
             result.extrapolated_energy_error = float(m.group(2))
             break
 
-    # ── per-alat results from workflow_state.toml ──
+    # -- per-alat results from workflow_state.toml --
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if os.path.isfile(state_path):
         try:
@@ -1038,7 +1038,7 @@ def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
         except Exception:
             pass
 
-    # ── stderr tail ──
+    # -- stderr tail --
     for name in ("stderr", "err"):
         text = _read_text(os.path.join(work_dir, name))
         if text:
@@ -1048,7 +1048,7 @@ def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
     return result
 
 
-# ── Input parameters parser ──────────────────────────────────────
+# -- Input parameters parser --------------------------------------
 
 
 def _get_cli_defaults() -> dict:
@@ -1094,7 +1094,7 @@ def parse_input_params(work_dir: str) -> Input_Parameters:
         logger.warning("parse_input_params: directory not found: %s", work_dir)
         return result
 
-    # ── 1) restart.h5 → actual_opt_steps (VMC only) ──
+    # -- 1) restart.h5 -> actual_opt_steps (VMC only) --
     restart_path = os.path.join(work_dir, "restart.h5")
     if os.path.isfile(restart_path):
         try:
@@ -1113,7 +1113,7 @@ def parse_input_params(work_dir: str) -> Input_Parameters:
                 exc,
             )
 
-    # ── 2) workflow_state.toml → [[jobs]] ──
+    # -- 2) workflow_state.toml -> [[jobs]] --
     state_path = os.path.join(work_dir, "workflow_state.toml")
     jobs: list = []
     if os.path.isfile(state_path):
@@ -1123,7 +1123,7 @@ def parse_input_params(work_dir: str) -> Input_Parameters:
         except Exception:
             pass
 
-    # ── 3) Per-input parameter extraction ──
+    # -- 3) Per-input parameter extraction --
     defaults = _get_cli_defaults()
 
     for job_rec in jobs:
@@ -1159,7 +1159,7 @@ def parse_input_params(work_dir: str) -> Input_Parameters:
             jt_merged = {**jt_defaults, **jt_user}
             entry[job_type] = jt_merged
         elif job_type:
-            # No defaults known — just use raw values
+            # No defaults known -- just use raw values
             entry[job_type] = raw.get(job_type, {})
 
         result.per_input.append(entry)

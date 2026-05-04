@@ -46,7 +46,7 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
 class Data_transfer:
-    """Convenience layer over Machines_handler for local ↔ remote transfers.
+    """Convenience layer over Machines_handler for local <-> remote transfers.
 
     Parameters
     ----------
@@ -79,7 +79,7 @@ class Data_transfer:
         self.server_machine.ssh_close()
         self.machine_handler.ssh_close()
 
-    # ── put (local → remote) ──────────────────────────────────────
+    # -- put (local -> remote) --------------------------------------
 
     def put_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
         """Upload files from *work_dir* to the corresponding remote directory.
@@ -153,7 +153,7 @@ class Data_transfer:
                         exclude_patterns=exclude_patterns,
                     )
 
-    # ── get (remote → local) ──────────────────────────────────────
+    # -- get (remote -> local) --------------------------------------
 
     def get_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Download files from the remote directory to *work_dir*.
@@ -240,12 +240,12 @@ class Data_transfer:
                         exclude_patterns=exclude_patterns,
                     )
 
-    # ── remove (local + remote) ──────────────────────────────────
+    # -- remove (local + remote) ----------------------------------
 
     def remove_objects(self, patterns: list[str], *, work_dir: str | None = None) -> None:
         """Delete files matching *patterns* from local and (if remote) server.
 
-        Matching is **recursive** — each pattern is applied to *work_dir*
+        Matching is **recursive** -- each pattern is applied to *work_dir*
         and all of its subdirectories (e.g. ``_pilot/``, ``_pilot_a/``).
 
         Parameters
@@ -259,7 +259,7 @@ class Data_transfer:
         """
         local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 
-        # ── Local deletion (always, recursive) ───────────────────
+        # -- Local deletion (always, recursive) -------------------
         for pattern in patterns:
             for fpath in sorted(glob.glob(os.path.join(local_cwd, "**", pattern), recursive=True)):
                 if os.path.isfile(fpath):
@@ -267,7 +267,7 @@ class Data_transfer:
                     relpath = os.path.relpath(fpath, local_cwd)
                     logger.info(f"  Cleanup: removed local file {relpath}")
 
-        # ── Remote deletion (only for non-local machines) ────────
+        # -- Remote deletion (only for non-local machines) --------
         if self.server_machine.machine_type == "local":
             return
 

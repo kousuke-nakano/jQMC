@@ -215,7 +215,7 @@ class MOs_data:
         """Convert Cartesian AOs to spherical AOs and transform MO coefficients.
 
         Returns a new ``MOs_data`` whose ``aos_data`` is ``AOs_sphe_data``. The molecular
-        orbital functions are preserved by applying the analytic Cartesian→spherical
+        orbital functions are preserved by applying the analytic Cartesian->spherical
         transformation per angular momentum shell. Only ``AOs_cart_data`` inputs are supported;
         for spherical inputs the instance is returned unchanged.
 
@@ -296,7 +296,7 @@ def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
     # ao_lap lives in the ao_grad_lap zone; cast to mo_lap at the use site
-    # (Principle 3b — cast operands to this function's own zone immediately
+    # (Principle 3b -- cast operands to this function's own zone immediately
     # before consuming them as arithmetic operands).
     return jnp.dot(mo_coefficients, ao_lap.astype(dtype_jnp))
 
@@ -363,7 +363,7 @@ def compute_MOs_grad(
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
     # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad at the
-    # use site (Principle 3b — cast operands to this function's own zone immediately
+    # use site (Principle 3b -- cast operands to this function's own zone immediately
     # before consuming them as arithmetic operands).
     mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
     mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y.astype(dtype_jnp))
@@ -379,16 +379,16 @@ def compute_MOs_value_grad_lap(
     """Fused evaluation of MO values, Cartesian gradients, and Laplacians.
 
     Calls :func:`compute_AOs_value_grad_lap` once and applies
-    ``mo_coefficients @ ·`` to each AO output. Each MO output is cast
+    ``mo_coefficients @ *`` to each AO output. Each MO output is cast
     into its own zone (Principle 3b) at the matmul use site:
 
-    * ``val`` → ``mo_eval`` (fp32 in mixed mode, fp64 in full)
-    * ``gx`` / ``gy`` / ``gz`` → ``mo_grad`` (fp64)
-    * ``lap`` → ``mo_lap`` (fp64)
+    * ``val`` -> ``mo_eval`` (fp32 in mixed mode, fp64 in full)
+    * ``gx`` / ``gy`` / ``gz`` -> ``mo_grad`` (fp64)
+    * ``lap`` -> ``mo_lap`` (fp64)
 
     For value-only / grad-only / lap-only call sites, prefer the
     standalone APIs (``compute_MOs`` / ``compute_MOs_grad`` /
-    ``compute_MOs_laplacian``) — JAX DCE does not reliably eliminate
+    ``compute_MOs_laplacian``) -- JAX DCE does not reliably eliminate
     unused outputs across this function's ``@jit`` boundary.
 
     Returns:

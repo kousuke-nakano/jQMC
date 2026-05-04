@@ -279,7 +279,7 @@ def test_grad_compute_local_energy(trexio_file):
     Both functions compute e_L = T + V.  compute_local_energy uses the custom VJP in
     compute_grads_and_laplacian_ln_Det (and _ln_det_bwd), while _compute_local_energy_auto
     uses a fully-automatic Laplacian via JAX second-order AD.  The gradients w.r.t.
-    all Hamiltonian pytree leaves (lambda_matrix, Jastrow params, positions, …) must
+    all Hamiltonian pytree leaves (lambda_matrix, Jastrow params, positions, ...) must
     be numerically identical for a well-conditioned geminal matrix.
     """
     seed = 123

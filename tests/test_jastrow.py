@@ -574,7 +574,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_sphe_to_cart_AOs_data():
-    """Round-trip AOs l<=6: spherical→Cartesian keeps J3 values/grads."""
+    """Round-trip AOs l<=6: spherical->Cartesian keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(321)
 
@@ -644,7 +644,7 @@ def test_Jastrow_threebody_part_sphe_to_cart_AOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_cart_to_sphe_AOs_data():
-    """Round-trip AOs l<=6: Cartesian→spherical keeps J3 values/grads."""
+    """Round-trip AOs l<=6: Cartesian->spherical keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(654)
 
@@ -714,7 +714,7 @@ def test_Jastrow_threebody_part_cart_to_sphe_AOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_sphe_to_cart_MOs_data():
-    """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps J3 values/grads."""
+    """Round-trip MOs built on l<=6 AOs: spherical->Cartesian keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(777)
 
@@ -791,7 +791,7 @@ def test_Jastrow_threebody_part_sphe_to_cart_MOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
-    """Round-trip MOs l<=6: Cartesian→spherical keeps J3 values/grads."""
+    """Round-trip MOs l<=6: Cartesian->spherical keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(888)
 
@@ -1105,7 +1105,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (AOs)."""
     # J3 grad/lap crosses two zones: jastrow_grad_lap (fp32 mixed) + ao_grad_lap (fp64).
-    # Use the looser of the two — under mixed precision, jastrow_grad_lap dominates.
+    # Use the looser of the two -- under mixed precision, jastrow_grad_lap dominates.
     atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap"], "strict")
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
@@ -1253,7 +1253,7 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
 
 # ---------------------------------------------------------------------------
-# Jastrow combination matrix for "part" tests (J1+J2+J3±NN)
+# Jastrow combination matrix for "part" tests (J1+J2+J3+/-NN)
 # Each tuple is (j1b_type, j2b_type, include_nn).
 # ---------------------------------------------------------------------------
 _JASTROW_COMBOS = [
@@ -1491,7 +1491,7 @@ def _make_jastrow_with_j3(j_matrix):
 
 
 def test_symmetrize_j3_symmetric_subblock():
-    """L1-7: [:, :-1] symmetric → 0.5*(A+A.T) on sub-block, last col unchanged."""
+    """L1-7: [:, :-1] symmetric -> 0.5*(A+A.T) on sub-block, last col unchanged."""
     rng = np.random.RandomState(10)
     n = 4
     sq_sym = rng.randn(n, n)
@@ -1507,7 +1507,7 @@ def test_symmetrize_j3_symmetric_subblock():
 
 
 def test_symmetrize_j3_nonsymmetric_subblock():
-    """L1-8: [:, :-1] non-symmetric → no-op."""
+    """L1-8: [:, :-1] non-symmetric -> no-op."""
     rng = np.random.RandomState(11)
     n = 4
     sq_nonsym = rng.randn(n, n)
@@ -1522,7 +1522,7 @@ def test_symmetrize_j3_nonsymmetric_subblock():
 
 
 def test_symmetrize_j3_none():
-    """L1-9: jastrow_three_body_data=None → no-op."""
+    """L1-9: jastrow_three_body_data=None -> no-op."""
     jd = Jastrow_data()  # all components are None
     mat = np.random.RandomState(12).randn(3, 4)
     result = jd.symmetrize_j3(mat)
@@ -1530,7 +1530,7 @@ def test_symmetrize_j3_none():
 
 
 def test_symmetrize_j3_too_few_columns():
-    """L1-10: j_matrix with shape[1] < 2 → no-op."""
+    """L1-10: j_matrix with shape[1] < 2 -> no-op."""
     j_matrix = np.array([[1.0], [2.0], [3.0]])  # (3, 1)
     jd = _make_jastrow_with_j3(j_matrix)
     mat = np.random.RandomState(13).randn(3, 1)
@@ -1678,9 +1678,9 @@ def test_streaming_J2_state_against_full(j2b_type, n_up, n_dn):
     full computation) within strict tolerance.
 
     J2 is electron-pair coupled, so the advance updates the moved electron's
-    same-spin row (i ≠ k) and the cross-spin partners. Sign asymmetry between
-    σ=up and σ=dn cross branches makes this the most error-prone of the
-    streaming kernels — exercise both branches with K=32 alternating moves.
+    same-spin row (i != k) and the cross-spin partners. Sign asymmetry between
+    sigma=up and sigma=dn cross branches makes this the most error-prone of the
+    streaming kernels -- exercise both branches with K=32 alternating moves.
     """
     from jqmc.jastrow_factor import (
         _advance_grads_laplacian_Jastrow_two_body_streaming_state,
@@ -1781,7 +1781,7 @@ def test_streaming_J3_state_against_full(trexio_file):
     K = 32
     # J3 streaming crosses two zones: jastrow_grad_lap (J3 grad/lap arithmetic)
     # and ao_grad_lap (AO grad/lap consumed inside J3). Use the looser of the
-    # two — under mixed precision, jastrow_grad_lap (fp32) dominates.
+    # two -- under mixed precision, jastrow_grad_lap (fp32) dominates.
     atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap"], "strict")
     for _ in range(K):
         # pick a random single-electron move (alternating spins when available)

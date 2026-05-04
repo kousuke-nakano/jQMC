@@ -1,4 +1,4 @@
-"""Tests for GFMC_t / GFMC_n save_to_hdf5 / load_from_hdf5 — Phase 2."""
+"""Tests for GFMC_t / GFMC_n save_to_hdf5 / load_from_hdf5 -- Phase 2."""
 
 import os
 import sys
@@ -173,7 +173,7 @@ def _save_merge_gfmc_n(gfmc, hd, tmp_path, mpi_size=1, rank=0):
 @pytest.mark.parametrize("trexio_file", TREXIO_FILES, ids=lambda f: f.replace(".h5", ""))
 @pytest.mark.parametrize("jastrow_combo", JASTROW_COMBOS)
 class TestGFMCtSaveLoadRoundtrip:
-    """Round-trip tests: GFMC_t → save → merge → load → compare."""
+    """Round-trip tests: GFMC_t -> save -> merge -> load -> compare."""
 
     @pytest.fixture(autouse=True)
     def _setup(self, trexio_file, jastrow_combo, tmp_path):
@@ -337,7 +337,7 @@ class TestGFMCtSaveLoadRoundtrip:
 @pytest.mark.parametrize("trexio_file", TREXIO_FILES, ids=lambda f: f.replace(".h5", ""))
 @pytest.mark.parametrize("jastrow_combo", JASTROW_COMBOS)
 class TestGFMCnSaveLoadRoundtrip:
-    """Round-trip tests: GFMC_n → save → merge → load → compare."""
+    """Round-trip tests: GFMC_n -> save -> merge -> load -> compare."""
 
     @pytest.fixture(autouse=True)
     def _setup(self, trexio_file, jastrow_combo, tmp_path):

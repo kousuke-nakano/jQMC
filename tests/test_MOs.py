@@ -643,7 +643,7 @@ def test_MOs_cart_to_sphe():
     ao_idx = 0
     for l in range(7):  # l = 0..6
         shell_indices: list[int] = []
-        for nx, ny, nz in [(nx, ny, l - nx - ny) for nx in range(l, -1, -1) for ny in range(l - nx, -1, -1)]:
+        for nx, ny, nz in [(_nx, _ny, l - _nx - _ny) for _nx in range(l, -1, -1) for _ny in range(l - _nx, -1, -1)]:
             nucleus_index.append(0)
             orbital_indices.append(ao_idx)
             exponents.append(float(l + 1))
@@ -789,8 +789,8 @@ def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
 def test_fused_MOs_dtypes_match_zones(trexio_file: str):
     """``compute_MOs_value_grad_lap`` outputs are pinned to their zones.
 
-    val ↔ ``mo_eval`` (fp32 mixed / fp64 full); gx/gy/gz ↔ ``mo_grad``
-    (fp64); lap ↔ ``mo_lap`` (fp64).
+    val <-> ``mo_eval`` (fp32 mixed / fp64 full); gx/gy/gz <-> ``mo_grad``
+    (fp64); lap <-> ``mo_lap`` (fp64).
     """
     parsed = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),

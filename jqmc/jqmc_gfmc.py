@@ -274,7 +274,7 @@ class GFMC_t:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -488,7 +488,7 @@ class GFMC_t:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._GFMC_t__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._GFMC_t__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -2016,7 +2016,7 @@ class GFMC_t:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -2116,7 +2116,7 @@ class GFMC_t:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -2176,7 +2176,7 @@ class GFMC_t:
             end_ = time.perf_counter()
             logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -2466,12 +2466,12 @@ class GFMC_t:
                 # Two-pass jackknife std (centered sum of squares) to avoid
                 # catastrophic cancellation in <x^2> - <x>^2.
 
-                # E: 1st pass — mean, 2nd pass — centered sum of squares
+                # E: 1st pass -- mean, 2nd pass -- centered sum of squares
                 E_mean = np.sum(E_jackknife_binned_local) / M_local
                 E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: 1st pass — mean, 2nd pass — centered sum of squares
+                # Var: 1st pass -- mean, 2nd pass -- centered sum of squares
                 Var_mean = np.sum(Var_jackknife_binned_local) / M_total
                 Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -2560,20 +2560,20 @@ class GFMC_t:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: 1st pass — global mean
+            # E: 1st pass -- global mean
             sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
 
-            # E: 2nd pass — centered sum of squares (numerically stable)
+            # E: 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
             E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: 1st pass — global mean
+            # Var: 1st pass -- global mean
             sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
 
-            # Var: 2nd pass — centered sum of squares
+            # Var: 2nd pass -- centered sum of squares
             sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
             Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -2857,13 +2857,13 @@ class GFMC_t:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # 1st pass — global mean
+            # 1st pass -- global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
             sum_force_global = np.empty_like(sum_force_local)
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
             mean_force_global = sum_force_global / M_total
 
-            # 2nd pass — centered sum of squares (numerically stable)
+            # 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
             sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
             mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
@@ -2972,7 +2972,7 @@ class _GFMC_t_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -4284,7 +4284,7 @@ class GFMC_n:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -4353,7 +4353,7 @@ class GFMC_n:
         self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
         self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
 
-        # stored G_L and G_e_L for updating the E_scf (kept as lists — variable count per run)
+        # stored G_L and G_e_L for updating the E_scf (kept as lists -- variable count per run)
         self.__G_L = []
         self.__G_e_L = []
 
@@ -4500,7 +4500,7 @@ class GFMC_n:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._GFMC_n__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._GFMC_n__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -5164,7 +5164,7 @@ class GFMC_n:
 
             @jit
             def _body_fun_n(i, carry):
-                """Legacy GFMC projection body — recomputes kinetic energies fresh per step."""
+                """Legacy GFMC projection body -- recomputes kinetic energies fresh per step."""
                 (
                     w_L,
                     r_up_carts,
@@ -5207,7 +5207,7 @@ class GFMC_n:
 
             @jit
             def _body_fun_n_streaming(i, carry):
-                """Streaming GFMC projection body — reads kinetic energies from a maintained
+                """Streaming GFMC projection body -- reads kinetic energies from a maintained
                 ``Kinetic_streaming_state`` (J3 incrementally; J1/J2/det fresh in PR1) and
                 advances the state at the end of each step.
 
@@ -5280,7 +5280,7 @@ class GFMC_n:
             latest_jax_PRNG_key, (rotation_keys, move_keys) = _split_step_keys(init_jax_PRNG_key, num_mcmc_per_measurement)
 
             # Python-static dispatch: the streaming path is incompatible with
-            # the NN three-body Jastrow (J_NN has no rank-1 advance — see
+            # the NN three-body Jastrow (J_NN has no rank-1 advance -- see
             # lrdmc_refactoring.md 1-4). When NN J3 is present, fall back to
             # the legacy path that recomputes kinetic energies fresh each step.
             # The streaming path is also compatible only when J3 is present;
@@ -6066,7 +6066,7 @@ class GFMC_n:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -6162,7 +6162,7 @@ class GFMC_n:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -6222,7 +6222,7 @@ class GFMC_n:
             end_ = time.perf_counter()
             logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -6573,12 +6573,12 @@ class GFMC_n:
                 # Two-pass jackknife std (centered sum of squares) to avoid
                 # catastrophic cancellation in <x^2> - <x>^2.
 
-                # E: 1st pass — mean, 2nd pass — centered sum of squares
+                # E: 1st pass -- mean, 2nd pass -- centered sum of squares
                 E_mean = np.sum(E_jackknife_binned_local) / M_local
                 E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: 1st pass — mean, 2nd pass — centered sum of squares
+                # Var: 1st pass -- mean, 2nd pass -- centered sum of squares
                 Var_mean = np.sum(Var_jackknife_binned_local) / M_total
                 Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -6667,20 +6667,20 @@ class GFMC_n:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: 1st pass — global mean
+            # E: 1st pass -- global mean
             sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
 
-            # E: 2nd pass — centered sum of squares (numerically stable)
+            # E: 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
             E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: 1st pass — global mean
+            # Var: 1st pass -- global mean
             sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
 
-            # Var: 2nd pass — centered sum of squares
+            # Var: 2nd pass -- centered sum of squares
             sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
             Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -6967,13 +6967,13 @@ class GFMC_n:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # 1st pass — global mean
+            # 1st pass -- global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
             sum_force_global = np.empty_like(sum_force_local)
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
             mean_force_global = sum_force_global / M_total
 
-            # 2nd pass — centered sum of squares (numerically stable)
+            # 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
             sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
             mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
@@ -7082,7 +7082,7 @@ class _GFMC_n_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):

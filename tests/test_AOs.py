@@ -1253,7 +1253,7 @@ def test_fused_AOs_value_grad_lap_matches_split(trexio_file: str):
 
     # value: tight ao_eval-zone tolerance. Fused reuses the grad/lap
     # ``phi`` (left-to-right multiplication chain), while standalone
-    # ``compute_AOs`` parenthesises the polynomial separately — strictly
+    # ``compute_AOs`` parenthesises the polynomial separately -- strictly
     # ULP-level differences are allowed.
     atol_val, rtol_val = get_tolerance("ao_eval", "strict")
     assert_allclose(np.asarray(val_f), np.asarray(val_s), atol=atol_val, rtol=rtol_val)
@@ -1271,7 +1271,7 @@ def test_fused_AOs_value_grad_lap_matches_split(trexio_file: str):
 def test_fused_AOs_dtypes_match_zones(trexio_file: str):
     """``compute_AOs_value_grad_lap`` outputs are pinned to their zones.
 
-    val ↔ ``ao_eval`` (fp32 mixed / fp64 full); gx/gy/gz/lap ↔
+    val <-> ``ao_eval`` (fp32 mixed / fp64 full); gx/gy/gz/lap <->
     ``ao_grad_lap`` (fp64 always).
     """
     (

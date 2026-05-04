@@ -1,21 +1,21 @@
 #!/usr/bin/env python
 """Local integration test for jqmc_workflow.
 
-H₂ at 2 bond lengths (R = 0.74, 1.00 Å) — all-electron, cc-pVTZ, JSD. It should run **locally**.
+H_2 at 2 bond lengths (R = 0.74, 1.00 A) -- all-electron, cc-pVTZ, JSD. It should run **locally**.
 
 Pipeline per R:
-    pySCF (DFT) → WF (JSD: J1-exp + J2 + J3-ao-small) → VMC (15 opt steps) → MCMC
-                                                                            → LRDMC_t (GFMC_t, a=0.30)
-                                                                            → LRDMC_n (GFMC_n, a=0.30, survival_ratio=0.95)
+    pySCF (DFT) -> WF (JSD: J1-exp + J2 + J3-ao-small) -> VMC (15 opt steps) -> MCMC
+                                                                            -> LRDMC_t (GFMC_t, a=0.30)
+                                                                            -> LRDMC_n (GFMC_n, a=0.30, survival_ratio=0.95)
 
 After the pipeline completes, the script exercises the new Phase-1 APIs:
 
-* ``get_all_workflow_statuses()``  — list every workflow_state.toml
-* ``get_workflow_summary()``       — detailed summary per directory
-* ``parse_vmc_output()``           — per-step VMC diagnostic data
-* ``parse_mcmc_output()``          — MCMC diagnostic data
-* ``parse_lrdmc_output()``         — LRDMC diagnostic data
-* ``parse_input_params()``         — TOML parameter extraction
+* ``get_all_workflow_statuses()``  -- list every workflow_state.toml
+* ``get_workflow_summary()``       -- detailed summary per directory
+* ``parse_vmc_output()``           -- per-step VMC diagnostic data
+* ``parse_mcmc_output()``          -- MCMC diagnostic data
+* ``parse_lrdmc_output()``         -- LRDMC diagnostic data
+* ``parse_input_params()``         -- TOML parameter extraction
 """
 
 import dataclasses
@@ -40,7 +40,7 @@ from jqmc_workflow import (
     parse_vmc_output,
 )
 
-# ── Configuration ─────────────────────────────────────────────────
+# -- Configuration -------------------------------------------------
 SERVER = "cluster"
 QUEUE_LABEL = "qM"
 
@@ -88,7 +88,7 @@ trexio.to_trexio(mf, filename)
 '''
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------
 def r_dir(R: float) -> str:
     return f"R_{R:.2f}"
 
@@ -97,7 +97,7 @@ def trexio_filename(R: float) -> str:
     return f"H2_R_{R:.2f}.h5"
 
 
-# ── Step 0: pySCF (local) ────────────────────────────────────────
+# -- Step 0: pySCF (local) ----------------------------------------
 def run_pyscf(base_dir: str) -> None:
     """Run pySCF for each R value."""
     print("=" * 60)
@@ -130,9 +130,9 @@ def run_pyscf(base_dir: str) -> None:
             print(f"  [done] {r_dir(R)}/00_pyscf/{trexio_filename(R)}")
 
 
-# ── Step 1: Build pipeline ───────────────────────────────────────
+# -- Step 1: Build pipeline ---------------------------------------
 def build_pipeline() -> list[Container]:
-    """Build WF → VMC → {MCMC, LRDMC} for each R value."""
+    """Build WF -> VMC -> {MCMC, LRDMC} for each R value."""
     workflows: list[Container] = []
 
     for R in R_VALUES:
@@ -266,7 +266,7 @@ def build_pipeline() -> list[Container]:
     return workflows
 
 
-# ── Step 2: Exercise Phase-1 diagnostic APIs ─────────────────────
+# -- Step 2: Exercise Phase-1 diagnostic APIs ---------------------
 def run_diagnostics(base_dir: str) -> bool:
     """Run the new diagnostic / query APIs and verify results.
 
@@ -279,7 +279,7 @@ def run_diagnostics(base_dir: str) -> bool:
 
     ok = True
 
-    # ── get_all_workflow_statuses ──
+    # -- get_all_workflow_statuses --
     print()
     print("--- get_all_workflow_statuses ---")
     statuses = get_all_workflow_statuses(base_dir)
@@ -290,11 +290,11 @@ def run_diagnostics(base_dir: str) -> bool:
     expected = len(R_VALUES) * 5  # wf + vmc + mcmc + lrdmc_t + lrdmc_n per R
     if len(statuses) < expected:
         print(f"  [WARN] Expected at least {expected} workflows, found {len(statuses)}")
-        # Not a hard failure — WF doesn't always create state
+        # Not a hard failure -- WF doesn't always create state
     else:
         print(f"  [OK] Found {len(statuses)} workflow states")
 
-    # ── get_workflow_summary per vmc/mcmc ──
+    # -- get_workflow_summary per vmc/mcmc --
     print()
     print("--- get_workflow_summary ---")
     for R in R_VALUES:
@@ -312,7 +312,7 @@ def run_diagnostics(base_dir: str) -> bool:
             else:
                 print(f"  {r_dir(R)}/{step}:  [no state file]")
 
-    # ── helper: dump all dataclass fields ──
+    # -- helper: dump all dataclass fields --
     def _dump_dataclass(label, obj):
         """Print all fields of a dataclass, truncating stderr_tail."""
         d = dataclasses.asdict(obj)
@@ -328,7 +328,7 @@ def run_diagnostics(base_dir: str) -> bool:
         else:
             print(f"  {label}: {d}")
 
-    # ── parse_vmc_output ──
+    # -- parse_vmc_output --
     print()
     print("--- parse_vmc_output ---")
     for R in R_VALUES:
@@ -343,7 +343,7 @@ def run_diagnostics(base_dir: str) -> bool:
             print(f"  [FAIL] No VMC steps parsed for R={R:.2f}")
             ok = False
 
-    # ── parse_mcmc_output ──
+    # -- parse_mcmc_output --
     print()
     print("--- parse_mcmc_output ---")
     for R in R_VALUES:
@@ -351,7 +351,7 @@ def run_diagnostics(base_dir: str) -> bool:
         mcmc_data = parse_mcmc_output(mcmc_dir)
         _dump_dataclass(f"R={R:.2f}", mcmc_data)
 
-    # ── parse_lrdmc_output (GFMC_t) ──
+    # -- parse_lrdmc_output (GFMC_t) --
     print()
     print("--- parse_lrdmc_output (GFMC_t) ---")
     for R in R_VALUES:
@@ -359,7 +359,7 @@ def run_diagnostics(base_dir: str) -> bool:
         lrdmc_data = parse_lrdmc_output(lrdmc_dir)
         _dump_dataclass(f"R={R:.2f}", lrdmc_data)
 
-    # ── parse_lrdmc_output (GFMC_n) ──
+    # -- parse_lrdmc_output (GFMC_n) --
     print()
     print("--- parse_lrdmc_output (GFMC_n) ---")
     for R in R_VALUES:
@@ -367,7 +367,7 @@ def run_diagnostics(base_dir: str) -> bool:
         lrdmc_data = parse_lrdmc_output(lrdmc_dir)
         _dump_dataclass(f"R={R:.2f}", lrdmc_data)
 
-    # ── parse_input_params ──
+    # -- parse_input_params --
     print()
     print("--- parse_input_params ---")
     for R in R_VALUES:
@@ -385,7 +385,7 @@ def run_diagnostics(base_dir: str) -> bool:
     return ok
 
 
-# ── Main ──────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(base_dir)
@@ -393,10 +393,10 @@ if __name__ == "__main__":
     # 0) pySCF
     run_pyscf(base_dir)
 
-    # 1) Pipeline: WF → VMC → {MCMC, LRDMC}
+    # 1) Pipeline: WF -> VMC -> {MCMC, LRDMC}
     print()
     print("=" * 60)
-    print("  Step 1: WF → VMC → {MCMC, LRDMC} (local, minimal)")
+    print("  Step 1: WF -> VMC -> {MCMC, LRDMC} (local, minimal)")
     print("=" * 60)
 
     workflows = build_pipeline()
@@ -411,7 +411,7 @@ if __name__ == "__main__":
     if all_ok:
         print("  ALL CHECKS PASSED")
     else:
-        print("  SOME CHECKS FAILED — see above for details")
+        print("  SOME CHECKS FAILED -- see above for details")
     print("=" * 60)
 
     sys.exit(0 if all_ok else 1)

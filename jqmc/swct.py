@@ -80,7 +80,7 @@ def evaluate_swct_omega(
     def compute_omega(R_cart, r_cart):
         # Reconstruct r - R in caller-supplied precision (fp64 from MCMC walker
         # state) via JAX promotion, then downcast to the swct zone at the use
-        # site (Principle 3b — cast operands to this function's own zone
+        # site (Principle 3b -- cast operands to this function's own zone
         # immediately before consuming them as arithmetic operands).
         diff_one = (r_cart - R_cart).astype(dtype_jnp)
         diff_all = (r_cart - R_carts).astype(dtype_jnp)
@@ -143,7 +143,7 @@ def evaluate_swct_domega(
     Returns:
         jax.Array: Sum of gradients per atom with shape ``(N_a, 3)``.
     """
-    # Forward r_carts as-is (Principle 3a — no parameter rebind). The inner
+    # Forward r_carts as-is (Principle 3a -- no parameter rebind). The inner
     # `evaluate_swct_omega` performs its own use-site cast to the swct zone.
     domega = jnp.sum(jacrev(evaluate_swct_omega, argnums=1)(structure_data, r_carts), axis=(1, 2))
 

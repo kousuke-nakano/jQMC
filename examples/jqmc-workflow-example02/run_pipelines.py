@@ -1,4 +1,4 @@
-"""Walker-scaling benchmark: pySCF → WF → VMC → MCMC + LRDMC.
+"""Walker-scaling benchmark: pySCF -> WF -> VMC -> MCMC + LRDMC.
 
 For a water molecule (ccECP, cc-pVTZ), this script benchmarks
 vectorization efficiency by sweeping the ``number_of_walkers``
@@ -6,7 +6,7 @@ parameter from 8 to 8192.
 
 Pipeline
 --------
-  1. Run pySCF locally → TREXIO file.
+  1. Run pySCF locally -> TREXIO file.
   2. Convert to ``hamiltonian_data.h5`` with JSD Jastrow (WF_Workflow).
   3. Optimize J1/J2/J3 via VMC_Workflow.
   4. For **each walker count**, launch:
@@ -17,7 +17,7 @@ Pipeline
 Step-count control
 ------------------
 MCMC and LRDMC use an **explicit** number of measurement steps
-rather than target-error–based automatic convergence.  Internally
+rather than target-error-based automatic convergence.  Internally
 we set ``pilot_steps = NUM_MCMC_STEPS`` and a large ``target_error``
 (999 Ha) so that (a) the pilot phase runs with NUM_MCMC_STEPS and
 (b) the production run uses the same step count (since
@@ -50,7 +50,7 @@ from jqmc_workflow import (
     parse_mcmc_output,
 )
 
-# ── Configuration ─────────────────────────────────────────────────
+# -- Configuration -------------------------------------------------
 SERVER = "cluster"
 QUEUE_LABEL_s = "cores-4-mpi-4-gpu-4-omp-1-30m"
 QUEUE_LABEL_l = "cores-4-mpi-4-gpu-4-omp-1-3h"
@@ -107,7 +107,7 @@ trexio.to_trexio(mf, filename)
 '''
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------
 def extract_hf_energy(pyscf_output: str) -> float | None:
     """Parse the converged SCF energy from pySCF output."""
     if not os.path.isfile(pyscf_output):
@@ -132,7 +132,7 @@ def format_energy(energy: float | None, error: float | None) -> str:
     return f"{energy:.{n_dec}f}({err_in_last})"
 
 
-# ── Step 1: Run pySCF locally ────────────────────────────────────
+# -- Step 1: Run pySCF locally ------------------------------------
 def run_pyscf(base_dir: str) -> float | None:
     """Run pySCF for water and return HF energy."""
     print("=" * 60)
@@ -173,7 +173,7 @@ def run_pyscf(base_dir: str) -> float | None:
     return hf_energy
 
 
-# ── Step 2: Build WF → VMC → {MCMC, LRDMC} × walkers pipeline ──
+# -- Step 2: Build WF -> VMC -> {MCMC, LRDMC} x walkers pipeline --
 def build_pipeline() -> tuple[
     list[Container],
     dict[int, Container],
@@ -188,8 +188,8 @@ def build_pipeline() -> tuple[
     mcmc_containers: dict[int, Container] = {}
     lrdmc_containers: dict[int, Container] = {}
 
-    # ── Common stages (run once) ──────────────────────────────────
-    # WF: TREXIO → hamiltonian_data.h5 (JSD: J1 + J2 + J3-ao-small)
+    # -- Common stages (run once) ----------------------------------
+    # WF: TREXIO -> hamiltonian_data.h5 (JSD: J1 + J2 + J3-ao-small)
     wf = Container(
         label="wf",
         dirname="01_wf",
@@ -239,7 +239,7 @@ def build_pipeline() -> tuple[
 
     workflows.extend([wf, vmc])
 
-    # ── Per-walker-count stages ───────────────────────────────────
+    # -- Per-walker-count stages -----------------------------------
     for nw in WALKER_COUNTS:
         label_mcmc = f"mcmc-w{nw}"
         label_lrdmc = f"lrdmc-w{nw}"
@@ -261,7 +261,7 @@ def build_pipeline() -> tuple[
                 num_mcmc_warmup_steps=25,
                 num_mcmc_bin_blocks=10,
                 # Explicit step count: pilot_steps = desired steps,
-                # target_error = huge → production uses same count.
+                # target_error = huge -> production uses same count.
                 num_mcmc_steps=NUM_MCMC_STEPS_MCMC,
                 max_time=3000,
                 poll_interval=300,
@@ -303,7 +303,7 @@ def build_pipeline() -> tuple[
     return workflows, mcmc_containers, lrdmc_containers
 
 
-# ── Step 3: Print summary table ──────────────────────────────────
+# -- Step 3: Print summary table ----------------------------------
 def print_summary_table(
     base_dir: str,
     hf_energy: float | None,
@@ -364,7 +364,7 @@ def print_summary_table(
     print()
 
 
-# ── Step 4: Plot throughput ───────────────────────────────────────
+# -- Step 4: Plot throughput ---------------------------------------
 def plot_throughput(base_dir: str) -> None:
     """Plot normalized throughput vs number of walkers.
 
@@ -445,7 +445,7 @@ def plot_throughput(base_dir: str) -> None:
     print(f"  Throughput plot saved to {out_path}")
 
 
-# ── Main ──────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(base_dir)
@@ -453,10 +453,10 @@ if __name__ == "__main__":
     # 1) pySCF (local)
     hf_energy = run_pyscf(base_dir)
 
-    # 2) WF → VMC → {MCMC, LRDMC} × walkers (via jqmc-workflow)
+    # 2) WF -> VMC -> {MCMC, LRDMC} x walkers (via jqmc-workflow)
     print()
     print("=" * 60)
-    print("  Step 2: WF → VMC → MCMC + LRDMC (via jqmc-workflow)")
+    print("  Step 2: WF -> VMC -> MCMC + LRDMC (via jqmc-workflow)")
     print("=" * 60)
 
     workflows, mcmc_containers, lrdmc_containers = build_pipeline()
