@@ -1895,20 +1895,19 @@ def compute_grads_and_laplacian_ln_Det(
     lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
     lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    # Explicitly upcast AO/MO forward values to the kinetic zone
-    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
-    # relying on JAX implicit type promotion in the lambda/gradient matmuls below.
-    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
-    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
-
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_up_spin, r_up_carts
+    # Single fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap and matches the ``_fast`` / ``_grads_lap_body`` paths so all
+    # three produce bit-identical AO outputs. Cast val to det_grad_lap zone
+    # (fp64) at the use site below — required by Principle 3b since the kernel
+    # zone for downstream einsums is det_grad_lap.
+    ao_matrix_up, ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z, ao_matrix_laplacian_up = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts
+    ao_matrix_dn, ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z, ao_matrix_laplacian_dn = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_matrix_up = ao_matrix_up.astype(dtype_jnp)
+    ao_matrix_dn = ao_matrix_dn.astype(dtype_jnp)
 
     ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
     ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)

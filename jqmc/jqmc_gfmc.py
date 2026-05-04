@@ -1534,7 +1534,7 @@ class GFMC_t:
         #     change between branching steps within a single ``run()``.
         # If these were defined inside the per-branching loop, every step
         # would create a fresh function identity and trigger a full
-        # re-trace + re-compile (causing ~7 s/step on H100).
+        # re-trace + re-compile.
         # ------------------------------------------------------------------
         def _cond_t(carry):
             tau_left = carry[2]
@@ -1721,12 +1721,9 @@ class GFMC_t:
             # dispatched ``vmap(_projection_t)`` from the host once per
             # projection step and broke on ``np.max(tau_left_list) <= 0``.
             # That ``np.max`` forces a host-side jax->numpy materialization,
-            # which blocks on the GPU once per step (so 27 projections =>
-            # 27 host syncs and 27 jit dispatches per branching). On H100
-            # this dominates wall time for small systems (e.g. 01water:
-            # ~4.5 ms/step vs <0.5 ms/step measured for GFMC_n which uses
-            # ``lax.fori_loop``). We replace it with ``lax.while_loop`` so
-            # the entire projection loop is captured into a single jit graph
+            # which blocks on the GPU once per step and dispatches a fresh
+            # jit per step. We replace it with ``lax.while_loop`` so the
+            # entire projection loop is captured into a single jit graph
             # (CUDA-graph friendly) and only one host sync happens at the
             # end via ``block_until_ready`` below. The cond is evaluated on
             # device (``jnp.max(tau_left) > 0.0``).

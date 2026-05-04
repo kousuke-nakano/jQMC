@@ -252,7 +252,7 @@ def compute_MOs(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     # but the (small) MO matmul and the returned MO matrix are kept in the
     # ``determinant`` precision (fp64 by default).  This avoids amplifying fp32
     # round-off through downstream determinant / kinetic / energy paths while
-    # preserving the speed of the AO kernels (see bug/fp32 diagnostics).
+    # preserving the speed of the AO kernels.
     out_dtype = get_dtype_jnp("mo_eval")
     aos = compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts).astype(out_dtype)
     mo_coefficients = mos_data._mo_coefficients_jnp.astype(out_dtype)

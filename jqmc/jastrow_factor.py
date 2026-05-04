@@ -2640,9 +2640,9 @@ def _compute_ratio_Jastrow_part_rank1_update(
         # Use tensordot with explicit contracting axes (n_ao = axis 0 of both
         # operands) instead of ``aos_p_batch.T @ W_up``: under vmap on the
         # walker axis XLA's transpose-folding does not fold the ``.T`` into
-        # the dot, materialising an explicit ~1.8 GB ``transpose`` kernel
-        # (HBM-bound, ~88-92% DRAM peak on GH200). Expressing the contraction
-        # via ``dot_general(contract=[0]x[0])`` avoids the materialisation.
+        # the dot, materialising an explicit ``transpose`` kernel that is
+        # HBM-bound. Expressing the contraction via
+        # ``dot_general(contract=[0]x[0])`` avoids the materialisation.
         V_up = jnp.tensordot(aos_p_batch, W_up, axes=((0,), (0,)))  # (N, N_up)
         P_up = jnp.dot(U_up, aos_p_batch)  # (N_up, N)
         Q_up_c = (idx_for_Q[:, None] < jnp.arange(num_up)[None, :]).astype(dtype_jnp)  # (N, N_up)

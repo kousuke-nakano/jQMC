@@ -2213,14 +2213,9 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
         we can apply :func:`_reduce_primitives_to_aos` to the radial
         product (``N R``) FIRST, then multiply by the AO-level
         polynomial. This (1) shrinks the materialised pre-reduction
-        buffer from ``(num_ao_prim, n_elec)`` to ``(num_ao, n_elec)``
-        — for cc-pVQZ on C6H6 that is 880→512 along axis 0 — and (2)
-        runs the static-unrolled :func:`_int_pow_unrolled_cart` loops
-        (the dominant ALU pipe consumer per HLO inspection) at AO
-        rank rather than primitive rank. NCU/HLO showed the previous
-        formulation materialising a 3.7 GB intermediate
-        (``f64[880, 8192, 64]``) feeding the bucket gathers — this
-        rewrite cuts that to 2.15 GB.
+        buffer from ``(num_ao_prim, n_elec)`` to ``(num_ao, n_elec)``,
+        and (2) runs the static-unrolled :func:`_int_pow_unrolled_cart`
+        loops at AO rank rather than primitive rank.
     """
     dtype_jnp = get_dtype_jnp("ao_eval")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
@@ -2269,17 +2264,6 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     # (``n * x^(n-1)``, ``n(n-1) * x^(n-2)``) so the divisions and
     # ``where(base != 0)`` masks are no longer needed either. The eps is
     # therefore fully removed across the AO module.
-    #
-    # NOTE (perf, shell-wise unroll attempt 2026-05): grouping AOs by static
-    # ``(nx, ny, nz)`` triplets and emitting a direct multiply chain per
-    # group eliminates the L_MAX-deep ``where(e == k, ...)`` select tree,
-    # but the required permute-once / inverse-permute layout introduced an
-    # end-of-kernel ``inv_perm`` gather of shape ``(num_ao, n_walker,
-    # n_elec)`` (~2 GB at f64) that became the new dominant
-    # ``loop_gather_fusion_1`` kernel on GH200, slowing cart f64 from
-    # 24 ms → 41 ms (NSYS measured). The select-tree formulation below is
-    # therefore preferred until a layout that avoids the round-trip gather
-    # is found.
     P_l_nx_ny_nz_ao = (
         _int_pow_unrolled_cart(x_ao, nx_ao, L_MAX)
         * _int_pow_unrolled_cart(y_ao, ny_ao, L_MAX)
@@ -3204,9 +3188,9 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 
         is assembled at AO rank. Eliminates the
         ``(n_walker, num_ao_prim, n_elec, 3)`` prim-rank gradient
-        intermediate (5.5 GB on cc-pVQZ C6H6) that previously dominated
-        the kinetic_disc / kinetic_continuum HLO when the standalone
-        grad API is reached (e.g. via ``compute_AOs_grad`` callers).
+        intermediate that would otherwise dominate the kinetic_disc /
+        kinetic_continuum HLO when the standalone grad API is reached
+        (e.g. via ``compute_AOs_grad`` callers).
     """
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
     # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
@@ -3403,17 +3387,12 @@ def _compute_AOs_value_grad_lap_cart(
                               - 4\\, ZNR \\cdot (x \\partial_x P + y \\partial_y P + z \\partial_z P)
                               + (4 r^2\\, Z^2NR - 6\\, ZNR) \\cdot P
 
-        Previously the kernel materialised ``phi``, ``Kx``, ``Ky``, ``Kz``
-        as four ``(n_walker, num_ao_prim, n_elec)`` tuples (~7.4 GB on
-        cc-pVQZ C6H6) and reduced each to AO rank with a separate
-        ``_reduce_primitives_to_aos``; HLO dump showed a single
-        ``loop_multiply_reduce_select_fusion`` of type
-        ``(f64[8192,880,32], f64[8192,880,32], f64[8192,880,32],
-        f64[8192,880,32])`` — the dominant DRAM consumer of the kinetic
-        energy / local energy paths. This rewrite shrinks that to one
-        prim-rank reduce per radial moment (NR / ZNR / Z²NR) and runs
-        all polynomial work at AO rank (~144 channel for C6H6 vs 880
-        prim).
+        The kernel performs one prim-rank reduce per radial moment
+        (NR / ZNR / Z²NR) and runs all polynomial work at AO rank.
+        This avoids the four ``(n_walker, num_ao_prim, n_elec)``
+        prim-rank tuples (``phi``, ``Kx``, ``Ky``, ``Kz``) that would
+        otherwise dominate the kinetic energy / local energy DRAM
+        traffic.
     """
     dtype_eval = get_dtype_jnp("ao_eval")
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
@@ -3612,7 +3591,10 @@ def compute_AOs_value_grad_lap(
     ``S_l_m``, ``phi`` / ``pref``) is computed once in ``ao_grad_lap``
     (fp64); ``val`` is downcast to ``ao_eval`` only at the segment-sum
     site. ``gx`` / ``gy`` / ``gz`` / ``lap`` are kept in fp64 to protect
-    the laplacian's ``4 Z^2 r^2 - 6 Z`` cancellation.
+    the laplacian's ``4 Z^2 r^2 - 6 Z`` cancellation. The val downcast
+    matches the standalone ``compute_AOs`` zone semantics so that
+    forward (det_eval) and grad/lap (det_grad_lap) consumers see val of
+    the same fp32 quality and remain variationally consistent.
 
     Args:
         aos_data: ``AOs_cart_data`` or ``AOs_sphe_data`` describing primitive
