@@ -46,7 +46,6 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from logging import getLogger
-from subprocess import PIPE
 
 import paramiko
 import yaml
@@ -353,8 +352,7 @@ class Machine:
                     proc = subprocess.run(
                         command_r,
                         shell=True,
-                        stdout=PIPE,
-                        stderr=PIPE,
+                        capture_output=True,
                         text=True,
                         timeout=1200,
                     )

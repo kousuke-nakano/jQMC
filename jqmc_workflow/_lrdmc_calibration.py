@@ -49,7 +49,6 @@ The calibration procedure is:
 import math
 import re
 from logging import getLogger
-from typing import List, Optional
 
 import h5py
 

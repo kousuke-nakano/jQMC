@@ -42,7 +42,6 @@ import os
 import shutil
 import uuid
 from logging import getLogger
-from typing import List, Optional
 
 from ._job import JobSubmission
 from ._phase import ScientificPhase, require_action

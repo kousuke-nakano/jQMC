@@ -44,7 +44,6 @@ import re
 import sys
 from enum import Enum
 from logging import Formatter, StreamHandler, getLogger
-from typing import List
 
 import click
 import jax.numpy as jnp

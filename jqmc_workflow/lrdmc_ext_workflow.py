@@ -46,7 +46,6 @@ import os
 import re
 import subprocess
 from logging import getLogger
-from typing import Dict, List, Optional, Union
 
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,

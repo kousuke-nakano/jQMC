@@ -43,7 +43,6 @@ import os
 import shlex
 import subprocess
 from logging import getLogger
-from typing import List, Optional
 
 from ._state import WorkflowStatus
 from .workflow import Workflow

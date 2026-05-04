@@ -44,7 +44,7 @@ import collections.abc
 import dataclasses
 import importlib
 from logging import getLogger
-from typing import Any, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 import h5py
 

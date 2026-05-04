@@ -47,7 +47,6 @@ from logging import (
     StreamHandler,
     getLogger,
 )
-from typing import List, Optional
 
 from .workflow import (
     Container,

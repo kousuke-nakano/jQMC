@@ -67,8 +67,6 @@ lint.extend-ignore = [
     "SIM101", "SIM102", "SIM103", "SIM105", "SIM114", "SIM115", "SIM118", "SIM300",
     # flake8-print
     "T201",
-    # pyupgrade
-    "UP022", "UP031", "UP035",
     # pycodestyle warnings
     "W291", "W293", "W605",
 ]
