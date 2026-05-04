@@ -43,9 +43,9 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.atomic_orbital import AOs_sphe_data  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc.atomic_orbital import AOs_sphe_data
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
@@ -72,9 +72,9 @@ from jqmc.jastrow_factor import (  # noqa: E402
     compute_Jastrow_three_body,
     compute_Jastrow_two_body,
 )
-from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.structure import Structure_data  # noqa: E402
-from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
+from jqmc.molecular_orbital import MOs_data
+from jqmc.structure import Structure_data
+from jqmc.wavefunction import VariationalParameterBlock
 
 
 @pytest.mark.parametrize("j1b_type", ["exp", "pade"])

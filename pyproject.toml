@@ -60,9 +60,9 @@ lint.extend-ignore = [
     "PT006", "PT012", "PT018",
     # flake8-return
     "RET501", "RET503", "RET504", "RET505", "RET506", "RET507", "RET508",
-    # ruff-specific (RUF001/002/003 are ENFORCED — never add here)
+    # ruff-specific (RUF001/002/003 are ENFORCED -- never add here)
     "RUF005", "RUF010", "RUF019", "RUF021", "RUF022", "RUF023",
-    "RUF046", "RUF059", "RUF100",
+    "RUF046", "RUF059",
     # flake8-simplify
     "SIM101", "SIM102", "SIM103", "SIM105", "SIM114", "SIM115", "SIM118", "SIM300",
     # flake8-print

@@ -52,7 +52,7 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
-from jax.scipy import linalg as jsp_linalg  # noqa: F401  (kept for external callers)
+from jax.scipy import linalg as jsp_linalg
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask

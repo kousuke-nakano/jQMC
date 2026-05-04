@@ -43,8 +43,8 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.jqmc_cli import _cli  # noqa: E402
-from jqmc.jqmc_tool import (  # noqa: E402
+from jqmc.jqmc_cli import _cli
+from jqmc.jqmc_tool import (
     lrdmc_compute_energy,
     lrdmc_extrapolate_energy,
     lrdmc_generate_input,

@@ -45,8 +45,8 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
-from jqmc.coulomb_potential import (  # noqa: E402
+from jqmc._precision import get_tolerance
+from jqmc.coulomb_potential import (
     _compute_bare_coulomb_potential_debug,
     _compute_bare_coulomb_potential_el_ion_element_wise_debug,
     _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug,
@@ -65,15 +65,15 @@ from jqmc.coulomb_potential import (  # noqa: E402
     compute_ecp_non_local_parts_nearest_neighbors,
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
-from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc.determinant import compute_geminal_all_elements
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import Wavefunction_data  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import Wavefunction_data
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

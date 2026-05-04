@@ -14,17 +14,17 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap  # noqa: E402
-from jqmc.determinant import Geminal_data, compute_det_geminal_all_elements  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc.atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap
+from jqmc.determinant import Geminal_data, compute_det_geminal_all_elements
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_three_body_data,
     compute_Jastrow_three_body,
 )
-from jqmc._precision import get_tolerance  # noqa: E402
-from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import (  # noqa: E402
+from jqmc._precision import get_tolerance
+from jqmc.molecular_orbital import MOs_data
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import (
     VariationalParameterBlock,
     Wavefunction_data,
     evaluate_ln_wavefunction,

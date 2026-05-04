@@ -48,11 +48,11 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.coulomb_potential import _compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import Jastrow_data  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_wavefunction  # noqa: E402
+from jqmc.coulomb_potential import _compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential
+from jqmc.hamiltonians import Hamiltonian_data
+from jqmc.jastrow_factor import Jastrow_data
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_wavefunction
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

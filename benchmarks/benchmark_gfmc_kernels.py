@@ -116,7 +116,7 @@ if _libcudart is None:
 # Try ``pip install nvtx`` package first (bundles its own .so),
 # then fall back to ctypes libnvToolsExt.so from CUDA toolkit.
 try:
-    import nvtx as _nvtx_mod  # noqa: F811
+    import nvtx as _nvtx_mod
 
     print("[INFO] NVTX ranges enabled via ``nvtx`` pip package.")
 except ImportError:

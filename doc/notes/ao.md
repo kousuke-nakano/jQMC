@@ -3,9 +3,9 @@
 
 ## Atomic orbitals for the pairing function and the Jastrow factor
 
-One of the most common choices for atomic orbitals in QMC is atom‑centered Gaussian‑type orbitals (GTOs). A primitive GTO $\psi_{l,m,\alpha}(\mathbf{r})$ can be constructed using either solid harmonics or Cartesian polynomial basis functions.
+One of the most common choices for atomic orbitals in QMC is atom-centered Gaussian-type orbitals (GTOs). A primitive GTO $\psi_{l,m,\alpha}(\mathbf{r})$ can be constructed using either solid harmonics or Cartesian polynomial basis functions.
 
-### Gaussian‑Type Orbitals with Solid‑Harmonic Basis
+### Gaussian-Type Orbitals with Solid-Harmonic Basis
 
 Primitive orbitals with regular solid harmonics are given by:
 
@@ -55,7 +55,7 @@ These two normalizations satisfy
 \frac{\mathcal{N}^{\rm solid}_{l,m,\alpha}}{\mathcal{N}^{\rm sphe}_{l,m,\alpha}} = \sqrt{\frac{2l+1}{4\pi}}.
 ```
 
-### Gaussian‑Type Orbitals with Cartesian Basis
+### Gaussian-Type Orbitals with Cartesian Basis
 
 Primitive orbitals in the Cartesian basis are
 
@@ -81,12 +81,12 @@ We define the total angular momentum as $l=n_x+n_y+n_z$.  A basis of order $l$ i
 
 ### Practical Tip
 
-In jQMC (JAX), Cartesian GTOs are computationally faster than spherical ones when using `jit` and `grad`, since they avoid branching logic by varying only polynomial exponents rather than basis‑function forms.
+In jQMC (JAX), Cartesian GTOs are computationally faster than spherical ones when using `jit` and `grad`, since they avoid branching logic by varying only polynomial exponents rather than basis-function forms.
 
 
 ## Real Spherical and Solid Harmonics
 
-The **real spherical harmonics** $\mathcal{Y}_{l,m}(\theta,\phi)$ are built from the complex spherical harmonics $Y_{l,m}(\theta,\phi)$ with the Condon–Shortley phase:
+The **real spherical harmonics** $\mathcal{Y}_{l,m}(\theta,\phi)$ are built from the complex spherical harmonics $Y_{l,m}(\theta,\phi)$ with the Condon-Shortley phase:
 
 ```{math}
 :label: eq-real-spherical

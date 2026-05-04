@@ -692,7 +692,7 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
     """
     # Forward r_up/dn_carts/RT as-is (Principle 3a -- no parameter rebind).
     # Cast RT to coulomb zone at the use site (the grid_points rotation below).
-    dtype_np = get_dtype_np("coulomb")  # noqa: F841
+    dtype_np = get_dtype_np("coulomb")
 
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
@@ -880,7 +880,7 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
     """
     # Forward r_up/dn_carts/RT as-is (Principle 3a -- no parameter rebind).
     # Cast RT to coulomb zone at the use site (the grid_points rotation below).
-    dtype_np = get_dtype_np("coulomb")  # noqa: F841
+    dtype_np = get_dtype_np("coulomb")
 
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights

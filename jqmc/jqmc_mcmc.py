@@ -55,7 +55,7 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax.scipy.linalg import lu_factor, lu_solve  # noqa: F401  (kept for external callers / _MCMC_debug)
+from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask

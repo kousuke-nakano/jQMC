@@ -31,28 +31,28 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import configure, get_dtype_jnp  # noqa: E402
-from jqmc.atomic_orbital import (  # noqa: E402
+from jqmc._precision import configure, get_dtype_jnp
+from jqmc.atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
 )
-from jqmc.coulomb_potential import (  # noqa: E402
+from jqmc.coulomb_potential import (
     compute_bare_coulomb_potential,
     compute_bare_coulomb_potential_el_el,
     compute_bare_coulomb_potential_el_ion_element_wise,
     compute_ecp_local_parts_all_pairs,
     compute_ecp_non_local_part_all_pairs_jax_weights_grid_points,
 )
-from jqmc.determinant import (  # noqa: E402
+from jqmc.determinant import (
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
     compute_grads_and_laplacian_ln_Det,
     compute_ln_det_geminal_all_elements,
 )
-from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
@@ -62,13 +62,13 @@ from jqmc.jastrow_factor import (  # noqa: E402
     compute_Jastrow_three_body,
     compute_Jastrow_two_body,
 )
-from jqmc.molecular_orbital import (  # noqa: E402
+from jqmc.molecular_orbital import (
     compute_MOs,
     compute_MOs_grad,
     compute_MOs_laplacian,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import (  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import (
     Wavefunction_data,
     compute_kinetic_energy,
     evaluate_ln_wavefunction,

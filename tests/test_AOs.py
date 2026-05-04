@@ -50,7 +50,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import (  # noqa: E402
+from jqmc.atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
     _compute_AOs_cart,
@@ -70,9 +70,9 @@ from jqmc.atomic_orbital import (  # noqa: E402
     compute_AOs_value_grad_lap,
     compute_overlap_matrix,
 )
-from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.structure import Structure_data  # noqa: E402
+from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.structure import Structure_data
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

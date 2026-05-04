@@ -24,10 +24,10 @@ repos:
 - repo: local
   hooks:
   - id: ascii-only
-    name: Reject non-ASCII bytes in Python sources
+    name: Reject non-ASCII bytes in source / config / docs
     entry: scripts/check_ascii.sh
     language: system
-    types: [python]
+    types_or: [python, toml, yaml, markdown, shell]
     exclude: '^(jqmc/obsolete/|prototypes/)'
     pass_filenames: true
   - id: ascii-only-commit-msg

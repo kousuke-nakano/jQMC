@@ -6,8 +6,8 @@ The following items provide guidance for developers who wish to contribute to `j
 
 In `jQMC`, our top priorities are:
 
-1. **Sustainability** – maintainability of the codebase
-2. **Ease of development** – simplicity of implementing new features or theories
+1. **Sustainability** - maintainability of the codebase
+2. **Ease of development** - simplicity of implementing new features or theories
 
 We are willing to sacrifice some computational speed to achieve these goals. To that end, please follow these guidelines when contributing:
 
@@ -21,7 +21,7 @@ We are willing to sacrifice some computational speed to achieve these goals. To 
   * **Data** are defined as static classes using `flax.struct.dataclass`.
   * **Algorithms** are implemented as standalone functions that accept these dataclass instances as arguments.
 * Related dataclasses and their algorithms live in the same `Python` file and module, preserving the spirit of OOP while ensuring clarity.
-* This design not only improves readability but also aligns with `JAX`’s requirement for side-effect-free functions.
+* This design not only improves readability but also aligns with `JAX`'s requirement for side-effect-free functions.
 
 ---
 
