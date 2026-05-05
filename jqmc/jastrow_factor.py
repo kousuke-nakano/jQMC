@@ -859,73 +859,43 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
     grad_J1_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
     grad_J1_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
-    # laplacian
+    # laplacian (4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
     diff_h2 = 1.0e-3
     J_ref = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, r_dn_carts)
 
+    def _eval_up(r_up):
+        return _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up, r_dn_carts)
+
+    def _eval_dn(r_dn):
+        return _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, r_dn)
+
+    def _fd4_second_deriv(eval_fn, r_carts, r_i, dim, h, f0):
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[r_i][dim] += h
+        r_p2[r_i][dim] += 2 * h
+        r_m1[r_i][dim] -= h
+        r_m2[r_i][dim] -= 2 * h
+        return (-eval_fn(r_p2) + 16 * eval_fn(r_p1) - 30 * f0 + 16 * eval_fn(r_m1) - eval_fn(r_m2)) / (12 * h**2)
+
     lap_J1_up = np.zeros(len(r_up_carts), dtype=dtype_np)
-
-    # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up2_carts = r_up_carts.copy()
-        diff_p_y_r_up2_carts = r_up_carts.copy()
-        diff_p_z_r_up2_carts = r_up_carts.copy()
-        diff_p_x_r_up2_carts[r_i][0] += diff_h2
-        diff_p_y_r_up2_carts[r_i][1] += diff_h2
-        diff_p_z_r_up2_carts[r_i][2] += diff_h2
-
-        J_p_x_up2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, diff_p_x_r_up2_carts, r_dn_carts)
-        J_p_y_up2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, diff_p_y_r_up2_carts, r_dn_carts)
-        J_p_z_up2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, diff_p_z_r_up2_carts, r_dn_carts)
-
-        diff_m_x_r_up2_carts = r_up_carts.copy()
-        diff_m_y_r_up2_carts = r_up_carts.copy()
-        diff_m_z_r_up2_carts = r_up_carts.copy()
-        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
-
-        J_m_x_up2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, diff_m_x_r_up2_carts, r_dn_carts)
-        J_m_y_up2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, diff_m_y_r_up2_carts, r_dn_carts)
-        J_m_z_up2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, diff_m_z_r_up2_carts, r_dn_carts)
-
-        gradgrad_x_up = (J_p_x_up2 + J_m_x_up2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_y_up = (J_p_y_up2 + J_m_y_up2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_z_up = (J_p_z_up2 + J_m_z_up2 - 2 * J_ref) / (diff_h2**2)
-
-        lap_J1_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        lap_J1_up[r_i] = (
+            _fd4_second_deriv(_eval_up, r_up_carts, r_i, 0, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 1, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 2, diff_h2, J_ref)
+        )
 
     lap_J1_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
-
-    # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn2_carts = r_dn_carts.copy()
-        diff_p_y_r_dn2_carts = r_dn_carts.copy()
-        diff_p_z_r_dn2_carts = r_dn_carts.copy()
-        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
-        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
-        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
-
-        J_p_x_dn2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, diff_p_x_r_dn2_carts)
-        J_p_y_dn2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, diff_p_y_r_dn2_carts)
-        J_p_z_dn2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, diff_p_z_r_dn2_carts)
-
-        diff_m_x_r_dn2_carts = r_dn_carts.copy()
-        diff_m_y_r_dn2_carts = r_dn_carts.copy()
-        diff_m_z_r_dn2_carts = r_dn_carts.copy()
-        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
-
-        J_m_x_dn2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, diff_m_x_r_dn2_carts)
-        J_m_y_dn2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, diff_m_y_r_dn2_carts)
-        J_m_z_dn2 = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, diff_m_z_r_dn2_carts)
-
-        gradgrad_x_dn = (J_p_x_dn2 + J_m_x_dn2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_y_dn = (J_p_y_dn2 + J_m_y_dn2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_z_dn = (J_p_z_dn2 + J_m_z_dn2 - 2 * J_ref) / (diff_h2**2)
-
-        lap_J1_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        lap_J1_dn[r_i] = (
+            _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 0, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 1, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 2, diff_h2, J_ref)
+        )
 
     return grad_J1_up, grad_J1_dn, lap_J1_up, lap_J1_dn
 
@@ -3306,73 +3276,43 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
     grad_J_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
     grad_J_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
-    # laplacian
+    # laplacian (4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
     diff_h2 = 1.0e-3
     J_ref = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
+    def _eval_up(r_up):
+        return compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up, r_dn_carts=r_dn_carts)
+
+    def _eval_dn(r_dn):
+        return compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=r_dn)
+
+    def _fd4_second_deriv(eval_fn, r_carts, r_i, dim, h, f0):
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[r_i][dim] += h
+        r_p2[r_i][dim] += 2 * h
+        r_m1[r_i][dim] -= h
+        r_m2[r_i][dim] -= 2 * h
+        return (-eval_fn(r_p2) + 16 * eval_fn(r_p1) - 30 * f0 + 16 * eval_fn(r_m1) - eval_fn(r_m2)) / (12 * h**2)
+
     lap_J_up = np.zeros(len(r_up_carts), dtype=dtype_np)
-
-    # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up2_carts = r_up_carts.copy()
-        diff_p_y_r_up2_carts = r_up_carts.copy()
-        diff_p_z_r_up2_carts = r_up_carts.copy()
-        diff_p_x_r_up2_carts[r_i][0] += diff_h2
-        diff_p_y_r_up2_carts[r_i][1] += diff_h2
-        diff_p_z_r_up2_carts[r_i][2] += diff_h2
-
-        J_p_x_up2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=diff_p_x_r_up2_carts, r_dn_carts=r_dn_carts)
-        J_p_y_up2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=diff_p_y_r_up2_carts, r_dn_carts=r_dn_carts)
-        J_p_z_up2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=diff_p_z_r_up2_carts, r_dn_carts=r_dn_carts)
-
-        diff_m_x_r_up2_carts = r_up_carts.copy()
-        diff_m_y_r_up2_carts = r_up_carts.copy()
-        diff_m_z_r_up2_carts = r_up_carts.copy()
-        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
-
-        J_m_x_up2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=diff_m_x_r_up2_carts, r_dn_carts=r_dn_carts)
-        J_m_y_up2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=diff_m_y_r_up2_carts, r_dn_carts=r_dn_carts)
-        J_m_z_up2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=diff_m_z_r_up2_carts, r_dn_carts=r_dn_carts)
-
-        gradgrad_x_up = (J_p_x_up2 + J_m_x_up2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_y_up = (J_p_y_up2 + J_m_y_up2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_z_up = (J_p_z_up2 + J_m_z_up2 - 2 * J_ref) / (diff_h2**2)
-
-        lap_J_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        lap_J_up[r_i] = (
+            _fd4_second_deriv(_eval_up, r_up_carts, r_i, 0, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 1, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 2, diff_h2, J_ref)
+        )
 
     lap_J_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
-
-    # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn2_carts = r_dn_carts.copy()
-        diff_p_y_r_dn2_carts = r_dn_carts.copy()
-        diff_p_z_r_dn2_carts = r_dn_carts.copy()
-        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
-        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
-        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
-
-        J_p_x_dn2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=diff_p_x_r_dn2_carts)
-        J_p_y_dn2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=diff_p_y_r_dn2_carts)
-        J_p_z_dn2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=diff_p_z_r_dn2_carts)
-
-        diff_m_x_r_dn2_carts = r_dn_carts.copy()
-        diff_m_y_r_dn2_carts = r_dn_carts.copy()
-        diff_m_z_r_dn2_carts = r_dn_carts.copy()
-        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
-
-        J_m_x_dn2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=diff_m_x_r_dn2_carts)
-        J_m_y_dn2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=diff_m_y_r_dn2_carts)
-        J_m_z_dn2 = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=diff_m_z_r_dn2_carts)
-
-        gradgrad_x_dn = (J_p_x_dn2 + J_m_x_dn2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_y_dn = (J_p_y_dn2 + J_m_y_dn2 - 2 * J_ref) / (diff_h2**2)
-        gradgrad_z_dn = (J_p_z_dn2 + J_m_z_dn2 - 2 * J_ref) / (diff_h2**2)
-
-        lap_J_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        lap_J_dn[r_i] = (
+            _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 0, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 1, diff_h2, J_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 2, diff_h2, J_ref)
+        )
 
     return grad_J_up, grad_J_dn, lap_J_up, lap_J_dn
 
@@ -3889,8 +3829,9 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
     grad_J2_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
     grad_J2_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
-    # laplacian
-    diff_h2 = 1.0e-3  # for laplacian
+    # laplacian (4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
+    diff_h2 = 1.0e-3
 
     J2_ref = compute_Jastrow_two_body(
         jastrow_two_body_data=jastrow_two_body_data,
@@ -3898,119 +3839,46 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
         r_dn_carts=r_dn_carts,
     )
 
+    def _eval_up(r_up):
+        return compute_Jastrow_two_body(
+            jastrow_two_body_data=jastrow_two_body_data,
+            r_up_carts=r_up,
+            r_dn_carts=r_dn_carts,
+        )
+
+    def _eval_dn(r_dn):
+        return compute_Jastrow_two_body(
+            jastrow_two_body_data=jastrow_two_body_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn,
+        )
+
+    def _fd4_second_deriv(eval_fn, r_carts, r_i, dim, h, f0):
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[r_i][dim] += h
+        r_p2[r_i][dim] += 2 * h
+        r_m1[r_i][dim] -= h
+        r_m2[r_i][dim] -= 2 * h
+        return (-eval_fn(r_p2) + 16 * eval_fn(r_p1) - 30 * f0 + 16 * eval_fn(r_m1) - eval_fn(r_m2)) / (12 * h**2)
+
     lap_J2_up = np.zeros(len(r_up_carts), dtype=dtype_np)
-
-    # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up2_carts = r_up_carts.copy()
-        diff_p_y_r_up2_carts = r_up_carts.copy()
-        diff_p_z_r_up2_carts = r_up_carts.copy()
-        diff_p_x_r_up2_carts[r_i][0] += diff_h2
-        diff_p_y_r_up2_carts[r_i][1] += diff_h2
-        diff_p_z_r_up2_carts[r_i][2] += diff_h2
-
-        J2_p_x_up2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=diff_p_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
+        lap_J2_up[r_i] = (
+            _fd4_second_deriv(_eval_up, r_up_carts, r_i, 0, diff_h2, J2_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 1, diff_h2, J2_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 2, diff_h2, J2_ref)
         )
-        J2_p_y_up2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=diff_p_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        J2_p_z_up2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=diff_p_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        diff_m_x_r_up2_carts = r_up_carts.copy()
-        diff_m_y_r_up2_carts = r_up_carts.copy()
-        diff_m_z_r_up2_carts = r_up_carts.copy()
-        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
-
-        J2_m_x_up2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=diff_m_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        J2_m_y_up2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=diff_m_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        J2_m_z_up2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=diff_m_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        gradgrad_x_up = (J2_p_x_up2 + J2_m_x_up2 - 2 * J2_ref) / (diff_h2**2)
-        gradgrad_y_up = (J2_p_y_up2 + J2_m_y_up2 - 2 * J2_ref) / (diff_h2**2)
-        gradgrad_z_up = (J2_p_z_up2 + J2_m_z_up2 - 2 * J2_ref) / (diff_h2**2)
-
-        lap_J2_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
     lap_J2_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
-
-    # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn2_carts = r_dn_carts.copy()
-        diff_p_y_r_dn2_carts = r_dn_carts.copy()
-        diff_p_z_r_dn2_carts = r_dn_carts.copy()
-        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
-        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
-        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
-
-        J2_p_x_dn2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_x_r_dn2_carts,
+        lap_J2_dn[r_i] = (
+            _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 0, diff_h2, J2_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 1, diff_h2, J2_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 2, diff_h2, J2_ref)
         )
-        J2_p_y_dn2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_y_r_dn2_carts,
-        )
-
-        J2_p_z_dn2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_z_r_dn2_carts,
-        )
-
-        diff_m_x_r_dn2_carts = r_dn_carts.copy()
-        diff_m_y_r_dn2_carts = r_dn_carts.copy()
-        diff_m_z_r_dn2_carts = r_dn_carts.copy()
-        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
-
-        J2_m_x_dn2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_x_r_dn2_carts,
-        )
-        J2_m_y_dn2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_y_r_dn2_carts,
-        )
-        J2_m_z_dn2 = compute_Jastrow_two_body(
-            jastrow_two_body_data=jastrow_two_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_z_r_dn2_carts,
-        )
-
-        gradgrad_x_dn = (J2_p_x_dn2 + J2_m_x_dn2 - 2 * J2_ref) / (diff_h2**2)
-        gradgrad_y_dn = (J2_p_y_dn2 + J2_m_y_dn2 - 2 * J2_ref) / (diff_h2**2)
-        gradgrad_z_dn = (J2_p_z_dn2 + J2_m_z_dn2 - 2 * J2_ref) / (diff_h2**2)
-
-        lap_J2_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
     return grad_J2_up, grad_J2_dn, lap_J2_up, lap_J2_dn
 
@@ -4591,8 +4459,9 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
     grad_J3_up = np.array([grad_x_up, grad_y_up, grad_z_up], dtype=dtype_np).T
     grad_J3_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn], dtype=dtype_np).T
 
-    # laplacian
-    diff_h2 = 1.0e-3  # for laplacian
+    # laplacian (4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
+    diff_h2 = 1.0e-3
 
     J3_ref = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
@@ -4600,119 +4469,46 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
         r_dn_carts=r_dn_carts,
     )
 
+    def _eval_up(r_up):
+        return compute_Jastrow_three_body(
+            jastrow_three_body_data=jastrow_three_body_data,
+            r_up_carts=r_up,
+            r_dn_carts=r_dn_carts,
+        )
+
+    def _eval_dn(r_dn):
+        return compute_Jastrow_three_body(
+            jastrow_three_body_data=jastrow_three_body_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn,
+        )
+
+    def _fd4_second_deriv(eval_fn, r_carts, r_i, dim, h, f0):
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[r_i][dim] += h
+        r_p2[r_i][dim] += 2 * h
+        r_m1[r_i][dim] -= h
+        r_m2[r_i][dim] -= 2 * h
+        return (-eval_fn(r_p2) + 16 * eval_fn(r_p1) - 30 * f0 + 16 * eval_fn(r_m1) - eval_fn(r_m2)) / (12 * h**2)
+
     lap_J3_up = np.zeros(len(r_up_carts), dtype=dtype_np)
-
-    # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up2_carts = r_up_carts.copy()
-        diff_p_y_r_up2_carts = r_up_carts.copy()
-        diff_p_z_r_up2_carts = r_up_carts.copy()
-        diff_p_x_r_up2_carts[r_i][0] += diff_h2
-        diff_p_y_r_up2_carts[r_i][1] += diff_h2
-        diff_p_z_r_up2_carts[r_i][2] += diff_h2
-
-        J3_p_x_up2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=diff_p_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
+        lap_J3_up[r_i] = (
+            _fd4_second_deriv(_eval_up, r_up_carts, r_i, 0, diff_h2, J3_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 1, diff_h2, J3_ref)
+            + _fd4_second_deriv(_eval_up, r_up_carts, r_i, 2, diff_h2, J3_ref)
         )
-        J3_p_y_up2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=diff_p_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        J3_p_z_up2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=diff_p_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        diff_m_x_r_up2_carts = r_up_carts.copy()
-        diff_m_y_r_up2_carts = r_up_carts.copy()
-        diff_m_z_r_up2_carts = r_up_carts.copy()
-        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
-
-        J3_m_x_up2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=diff_m_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        J3_m_y_up2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=diff_m_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        J3_m_z_up2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=diff_m_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        gradgrad_x_up = (J3_p_x_up2 + J3_m_x_up2 - 2 * J3_ref) / (diff_h2**2)
-        gradgrad_y_up = (J3_p_y_up2 + J3_m_y_up2 - 2 * J3_ref) / (diff_h2**2)
-        gradgrad_z_up = (J3_p_z_up2 + J3_m_z_up2 - 2 * J3_ref) / (diff_h2**2)
-
-        lap_J3_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
     lap_J3_dn = np.zeros(len(r_dn_carts), dtype=dtype_np)
-
-    # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn2_carts = r_dn_carts.copy()
-        diff_p_y_r_dn2_carts = r_dn_carts.copy()
-        diff_p_z_r_dn2_carts = r_dn_carts.copy()
-        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
-        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
-        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
-
-        J3_p_x_dn2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_x_r_dn2_carts,
+        lap_J3_dn[r_i] = (
+            _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 0, diff_h2, J3_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 1, diff_h2, J3_ref)
+            + _fd4_second_deriv(_eval_dn, r_dn_carts, r_i, 2, diff_h2, J3_ref)
         )
-        J3_p_y_dn2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_y_r_dn2_carts,
-        )
-
-        J3_p_z_dn2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_z_r_dn2_carts,
-        )
-
-        diff_m_x_r_dn2_carts = r_dn_carts.copy()
-        diff_m_y_r_dn2_carts = r_dn_carts.copy()
-        diff_m_z_r_dn2_carts = r_dn_carts.copy()
-        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
-
-        J3_m_x_dn2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_x_r_dn2_carts,
-        )
-        J3_m_y_dn2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_y_r_dn2_carts,
-        )
-        J3_m_z_dn2 = compute_Jastrow_three_body(
-            jastrow_three_body_data=jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_z_r_dn2_carts,
-        )
-
-        gradgrad_x_dn = (J3_p_x_dn2 + J3_m_x_dn2 - 2 * J3_ref) / (diff_h2**2)
-        gradgrad_y_dn = (J3_p_y_dn2 + J3_m_y_dn2 - 2 * J3_ref) / (diff_h2**2)
-        gradgrad_z_dn = (J3_p_z_dn2 + J3_m_z_dn2 - 2 * J3_ref) / (diff_h2**2)
-
-        lap_J3_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
     return grad_J3_up, grad_J3_dn, lap_J3_up, lap_J3_dn
 

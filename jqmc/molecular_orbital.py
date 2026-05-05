@@ -302,38 +302,28 @@ def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
 
 def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     """See _api method."""
-    # Laplacians of AOs (numerical)
-    diff_h = 1.0e-5
+    # Laplacians of MOs (numerical, 4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
+    # Larger h is viable with the 4th-order stencil (O(h^4) truncation).
+    diff_h = 1.0e-3
 
     mo_matrix = compute_MOs(mos_data, r_carts)
 
-    # laplacians x^2
-    diff_p_x_r_carts = r_carts.copy()
-    diff_p_x_r_carts[:, 0] += diff_h
-    mo_matrix_diff_p_x = compute_MOs(mos_data, diff_p_x_r_carts)
-    diff_m_x_r_carts = r_carts.copy()
-    diff_m_x_r_carts[:, 0] -= diff_h
-    mo_matrix_diff_m_x = compute_MOs(mos_data, diff_m_x_r_carts)
+    def _shifted(dim: int, mult: int):
+        rs = r_carts.copy()
+        rs[:, dim] += mult * diff_h
+        return compute_MOs(mos_data, rs)
 
-    # laplacians y^2
-    diff_p_y_r_carts = r_carts.copy()
-    diff_p_y_r_carts[:, 1] += diff_h
-    mo_matrix_diff_p_y = compute_MOs(mos_data, diff_p_y_r_carts)
-    diff_m_y_r_carts = r_carts.copy()
-    diff_m_y_r_carts[:, 1] -= diff_h
-    mo_matrix_diff_m_y = compute_MOs(mos_data, diff_m_y_r_carts)
+    def _grad2_along(dim: int):
+        f_p1 = _shifted(dim, +1)
+        f_p2 = _shifted(dim, +2)
+        f_m1 = _shifted(dim, -1)
+        f_m2 = _shifted(dim, -2)
+        return (-f_p2 + 16 * f_p1 - 30 * mo_matrix + 16 * f_m1 - f_m2) / (12 * diff_h**2)
 
-    # laplacians z^2
-    diff_p_z_r_carts = r_carts.copy()
-    diff_p_z_r_carts[:, 2] += diff_h
-    mo_matrix_diff_p_z = compute_MOs(mos_data, diff_p_z_r_carts)
-    diff_m_z_r_carts = r_carts.copy()
-    diff_m_z_r_carts[:, 2] -= diff_h
-    mo_matrix_diff_m_z = compute_MOs(mos_data, diff_m_z_r_carts)
-
-    mo_matrix_grad2_x = (mo_matrix_diff_p_x + mo_matrix_diff_m_x - 2 * mo_matrix) / (diff_h) ** 2
-    mo_matrix_grad2_y = (mo_matrix_diff_p_y + mo_matrix_diff_m_y - 2 * mo_matrix) / (diff_h) ** 2
-    mo_matrix_grad2_z = (mo_matrix_diff_p_z + mo_matrix_diff_m_z - 2 * mo_matrix) / (diff_h) ** 2
+    mo_matrix_grad2_x = _grad2_along(0)
+    mo_matrix_grad2_y = _grad2_along(1)
+    mo_matrix_grad2_z = _grad2_along(2)
 
     mo_matrix_laplacian = mo_matrix_grad2_x + mo_matrix_grad2_y + mo_matrix_grad2_z
 

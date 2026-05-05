@@ -1135,7 +1135,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("det_grad_lap", "loose")
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(

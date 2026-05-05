@@ -53,7 +53,6 @@ from jqmc.atomic_orbital import (
 )
 from jqmc.molecular_orbital import (
     MOs_data,
-    _cart_to_spherical_matrix,
     _compute_MOs_debug,
     _compute_MOs_grad_autodiff,
     _compute_MOs_grad_debug,
@@ -64,6 +63,7 @@ from jqmc.molecular_orbital import (
     compute_MOs_laplacian,
     compute_MOs_value_grad_lap,
 )
+from jqmc._jqmc_utility import _cart_to_spherical_matrix
 from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min
 from jqmc.structure import Structure_data
 from jqmc.trexio_wrapper import read_trexio_file
@@ -254,7 +254,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_grad", "loose")
+    atol, rtol = get_tolerance("mo_grad", "strict")
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
@@ -391,7 +391,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_lap", "loose")
+    atol, rtol = get_tolerance("mo_lap", "strict")
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(

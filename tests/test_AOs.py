@@ -573,7 +573,7 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
 
     # autodiff and FD-debug both pass through compute_AOs (ao_eval zone, fp32 in
     # mixed mode); tolerance bottlenecked by ao_eval.
-    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(gx_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -763,7 +763,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
 
     # FD-debug path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
     # tolerance bottlenecked by ao_eval.
-    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(gx_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(gx_an_cart, gx_num_cart, atol=atol, rtol=rtol)
@@ -977,7 +977,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
 
     # FD-debug path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
     # tolerance bottlenecked by ao_eval.
-    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1079,7 +1079,7 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 
     # both autodiff and FD-debug go through compute_AOs (ao_eval zone, fp32 in
     # mixed mode); tolerance bottlenecked by ao_eval.
-    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "loose")
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_auto_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1372,7 +1372,7 @@ def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
     overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
     overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
 
-    atol_l, rtol_l = get_tolerance("ao_eval", "loose")
+    atol_l, rtol_l = get_tolerance("ao_eval", "strict")
     atol_s, rtol_s = get_tolerance("ao_eval", "strict")
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"

@@ -80,15 +80,23 @@ rtol_consistency = 1.0e-6
 # zone's current dtype and returns ``(atol, rtol)``.
 #
 # Levels:
-#   strict -- two exact implementations of the same quantity (debug vs
-#            production, analytic vs autodiff).  Difference is pure
-#            floating-point round-off.
-#   loose  -- comparison involving numerical differentiation or quadrature.
-#            Finite-difference truncation error dominates, so tolerances
-#            are much wider.
+#   strict   -- two exact implementations of the same quantity (debug vs
+#               production, analytic vs autodiff).  Difference is pure
+#               floating-point round-off.
+#   autodiff -- analytic (uses the dedicated grad/lap zones, e.g. ao_grad_lap
+#               which is fp64 even in mixed mode) vs autodiff (jax.grad /
+#               jax.hessian of forward evaluators, which inherit the forward
+#               zone dtype, e.g. ao_eval = fp32 in mixed mode).  fp64
+#               tolerance is the same as strict (both paths run at fp64);
+#               fp32 tolerance is widened to absorb the autodiff-side fp32
+#               grad/lap noise that the analytic path does not see.
+#   loose    -- comparison involving numerical differentiation or quadrature.
+#               Finite-difference truncation error dominates, so tolerances
+#               are much wider.
 _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
     "strict": {"float64": (1e-8, 1e-6), "float32": (1e-5, 1e-3)},
-    "loose": {"float64": (1e-1, 1e-4), "float32": (1e-1, 1e-3)},
+    "autodiff": {"float64": (1e-8, 1e-6), "float32": (1e-4, 1e-2)},
+    "loose": {"float64": (1e-3, 5e-4), "float32": (1e-1, 1e-3)},
 }
 
 # --- Dtype-aware EPS constants ---

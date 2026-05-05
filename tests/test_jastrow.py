@@ -129,7 +129,7 @@ def test_Jastrow_onebody_part(j1b_type):
 @pytest.mark.parametrize("j1b_type", ["exp", "pade"])
 def test_numerical_and_auto_grads_Jastrow_onebody_part(j1b_type):
     """Test numerical and JAX grads of the one-body Jastrow factor."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "loose")
+    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
     num_r_up_cart_samples = 6
     num_r_dn_cart_samples = 3
     num_R_cart_samples = 5
@@ -280,7 +280,7 @@ def test_Jastrow_twobody_part(j2b_type):
 def test_numerical_and_auto_grads_Jastrow_twobody_part(j2b_type):
     """Test numerical and JAX grads of the two-body Jastrow factor, comparing the debug and JAX implementations."""
     atol_s, rtol_s = get_tolerance("jastrow_eval", "strict")
-    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "loose")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "strict")
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2
 
@@ -871,7 +871,7 @@ def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
     atol_s, rtol_s = get_tolerance("jastrow_eval", "strict")
-    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "loose")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "strict")
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
     num_R_cart_samples = 6
@@ -986,7 +986,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
     atol_s, rtol_s = get_tolerance("jastrow_eval", "strict")
-    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "loose")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "strict")
     num_el = 10
     num_mo = 5
     num_ao = 3
@@ -1340,7 +1340,7 @@ def _build_jastrow_data_for_part_tests(j1b_type: str = "exp", j2b_type: str = "p
 @pytest.mark.parametrize("j1b_type,j2b_type,include_nn", _JASTROW_COMBOS)
 def test_numerical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
     """Numerical vs auto-diff gradients/laplacian for J1+J2+J3(+NN)."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "loose")
+    atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(j1b_type, j2b_type, include_nn)
 
     grad_up_num, grad_dn_num, lap_up_num, lap_dn_num = _compute_grads_and_laplacian_Jastrow_part_debug(

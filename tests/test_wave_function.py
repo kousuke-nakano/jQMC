@@ -134,7 +134,7 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
+    atol, rtol = get_tolerance("wf_kinetic", "strict")
     assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -234,8 +234,18 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
     rng = np.random.default_rng(42)
-    r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
-    r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
+    # Generate electron configuration away from wavefunction nodes to ensure
+    # numerical 2nd derivatives are well-conditioned (|Psi| >> 0).
+    from jqmc.wavefunction import evaluate_wavefunction
+
+    for _ in range(200):
+        r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
+        r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
+        psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts_np, r_dn_carts_np)
+        if abs(psi_val) > 1e-8:
+            break
+    else:
+        pytest.skip("Could not find electron configuration sufficiently far from node")
 
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
@@ -247,6 +257,8 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    # Debug path FDs Psi directly; near AE-cusp accuracy is bounded below the
+    # strict tolerance (e.g. N AE) even with the 4th-order Laplacian stencil.
     atol, rtol = get_tolerance("wf_kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
@@ -318,10 +330,13 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
     )
 
     # T_L crosses ao_eval/jastrow_eval/jastrow_grad_lap/wf_kinetic zones; the
-    # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in mixed).
+    # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in
+    # mixed). Autodiff path inherits ao_eval = fp32 in its grad/hessian, so
+    # use the dedicated 'autodiff' tolerance (= strict for fp64, slightly
+    # looser for fp32).
     atol, rtol = get_tolerance_min(
         ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
-        "strict",
+        "autodiff",
     )
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
@@ -593,8 +608,14 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
         r_dn_carts=r_dn_carts_jnp,
     )
 
-    # They should be identical up to numerical noise
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
+    # They should be identical up to numerical noise.
+    # Nodal distance ~ |Psi| / |grad Psi| amplifies any fp32 noise via the
+    # 1/|grad| factor near the node, so even the dedicated 'autodiff'
+    # tolerance is too tight in mixed mode. Use 'loose' here.
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
+        "loose",
+    )
     np.testing.assert_allclose(
         np.asarray(nd_analytic),
         np.asarray(nd_debug),
@@ -855,14 +876,16 @@ def test_streaming_kinetic_energy_step_consistency(trexio_file):
 @pytest.mark.parametrize("K", [32, 100, 1000])
 def test_streaming_kinetic_drift_accumulation(K):
     """Drift accumulation: K-step advance vs fresh init at config_K must stay
-    within ``loose`` tolerance even at K=1000, which sets the safety margin
-    for ``num_mcmc_per_measurement``.
+    within strict tolerance even at K=1000. Empirically the streaming and
+    fresh paths agree to machine precision because the kinetic-energy
+    assembly (`wf_kinetic` zone, fp64) is recomputed in both paths from the
+    same per-step inputs.
     """
     wf, gem = _build_wavefunction_J3("H2_ae_ccpvdz_cart.h5")
     rng = np.random.RandomState(1)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
     r_dn0 = 4.0 * rng.rand(gem.num_electron_dn, 3) - 2.0
-    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "loose")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "strict")
     _streaming_step_consistency_one(wf, r_up0, r_dn0, K=K, atol=atol, rtol=rtol, seed=2)
 
 

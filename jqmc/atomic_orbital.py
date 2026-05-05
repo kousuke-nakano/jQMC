@@ -3128,38 +3128,28 @@ def _compute_AOs_laplacian_debug(
             Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
 
     """
-    # Laplacians of AOs (numerical)
-    diff_h = 1.0e-5
+    # Laplacians of AOs (numerical, 4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
+    # Larger h is viable with the 4th-order stencil (O(h^4) truncation).
+    diff_h = 1.0e-3
 
     ao_matrix = compute_AOs(aos_data, r_carts)
 
-    # laplacians x^2
-    diff_p_x_r_carts = r_carts.copy()
-    diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs(aos_data, diff_p_x_r_carts)
-    diff_m_x_r_carts = r_carts.copy()
-    diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs(aos_data, diff_m_x_r_carts)
+    def _shifted(dim: int, mult: int):
+        rs = r_carts.copy()
+        rs[:, dim] += mult * diff_h
+        return compute_AOs(aos_data, rs)
 
-    # laplacians y^2
-    diff_p_y_r_carts = r_carts.copy()
-    diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs(aos_data, diff_p_y_r_carts)
-    diff_m_y_r_carts = r_carts.copy()
-    diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs(aos_data, diff_m_y_r_carts)
+    def _grad2_along(dim: int):
+        f_p1 = _shifted(dim, +1)
+        f_p2 = _shifted(dim, +2)
+        f_m1 = _shifted(dim, -1)
+        f_m2 = _shifted(dim, -2)
+        return (-f_p2 + 16 * f_p1 - 30 * ao_matrix + 16 * f_m1 - f_m2) / (12 * diff_h**2)
 
-    # laplacians z^2
-    diff_p_z_r_carts = r_carts.copy()
-    diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs(aos_data, diff_p_z_r_carts)
-    diff_m_z_r_carts = r_carts.copy()
-    diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs(aos_data, diff_m_z_r_carts)
-
-    ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (diff_h) ** 2
-    ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (diff_h) ** 2
-    ao_matrix_grad2_z = (ao_matrix_diff_p_z + ao_matrix_diff_m_z - 2 * ao_matrix) / (diff_h) ** 2
+    ao_matrix_grad2_x = _grad2_along(0)
+    ao_matrix_grad2_y = _grad2_along(1)
+    ao_matrix_grad2_z = _grad2_along(2)
 
     ao_matrix_laplacian = ao_matrix_grad2_x + ao_matrix_grad2_y + ao_matrix_grad2_z
 
