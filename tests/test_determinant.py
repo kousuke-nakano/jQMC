@@ -47,6 +47,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc._setting import TEST_NODE_AVOIDANCE_PSI_MIN
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix
 from jqmc.determinant import (
     Geminal_data,
@@ -1116,7 +1117,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     for _ in range(500):
         r_up_carts, r_dn_carts = _generate_config()
         det_val = compute_det_geminal_all_elements(geminal_data=geminal_ao_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-        if abs(det_val) > 1e-8:
+        if abs(det_val) > TEST_NODE_AVOIDANCE_PSI_MIN:
             break
     else:
         pytest.skip("Could not find electron configuration sufficiently far from determinant node")

@@ -46,6 +46,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc._setting import TEST_NODE_AVOIDANCE_PSI_MIN
 from jqmc.determinant import compute_geminal_all_elements
 from jqmc.jastrow_factor import (
     Jastrow_data,
@@ -126,7 +127,7 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
         r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
         r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
         psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
-        if abs(psi_val) > 1e-8:
+        if abs(psi_val) > TEST_NODE_AVOIDANCE_PSI_MIN:
             break
     else:
         pytest.skip("Could not find electron configuration sufficiently far from node")
@@ -497,19 +498,31 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
     r_cart_min, r_cart_max = -3.0, +3.0
-    np.random.seed(42)
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    r_up_carts_jnp = jnp.asarray(r_up_carts)
-    r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+    # Reject configurations near the wavefunction node: when |Psi| ~ 0 the
+    # quantity |grad ln|Psi|| diverges, which makes the analytic vs autodiff
+    # comparison sensitive to floating-point round-off (a few percent in
+    # mixed precision). Same node-avoidance pattern as other tests.
+    from jqmc.wavefunction import evaluate_wavefunction
 
-    # Analytic path
-    nd_analytic = compute_nodal_distance(
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts_jnp,
-        r_dn_carts=r_dn_carts_jnp,
-    )
+    rng = np.random.default_rng(42)
+    nd_analytic = None
+    r_up_carts_jnp = r_dn_carts_jnp = None
+    for _ in range(50):
+        r_up_carts = (r_cart_max - r_cart_min) * rng.random((num_ele_up, 3)) + r_cart_min
+        r_dn_carts = (r_cart_max - r_cart_min) * rng.random((num_ele_dn, 3)) + r_cart_min
+        r_up_carts_jnp = jnp.asarray(r_up_carts)
+        r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+        psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts_jnp, r_dn_carts_jnp)
+        if abs(float(psi_val)) > TEST_NODE_AVOIDANCE_PSI_MIN:
+            nd_analytic = compute_nodal_distance(
+                wavefunction_data=wavefunction_data,
+                r_up_carts=r_up_carts_jnp,
+                r_dn_carts=r_dn_carts_jnp,
+            )
+            break
+    else:
+        pytest.skip(f"Could not find electron configuration sufficiently far from node for {trexio_file}")
 
     # Debug path (paper formula)
     nd_debug = _compute_nodal_distance_debug(
@@ -518,10 +531,10 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
         r_dn_carts=r_dn_carts_jnp,
     )
 
-    # They should be identical up to numerical noise.
-    # Debug path now uses grad(ln|Psi|) directly (instead of grad(Psi)/Psi),
-    # so the 1/|grad Psi| amplification near the node is gone; medium
-    # tolerance suffices in both full and mixed precision.
+    # Both paths are autodiff/analytic (no FD), so under medium tolerance the
+    # only source of disagreement is fp32 round-off in the mixed-precision
+    # build.  Avoiding the node keeps |grad ln|Psi|| bounded and that
+    # round-off well within medium rtol.
     atol, rtol = get_tolerance_min(
         ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
         "medium",

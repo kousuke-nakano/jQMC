@@ -74,6 +74,12 @@ rtol_debug_vs_production = 1.0e-6
 atol_consistency = 1.0e-8
 rtol_consistency = 1.0e-6
 
+# Minimum |Psi| (or |det|) below which an electron configuration is considered
+# "near a wavefunction node" and rejected by tests that compare quantities
+# involving 1/|Psi|, grad ln|Psi|, or 2nd derivatives via finite differences.
+# Centralized so all node-avoidance loops share the same threshold.
+TEST_NODE_AVOIDANCE_PSI_MIN = 1.0e-8
+
 # --- Test tolerance dict (dtype-aware) ---
 #
 # Accessed via ``_precision.get_tolerance(zone, level)`` which resolves the
