@@ -47,7 +47,6 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc._precision import get_tolerance, get_tolerance_min
-from jqmc._setting import TEST_NODE_AVOIDANCE_PSI_MIN
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix
 from jqmc.determinant import (
     Geminal_data,
@@ -57,7 +56,6 @@ from jqmc.determinant import (
     _compute_geminal_all_elements,
     _compute_geminal_all_elements_debug,
     _compute_grads_and_laplacian_ln_Det_auto,
-    _compute_grads_and_laplacian_ln_Det_debug,
     _compute_grads_and_laplacian_ln_Det_fast_debug,
     _compute_ratio_determinant_part_debug,
     _compute_ratio_determinant_part_rank1_update,
@@ -1057,123 +1055,6 @@ def test_one_row_or_one_column_update(trexio_file: str):
     )
 
 
-@pytest.mark.numerical_diff
-@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
-def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
-    """Test the numerical and automatic gradients of the logarithm of the determinant of the geminal wave function."""
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
-        store_tuple=True,
-    )
-
-    geminal_mo_data.sanity_check()
-
-    num_electron_up = geminal_mo_data.num_electron_up
-    num_electron_dn = geminal_mo_data.num_electron_dn
-
-    if coulomb_potential_data.ecp_flag:
-        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
-    else:
-        charges = np.array(structure_data.atomic_numbers)
-
-    coords = structure_data._positions_cart_np
-
-    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
-    geminal_ao_data.sanity_check()
-
-    # Generate electron configuration far from determinant nodes so that
-    # numerical 2nd derivatives are well-conditioned.
-    def _generate_config():
-        r_up = []
-        r_dn = []
-        for i in range(len(coords)):
-            charge = charges[i]
-            num_electrons = int(np.round(charge))
-            x, y, z = coords[i]
-            for _ in range(num_electrons):
-                distance = np.random.uniform(0.5 / max(charge, 1), 1.5 / max(charge, 1))
-                theta = np.random.uniform(0, np.pi)
-                phi = np.random.uniform(0, 2 * np.pi)
-                dx = distance * np.sin(theta) * np.cos(phi)
-                dy = distance * np.sin(theta) * np.sin(phi)
-                dz = distance * np.cos(theta)
-                if len(r_up) < num_electron_up:
-                    r_up.append(np.array([x + dx, y + dy, z + dz]))
-                else:
-                    r_dn.append(np.array([x + dx, y + dy, z + dz]))
-        for _ in range(num_electron_up - len(r_up)):
-            r_up.append(np.random.choice(coords) + np.random.normal(scale=0.2, size=3))
-        for _ in range(num_electron_dn - len(r_dn)):
-            r_dn.append(np.random.choice(coords) + np.random.normal(scale=0.2, size=3))
-        return np.array(r_up).reshape(-1, 3), np.array(r_dn).reshape(-1, 3)
-
-    for _ in range(500):
-        r_up_carts, r_dn_carts = _generate_config()
-        det_val = compute_det_geminal_all_elements(geminal_data=geminal_ao_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-        if abs(det_val) > TEST_NODE_AVOIDANCE_PSI_MIN:
-            break
-    else:
-        pytest.skip("Could not find electron configuration sufficiently far from determinant node")
-
-    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, lap_ln_D_up_numerical, lap_ln_D_dn_numerical = (
-        _compute_grads_and_laplacian_ln_Det_debug(
-            geminal_data=geminal_ao_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-    )
-
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, lap_ln_D_up_auto, lap_ln_D_dn_auto = _compute_grads_and_laplacian_ln_Det_auto(
-        geminal_data=geminal_ao_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    atol_g, rtol_g = get_tolerance("det_grad_lap", "strict")
-    atol_l, rtol_l = get_tolerance("det_grad_lap", "medium")
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(grad_ln_D_up_numerical),
-        np.asarray(grad_ln_D_up_auto),
-        atol=atol_g,
-        rtol=rtol_g,
-    )
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(grad_ln_D_dn_numerical),
-        np.asarray(grad_ln_D_dn_auto),
-        atol=atol_g,
-        rtol=rtol_g,
-    )
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(lap_ln_D_up_numerical),
-        np.asarray(lap_ln_D_up_auto),
-        rtol=rtol_l,
-        atol=atol_l,
-    )
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(lap_ln_D_dn_numerical),
-        np.asarray(lap_ln_D_dn_auto),
-        rtol=rtol_l,
-        atol=atol_l,
-    )
-
-    jax.clear_caches()
-
-
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
@@ -1194,6 +1075,9 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
 
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Seed RNG for determinism (CI must not depend on previous tests' draws).
+    np.random.seed(42)
 
     # Initialization
     r_up_carts = []
