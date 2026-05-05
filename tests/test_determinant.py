@@ -1135,38 +1135,39 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    atol, rtol = get_tolerance("det_grad_lap", "strict")
+    atol_g, rtol_g = get_tolerance("det_grad_lap", "strict")
+    atol_l, rtol_l = get_tolerance("det_grad_lap", "medium")
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(grad_ln_D_up_numerical),
         np.asarray(grad_ln_D_up_auto),
-        atol=atol,
-        rtol=rtol,
+        atol=atol_g,
+        rtol=rtol_g,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(grad_ln_D_dn_numerical),
         np.asarray(grad_ln_D_dn_auto),
-        atol=atol,
-        rtol=rtol,
+        atol=atol_g,
+        rtol=rtol_g,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_up_numerical),
         np.asarray(lap_ln_D_up_auto),
-        rtol=rtol,
-        atol=atol,
+        rtol=rtol_l,
+        atol=atol_l,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_dn_numerical),
         np.asarray(lap_ln_D_dn_auto),
-        rtol=rtol,
-        atol=atol,
+        rtol=rtol_l,
+        atol=atol_l,
     )
 
     jax.clear_caches()

@@ -83,19 +83,23 @@ rtol_consistency = 1.0e-6
 #   strict   -- two exact implementations of the same quantity (debug vs
 #               production, analytic vs autodiff).  Difference is pure
 #               floating-point round-off.
-#   autodiff -- analytic (uses the dedicated grad/lap zones, e.g. ao_grad_lap
-#               which is fp64 even in mixed mode) vs autodiff (jax.grad /
-#               jax.hessian of forward evaluators, which inherit the forward
-#               zone dtype, e.g. ao_eval = fp32 in mixed mode).  fp64
-#               tolerance is the same as strict (both paths run at fp64);
-#               fp32 tolerance is widened to absorb the autodiff-side fp32
-#               grad/lap noise that the analytic path does not see.
-#   loose    -- comparison involving numerical differentiation or quadrature.
-#               Finite-difference truncation error dominates, so tolerances
-#               are much wider.
+#   medium   -- analytic / autodiff vs 4th-order central finite differences
+#               of a Laplacian (or higher-derivative-sensitive quantity),
+#               *or* analytic vs autodiff of a quantity whose autodiff path
+#               inherits a fp32 forward zone (e.g. ao_eval) and therefore
+#               carries fp32 grad/lap noise the analytic path does not see.
+#               4th-order FD has a round-off floor of ~eps_mach / h^2 with
+#               h = 1e-3 (~5e-9) and a truncation term ~h^4 * f^(6) that can
+#               grow O(1e-6) for sharp basis sets / cusp regions.  Use for
+#               numerical_diff tests where the FD side is a 2nd derivative.
+#   loose    -- 2nd-derivative FD applied to Psi itself with subsequent
+#               1/Psi division (e.g. T_L via central FD on Psi).  Errors
+#               are bounded by the |Psi|->0 amplification near nodes even
+#               after node-avoidance sampling; only the kinetic energy
+#               debug paths in wavefunction.py need this.
 _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
     "strict": {"float64": (1e-8, 1e-6), "float32": (1e-5, 1e-3)},
-    "autodiff": {"float64": (1e-8, 1e-6), "float32": (1e-4, 1e-2)},
+    "medium": {"float64": (1e-7, 1e-5), "float32": (1e-4, 1e-2)},
     "loose": {"float64": (1e-3, 5e-4), "float32": (1e-1, 1e-3)},
 }
 

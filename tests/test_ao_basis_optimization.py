@@ -247,7 +247,8 @@ def test_j3_exponent_gradient_finite_diff(trexio_file):
         f_minus = j3_value(jnp.array(exp_minus))
         grad_fd[i] = (float(f_plus) - float(f_minus)) / (2 * eps)
 
-    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=1e-5, rtol=1e-4)
+    atol, rtol = get_tolerance("jastrow_eval", "strict")
+    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=atol, rtol=rtol)
 
 
 # ============================================================
@@ -284,7 +285,8 @@ def test_j3_coefficient_gradient_finite_diff(trexio_file):
         f_minus = j3_value(jnp.array(c_minus))
         grad_fd[i] = (float(f_plus) - float(f_minus)) / (2 * eps)
 
-    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=1e-5, rtol=1e-4)
+    atol, rtol = get_tolerance("jastrow_eval", "strict")
+    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=atol, rtol=rtol)
 
 
 # ============================================================
@@ -319,7 +321,8 @@ def test_geminal_exponent_gradient_finite_diff():
         f_minus = det_value(jnp.array(e_minus))
         grad_fd[i] = (float(f_plus) - float(f_minus)) / (2 * eps)
 
-    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=1e-4, rtol=1e-3)
+    atol, rtol = get_tolerance("det_eval", "strict")
+    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=atol, rtol=rtol)
 
 
 # ============================================================

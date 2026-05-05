@@ -391,7 +391,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_lap", "strict")
+    atol, rtol = get_tolerance("mo_lap", "medium")
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -744,7 +744,7 @@ def test_MOs_cart_to_sphe():
         "N_ae_ccpvdz_cart.h5",
     ],
 )
-def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
+def test_MOs_value_grad_lap(trexio_file: str):
     """Fused ``compute_MOs_value_grad_lap`` matches the standalone APIs.
 
     All outputs (val/grad/lap) are bounded by ULP-level differences in

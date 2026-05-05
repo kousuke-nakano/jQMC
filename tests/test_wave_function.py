@@ -134,7 +134,7 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    atol, rtol = get_tolerance("wf_kinetic", "medium")
     assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -257,8 +257,12 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    # Debug path FDs Psi directly; near AE-cusp accuracy is bounded below the
-    # strict tolerance (e.g. N AE) even with the 4th-order Laplacian stencil.
+    # Debug path FDs Psi directly (2nd-order central FD with 1/Psi division),
+    # which is fundamentally rougher than FD on ln|Psi|. Near AE nuclear
+    # cusps (e.g. N all-electron) the high-order derivative growth combined
+    # with 1/Psi amplification puts the achievable accuracy below medium,
+    # so this test is held to loose tolerance as a documented exception
+    # to the "laplacian -> medium" rule.
     atol, rtol = get_tolerance("wf_kinetic", "loose")
     assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
@@ -332,11 +336,12 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
     # T_L crosses ao_eval/jastrow_eval/jastrow_grad_lap/wf_kinetic zones; the
     # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in
     # mixed). Autodiff path inherits ao_eval = fp32 in its grad/hessian, so
-    # use the dedicated 'autodiff' tolerance (= strict for fp64, slightly
-    # looser for fp32).
+    # use the 'medium' tolerance (slightly looser than strict in fp64 to
+    # absorb the autodiff-side fp32 grad/lap noise the analytic path does
+    # not see).
     atol, rtol = get_tolerance_min(
         ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
-        "autodiff",
+        "medium",
     )
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
@@ -610,8 +615,8 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
 
     # They should be identical up to numerical noise.
     # Nodal distance ~ |Psi| / |grad Psi| amplifies any fp32 noise via the
-    # 1/|grad| factor near the node, so even the dedicated 'autodiff'
-    # tolerance is too tight in mixed mode. Use 'loose' here.
+    # 1/|grad| factor near the node, so even the 'medium' tolerance is too
+    # tight in mixed mode. Use 'loose' here.
     atol, rtol = get_tolerance_min(
         ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
         "loose",

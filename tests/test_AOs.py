@@ -975,9 +975,9 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    # FD-debug path goes through compute_AOs (ao_eval zone, fp32 in mixed mode);
-    # tolerance bottlenecked by ao_eval.
-    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
+    # 4th-order central FD vs analytic Laplacian; FD has truncation/round-off
+    # error well above ao_eval round-off.  Use medium level.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "medium")
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_an_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1077,9 +1077,9 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     lap_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    # both autodiff and FD-debug go through compute_AOs (ao_eval zone, fp32 in
-    # mixed mode); tolerance bottlenecked by ao_eval.
-    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "strict")
+    # 4th-order central FD vs autodiff Laplacian; FD has truncation/round-off
+    # error well above ao_eval round-off.  Use medium level.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap"], "medium")
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
     np.testing.assert_allclose(lap_auto_cart, lap_num_cart, atol=atol, rtol=rtol)
@@ -1198,7 +1198,7 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
         "N_ae_ccpvdz_cart.h5",  # Cartesian, larger
     ],
 )
-def test_fused_AOs_value_grad_lap_matches_split(trexio_file: str):
+def test_AOs_value_grad_lap(trexio_file: str):
     """Fused ``compute_AOs_value_grad_lap`` matches the standalone APIs.
 
     grad parity is bitwise (rtol=atol=0) because the fused kernel mirrors
