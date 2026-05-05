@@ -986,22 +986,34 @@ def _compute_kinetic_energy_all_elements_debug(
 ) -> float | complex:
     """See compute_kinetic_energy_api.
 
-    Uses 4th-order central finite differences for the Laplacian:
-        f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
-    This allows a larger step size h while maintaining accuracy (O(h^4) truncation error).
+    Per-electron local kinetic energy via finite differences on ``ln|Psi|``:
+
+        T_L^(i) = -1/2 * ( nabla_i^2 ln|Psi| + |nabla_i ln|Psi||^2 )
+
+    Both the Laplacian and the gradient of ``ln|Psi|`` are computed with the
+    same 4-point 4th-order central stencil (sharing the four function
+    evaluations per coordinate):
+
+        f''(x) ~= (-f(x+2h) + 16 f(x+h) - 30 f(x) + 16 f(x-h) - f(x-2h)) / (12 h^2)
+        f'(x)  ~= ( -f(x+2h) +  8 f(x+h) -  8 f(x-h) + f(x-2h)) / (12 h)
+
+    FD-on-``ln|Psi|`` (instead of FD-on-``Psi`` followed by 1/Psi division)
+    avoids the 1/Psi amplification of round-off near nuclear cusps and keeps
+    the achievable accuracy at the ~h^4 truncation floor of a smooth scalar
+    field.
     """
     diff_h = 1.0e-3  # larger h is viable with 4th-order stencil
 
-    Psi = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
+    ln_Psi_0 = evaluate_ln_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
 
-    def _eval_up(r_up):
-        return evaluate_wavefunction(wavefunction_data, r_up, r_dn_carts)
+    def _ln_eval_up(r_up):
+        return evaluate_ln_wavefunction(wavefunction_data, r_up, r_dn_carts)
 
-    def _eval_dn(r_dn):
-        return evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn)
+    def _ln_eval_dn(r_dn):
+        return evaluate_ln_wavefunction(wavefunction_data, r_up_carts, r_dn)
 
-    def _fd4_second_deriv(eval_fn, r_carts, i, d, h):
-        """4th-order central FD for d^2f/dx^2."""
+    def _fd4_first_and_second(eval_fn, r_carts, i, d, h):
+        """Return (df/dx, d^2 f/dx^2) from a 4-point 4th-order central stencil."""
         r_p1 = r_carts.copy()
         r_p2 = r_carts.copy()
         r_m1 = r_carts.copy()
@@ -1014,22 +1026,30 @@ def _compute_kinetic_energy_all_elements_debug(
         f_p2 = eval_fn(r_p2)
         f_m1 = eval_fn(r_m1)
         f_m2 = eval_fn(r_m2)
-        return (-f_p2 + 16 * f_p1 - 30 * Psi + 16 * f_m1 - f_m2) / (12 * h**2)
+        first = (-f_p2 + 8 * f_p1 - 8 * f_m1 + f_m2) / (12 * h)
+        second = (-f_p2 + 16 * f_p1 - 30 * ln_Psi_0 + 16 * f_m1 - f_m2) / (12 * h**2)
+        return first, second
 
     n_up, d_up = r_up_carts.shape
-    laplacian_Psi_up = np.zeros(n_up)
+    laplacian_ln_Psi_up = np.zeros(n_up)
+    grad_norm_sq_up = np.zeros(n_up)
     for i in range(n_up):
         for d in range(d_up):
-            laplacian_Psi_up[i] += _fd4_second_deriv(_eval_up, r_up_carts, i, d, diff_h)
+            g, lap = _fd4_first_and_second(_ln_eval_up, r_up_carts, i, d, diff_h)
+            laplacian_ln_Psi_up[i] += lap
+            grad_norm_sq_up[i] += g * g
 
     n_dn, d_dn = r_dn_carts.shape
-    laplacian_Psi_dn = np.zeros(n_dn)
+    laplacian_ln_Psi_dn = np.zeros(n_dn)
+    grad_norm_sq_dn = np.zeros(n_dn)
     for i in range(n_dn):
         for d in range(d_dn):
-            laplacian_Psi_dn[i] += _fd4_second_deriv(_eval_dn, r_dn_carts, i, d, diff_h)
+            g, lap = _fd4_first_and_second(_ln_eval_dn, r_dn_carts, i, d, diff_h)
+            laplacian_ln_Psi_dn[i] += lap
+            grad_norm_sq_dn[i] += g * g
 
-    kinetic_energy_all_elements_up = -1.0 / 2.0 * laplacian_Psi_up / Psi
-    kinetic_energy_all_elements_dn = -1.0 / 2.0 * laplacian_Psi_dn / Psi
+    kinetic_energy_all_elements_up = -0.5 * (laplacian_ln_Psi_up + grad_norm_sq_up)
+    kinetic_energy_all_elements_dn = -0.5 * (laplacian_ln_Psi_dn + grad_norm_sq_dn)
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 
@@ -1965,18 +1985,15 @@ def _compute_nodal_distance_debug(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> jax.Array:
-    r"""Compute the nodal distance using the paper's original formula (debug).
+    r"""Compute the nodal distance using autodiff of ``ln|Psi|`` (debug).
 
-    Uses the definition from Eq. (2) of Pathak & Wagner (2020):
-
-    .. math::
-
-        \vec{x} = \frac{\Psi \, \nabla \Psi}{|\nabla \Psi|^2},
-
-    and returns :math:`|x|`.  This is mathematically identical to
-    :func:`compute_nodal_distance` (:math:`1/|\nabla \ln|\Psi||`), but uses
-    :func:`evaluate_wavefunction` and automatic differentiation of :math:`\Psi`
-    instead of analytic :math:`\nabla \ln|\Psi|` derivatives.
+    Computes :math:`1 / |\nabla \ln|\Psi||` directly via
+    ``jax.grad(evaluate_ln_wavefunction)``.  This is mathematically identical
+    to the paper's :math:`|x| = |\Psi| / |\nabla \Psi|` formula but avoids the
+    1/|grad Psi| amplification that arises near the node from a Psi-side
+    autodiff path.  As a result the debug path matches the analytic path
+    (which sums analytic :math:`\nabla J` and :math:`\nabla \ln |\det|`)
+    to ordinary autodiff round-off.
 
     Args:
         wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
@@ -1990,15 +2007,12 @@ def _compute_nodal_distance_debug(
     r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
     r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
 
-    Psi = evaluate_wavefunction(wavefunction_data, r_up, r_dn)
+    grad_ln_Psi_up = grad(evaluate_ln_wavefunction, argnums=1)(wavefunction_data, r_up, r_dn)  # (n_up, 3)
+    grad_ln_Psi_dn = grad(evaluate_ln_wavefunction, argnums=2)(wavefunction_data, r_up, r_dn)  # (n_dn, 3)
 
-    grad_Psi_r_up = grad(evaluate_wavefunction, argnums=1)(wavefunction_data, r_up, r_dn)  # (n_up, 3)
-    grad_Psi_r_dn = grad(evaluate_wavefunction, argnums=2)(wavefunction_data, r_up, r_dn)  # (n_dn, 3)
+    grad_norm_sq = jnp.sum(grad_ln_Psi_up**2) + jnp.sum(grad_ln_Psi_dn**2)
 
-    grad_Psi_norm_sq = jnp.sum(grad_Psi_r_up**2) + jnp.sum(grad_Psi_r_dn**2)
-
-    # x_vec = Psi * grad_Psi / |grad_Psi|^2, so |x| = |Psi| / |grad_Psi|
-    return jnp.abs(Psi) / jnp.sqrt(grad_Psi_norm_sq)
+    return 1.0 / jnp.sqrt(grad_norm_sq)
 
 
 """

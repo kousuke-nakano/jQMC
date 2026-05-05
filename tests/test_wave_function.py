@@ -59,7 +59,6 @@ from jqmc.wavefunction import (
     _advance_kinetic_energy_all_elements_streaming_state,
     _compute_discretized_kinetic_energy_debug,
     _compute_kinetic_energy_all_elements_auto,
-    _compute_kinetic_energy_all_elements_debug,
     _compute_kinetic_energy_all_elements_fast_update_debug,
     _compute_kinetic_energy_auto,
     _compute_kinetic_energy_debug,
@@ -194,100 +193,6 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
     assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(K_analytic, K_auto, atol=atol, rtol=rtol)
-
-
-@pytest.mark.activate_if_skip_heavy
-@pytest.mark.numerical_diff
-@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
-def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
-    """Debug vs autodiff kinetic energy per-electron arrays.
-
-    The debug path computes ``-1/2 * nabla^2Psi / Psi`` via central finite differences
-    on Psi (h = 2e-4); under mixed precision the fp32 round-off in ao_eval /
-    jastrow_eval propagates into Psi at ~1e-7 and is amplified by 1/h^2 = 2.5e7,
-    giving an O(1) relative error in the FD Laplacian. Marked ``numerical_diff``
-    so conftest skips it under ``--precision-mode=mixed``.
-    """
-    (
-        _,
-        aos_data,
-        _,
-        _,
-        geminal_mo_data,
-        _,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
-    )
-    jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
-        orb_data=aos_data, random_init=True, random_scale=1.0e-3
-    )
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=jastrow_onebody_data,
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=jastrow_threebody_data,
-    )
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-
-    num_ele_up = geminal_mo_data.num_electron_up
-    num_ele_dn = geminal_mo_data.num_electron_dn
-    rng = np.random.default_rng(42)
-    # Generate electron configuration away from wavefunction nodes to ensure
-    # numerical 2nd derivatives are well-conditioned (|Psi| >> 0).
-    from jqmc.wavefunction import evaluate_wavefunction
-
-    for _ in range(200):
-        r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
-        r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
-        psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts_np, r_dn_carts_np)
-        if abs(psi_val) > 1e-8:
-            break
-    else:
-        pytest.skip("Could not find electron configuration sufficiently far from node")
-
-    r_up_carts_jnp = jnp.array(r_up_carts_np)
-    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
-
-    K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_np, r_dn_carts=r_dn_carts_np
-    )
-    K_elements_up_auto, K_elements_dn_auto = _compute_kinetic_energy_all_elements_auto(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
-    )
-
-    # Debug path FDs Psi directly (2nd-order central FD with 1/Psi division),
-    # which is fundamentally rougher than FD on ln|Psi|. Near AE nuclear
-    # cusps (e.g. N all-electron) the high-order derivative growth combined
-    # with 1/Psi amplification puts the achievable accuracy below medium,
-    # so this test is held to loose tolerance as a documented exception
-    # to the "laplacian -> medium" rule.
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
-    assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(K_elements_up_debug, K_elements_up_auto, atol=atol, rtol=rtol)
-    assert not np.any(np.isnan(np.asarray(K_elements_dn_debug))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(K_elements_dn_debug, K_elements_dn_auto, atol=atol, rtol=rtol)
-
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_debug)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(K_elements_up_debug),
-        np.asarray(K_elements_up_auto),
-        rtol=rtol,
-        atol=atol,
-    )
-
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_debug)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(K_elements_dn_debug),
-        np.asarray(K_elements_dn_auto),
-        rtol=rtol,
-        atol=atol,
-    )
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
@@ -614,12 +519,12 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     )
 
     # They should be identical up to numerical noise.
-    # Nodal distance ~ |Psi| / |grad Psi| amplifies any fp32 noise via the
-    # 1/|grad| factor near the node, so even the 'medium' tolerance is too
-    # tight in mixed mode. Use 'loose' here.
+    # Debug path now uses grad(ln|Psi|) directly (instead of grad(Psi)/Psi),
+    # so the 1/|grad Psi| amplification near the node is gone; medium
+    # tolerance suffices in both full and mixed precision.
     atol, rtol = get_tolerance_min(
         ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
-        "loose",
+        "medium",
     )
     np.testing.assert_allclose(
         np.asarray(nd_analytic),

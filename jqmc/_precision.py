@@ -518,7 +518,7 @@ def get_tolerance(zone: str, level: str = "strict") -> tuple[float, float]:
 
     Args:
         zone: Precision Zone name.
-        level: ``"strict"`` or ``"loose"``.
+        level: ``"strict"`` or ``"medium"``.
 
     Returns:
         ``(atol, rtol)`` tuple appropriate for the zone's current dtype.
@@ -537,7 +537,7 @@ def get_tolerance_min(zones, level: str = "strict") -> tuple[float, float]:
 
     Args:
         zones: Iterable of Precision Zone names.
-        level: ``"strict"`` or ``"loose"``.
+        level: ``"strict"`` or ``"medium"``.
 
     Returns:
         ``(atol, rtol)`` tuple using the maximum of each component.

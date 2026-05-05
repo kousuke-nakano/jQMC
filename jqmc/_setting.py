@@ -90,17 +90,12 @@ rtol_consistency = 1.0e-6
 #               carries fp32 grad/lap noise the analytic path does not see.
 #               4th-order FD has a round-off floor of ~eps_mach / h^2 with
 #               h = 1e-3 (~5e-9) and a truncation term ~h^4 * f^(6) that can
-#               grow O(1e-6) for sharp basis sets / cusp regions.  Use for
-#               numerical_diff tests where the FD side is a 2nd derivative.
-#   loose    -- 2nd-derivative FD applied to Psi itself with subsequent
-#               1/Psi division (e.g. T_L via central FD on Psi).  Errors
-#               are bounded by the |Psi|->0 amplification near nodes even
-#               after node-avoidance sampling; only the kinetic energy
-#               debug paths in wavefunction.py need this.
+#               grow O(1e-6) for sharp basis sets / cusp regions (e.g.
+#               all-electron Z >= 7).  Use for numerical_diff tests where the
+#               FD side is a 2nd derivative.
 _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
     "strict": {"float64": (1e-8, 1e-6), "float32": (1e-5, 1e-3)},
     "medium": {"float64": (1e-7, 1e-5), "float32": (1e-4, 1e-2)},
-    "loose": {"float64": (1e-3, 5e-4), "float32": (1e-1, 1e-3)},
 }
 
 # --- Dtype-aware EPS constants ---
