@@ -2560,14 +2560,17 @@ def _compute_ratio_Jastrow_part_rank1_update(
         # New position of the moved electron per config (select spin block)
         r_new_up_moved = jnp.take_along_axis(new_r_up_carts_arr, idx_up[:, None, None], axis=1).reshape(N_batch, 3)
         r_new_dn_moved = jnp.take_along_axis(new_r_dn_carts_arr, idx_dn[:, None, None], axis=1).reshape(N_batch, 3)
-        r_old_up_moved = old_r_up_carts[idx_up]  # (N, 3)
-        r_old_dn_moved = old_r_dn_carts[idx_dn]  # (N, 3)
         r_new_moved = jnp.where(up_moved_batch[:, None], r_new_up_moved, r_new_dn_moved)  # (N, 3)
-        r_old_moved = jnp.where(up_moved_batch[:, None], r_old_up_moved, r_old_dn_moved)  # (N, 3)
 
-        # Single batched AO evaluation for all N configs (replaces N per-config calls inside vmap)
+        # Single batched AO evaluation for all N configs (replaces N per-config calls inside vmap).
+        # Old AOs are obtained by column-slicing the already-computed
+        # ``aos_up_old`` / ``aos_dn_old`` (consistent with old_r_*_carts), avoiding
+        # a redundant ``compute_orb_api`` call on ``r_old_moved`` -- mirrors the
+        # gather trick already used in ``_compute_ratio_Jastrow_part_split_spin``.
         aos_new_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_new_moved), dtype=dtype_jnp)  # (n_ao, N)
-        aos_old_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_old_moved), dtype=dtype_jnp)  # (n_ao, N)
+        aos_up_old_at_idx = jnp.take(aos_up_old, idx_up, axis=1)  # (n_ao, N)
+        aos_dn_old_at_idx = jnp.take(aos_dn_old, idx_dn, axis=1)  # (n_ao, N)
+        aos_old_batch = jnp.where(up_moved_batch[None, :], aos_up_old_at_idx, aos_dn_old_at_idx)  # (n_ao, N)
         aos_p_batch = aos_new_batch - aos_old_batch  # (n_ao, N)
 
         # Precompute constant products (independent of config). With a
@@ -4027,8 +4030,6 @@ def compute_grads_and_laplacian_Jastrow_three_body(
 # per single-electron move, instead of recomputing them from scratch at
 # O(n_ao^2 * N_e + n_ao * N_e^2). Used by the GFMC projection inner loop
 # (jqmc_gfmc.py:_body_fun_n_streaming).
-#
-# Design references: lrdmc_refactoring.md sections 1-1, 1-2, 1-4.
 #
 # Lifetime: the state is freshly initialized at each branching boundary
 # (when _projection_n is re-entered) and advanced for at most

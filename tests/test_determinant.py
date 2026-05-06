@@ -50,6 +50,7 @@ from jqmc._precision import get_tolerance, get_tolerance_min
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix
 from jqmc.determinant import (
     Geminal_data,
+    _advance_det_ratio_streaming_state,
     _advance_grads_laplacian_ln_Det_streaming_state,
     _compute_AS_regularization_factor_debug,
     _compute_det_geminal_all_elements_debug,
@@ -59,6 +60,8 @@ from jqmc.determinant import (
     _compute_grads_and_laplacian_ln_Det_fast_debug,
     _compute_ratio_determinant_part_debug,
     _compute_ratio_determinant_part_rank1_update,
+    _compute_ratio_determinant_part_split_spin,
+    _init_det_ratio_streaming_state,
     _init_grads_laplacian_ln_Det_streaming_state,
     compute_AS_regularization_factor,
     compute_det_geminal_all_elements,
@@ -1689,6 +1692,186 @@ def test_streaming_det_state_against_full(trexio_file: str):
     np.testing.assert_allclose(state.grad_ln_D_dn, grad_dn_ref, atol=atol, rtol=rtol)
     np.testing.assert_allclose(state.lap_ln_D_up, lap_up_ref, atol=atol, rtol=rtol)
     np.testing.assert_allclose(state.lap_ln_D_dn, lap_dn_ref, atol=atol, rtol=rtol)
+
+    # paired_up_lambda invariant (= ao_up.T @ lambda_paired).
+    state_ratio_ref = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+    np.testing.assert_allclose(state.paired_up_lambda, state_ratio_ref.paired_up_lambda, atol=atol, rtol=rtol)
+
+
+# ---------------------------------------------------------------------------
+# Det_ratio_streaming_state: slim ratio streaming state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"],
+)
+def test_det_ratio_streaming_state_against_full(trexio_file: str):
+    """``Det_ratio_streaming_state`` after K random single-electron advances
+    must match a fresh ``_init_det_ratio_streaming_state`` at the resulting
+    configuration.
+
+    Verifies the rank-1 advance invariants:
+        ao_up           == compute_orb_api(orb_data_up_spin, r_up_carts)
+        ao_dn           == compute_orb_api(orb_data_dn_spin, r_dn_carts)
+        paired_dn       == lambda_paired @ ao_dn
+        paired_up_lambda == ao_up.T @ lambda_paired
+    """
+    (
+        _,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    n_up = geminal_mo_data.num_electron_up
+    n_dn = geminal_mo_data.num_electron_dn
+
+    rng = np.random.RandomState(13)
+    r_up = jnp.asarray(4.0 * rng.rand(n_up, 3) - 2.0)
+    r_dn = jnp.asarray(4.0 * rng.rand(n_dn, 3) - 2.0)
+
+    state = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    K = 32
+    for _ in range(K):
+        # alternate spin choices, but skip the spin if it has 0 electrons
+        if n_dn == 0:
+            spin_is_up = True
+        elif n_up == 0:
+            spin_is_up = False
+        else:
+            spin_is_up = bool(rng.randint(0, 2))
+
+        if spin_is_up:
+            idx = int(rng.randint(0, n_up))
+            r_up = r_up.at[idx].set(jnp.asarray(rng.normal(size=(3,)) * 0.4 + np.asarray(r_up[idx])))
+        else:
+            idx = int(rng.randint(0, n_dn))
+            r_dn = r_dn.at[idx].set(jnp.asarray(rng.normal(size=(3,)) * 0.4 + np.asarray(r_dn[idx])))
+
+        state = _advance_det_ratio_streaming_state(
+            geminal_data=geminal_mo_data,
+            state=state,
+            moved_spin_is_up=jnp.bool_(spin_is_up),
+            moved_index=jnp.int32(idx),
+            r_up_carts_new=r_up,
+            r_dn_carts_new=r_dn,
+        )
+
+    # Reference: fresh init at the final configuration.
+    state_ref = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
+    np.testing.assert_allclose(state.ao_up, state_ref.ao_up, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.ao_dn, state_ref.ao_dn, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.paired_dn, state_ref.paired_dn, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.paired_up_lambda, state_ref.paired_up_lambda, atol=atol, rtol=rtol)
+
+
+# ---------------------------------------------------------------------------
+# _compute_ratio_determinant_part_split_spin with det_ratio_state plumb
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"],
+)
+def test_split_spin_with_det_ratio_state_against_fresh(trexio_file: str):
+    """``_compute_ratio_determinant_part_split_spin`` must produce identical
+    determinant ratios when called with a consistent ``det_ratio_state`` vs
+    when called with ``det_ratio_state=None`` (legacy path).
+
+    Builds a small block-structured mesh (one shifted up-config + one
+    shifted dn-config per direction) at a random reference configuration
+    and checks both ratio paths agree at strict tolerance.
+    """
+    (
+        _,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    n_up = geminal_mo_data.num_electron_up
+    n_dn = geminal_mo_data.num_electron_dn
+    if n_up == 0 or n_dn == 0:
+        pytest.skip("split-spin only meaningful when both spin sectors are non-empty")
+
+    rng = np.random.RandomState(7)
+    r_up = jnp.asarray(4.0 * rng.rand(n_up, 3) - 2.0)
+    r_dn = jnp.asarray(4.0 * rng.rand(n_dn, 3) - 2.0)
+    A_old_inv = _build_geminal_inverse(geminal_mo_data, r_up, r_dn)
+
+    # Build a small block mesh: shift each up-electron by +0.1 in x;
+    # likewise for dn.  (G_up = n_up, G_dn = n_dn.)
+    new_r_up_shifted = []
+    for k in range(n_up):
+        shifted = np.array(r_up)
+        shifted[k] = shifted[k] + np.array([0.1, 0.0, 0.0])
+        new_r_up_shifted.append(shifted)
+    new_r_up_shifted = jnp.asarray(np.stack(new_r_up_shifted, axis=0))  # (n_up, n_up, 3)
+
+    new_r_dn_shifted = []
+    for k in range(n_dn):
+        shifted = np.array(r_dn)
+        shifted[k] = shifted[k] + np.array([0.1, 0.0, 0.0])
+        new_r_dn_shifted.append(shifted)
+    new_r_dn_shifted = jnp.asarray(np.stack(new_r_dn_shifted, axis=0))  # (n_dn, n_dn, 3)
+
+    # Reference: legacy path.
+    ratios_ref = _compute_ratio_determinant_part_split_spin(
+        geminal_data=geminal_mo_data,
+        A_old_inv=A_old_inv,
+        old_r_up_carts=r_up,
+        old_r_dn_carts=r_dn,
+        new_r_up_shifted=new_r_up_shifted,
+        new_r_dn_shifted=new_r_dn_shifted,
+        det_ratio_state=None,
+    )
+
+    # Streaming path: build a fresh slim state at the reference config.
+    state = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+    ratios_streaming = _compute_ratio_determinant_part_split_spin(
+        geminal_data=geminal_mo_data,
+        A_old_inv=A_old_inv,
+        old_r_up_carts=r_up,
+        old_r_dn_carts=r_dn,
+        new_r_up_shifted=new_r_up_shifted,
+        new_r_dn_shifted=new_r_dn_shifted,
+        det_ratio_state=state,
+    )
+
+    atol, rtol = get_tolerance("det_ratio", "strict")
+    np.testing.assert_allclose(ratios_streaming, ratios_ref, atol=atol, rtol=rtol)
 
 
 if __name__ == "__main__":

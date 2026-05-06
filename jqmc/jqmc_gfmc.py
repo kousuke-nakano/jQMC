@@ -77,6 +77,8 @@ from .coulomb_potential import (
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
 from .determinant import (
+    _compute_u_dn_move_from_det_ratio_state,
+    _compute_v_up_move_from_det_ratio_state,
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
@@ -735,6 +737,7 @@ class GFMC_t:
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
+            det_ratio_state=None,
         ):
             """Single GFMC_t projection step, parameterized by per-electron continuum kinetic energy.
 
@@ -785,6 +788,7 @@ class GFMC_t:
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
                     j3_state=j3_state,
+                    det_ratio_state=det_ratio_state,
                 )
             )
             # spin-filp
@@ -908,6 +912,7 @@ class GFMC_t:
                             A_old_inv=A_old_inv,
                             RT=R.T,
                             j3_state=j3_state,
+                            det_ratio_state=det_ratio_state,
                         )
                     )
 
@@ -927,6 +932,7 @@ class GFMC_t:
                             A_old_inv=A_old_inv,
                             RT=R.T,
                             j3_state=j3_state,
+                            det_ratio_state=det_ratio_state,
                         )
                     )
 
@@ -1031,18 +1037,29 @@ class GFMC_t:
                 dn_index = jnp.argmax(dn_diff)
 
             def _update_inv_up_t(_):
-                v = (
-                    compute_geminal_up_one_row_elements(
+                # Streaming path uses cached AO + paired_dn from
+                # ``det_ratio_state``; legacy path falls back to the
+                # twice-called row helper.
+                if det_ratio_state is None:
+                    v = (
+                        compute_geminal_up_one_row_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                        - compute_geminal_up_one_row_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                    )[:, None]
+                else:
+                    v = _compute_v_up_move_from_det_ratio_state(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                    - compute_geminal_up_one_row_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                )[:, None]
+                        state=det_ratio_state,
+                        moved_index=up_index,
+                        r_up_carts_proposed=new_r_up_carts,
+                    )[:, None]
                 u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
                 Ainv_u = A_old_inv @ u
                 vT_Ainv = v.T @ A_old_inv
@@ -1061,18 +1078,26 @@ class GFMC_t:
             else:
 
                 def _update_inv_dn_t(_):
-                    u = (
-                        compute_geminal_dn_one_column_elements(
+                    if det_ratio_state is None:
+                        u = (
+                            compute_geminal_dn_one_column_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_carts=r_up_carts,
+                                r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
+                            )
+                            - compute_geminal_dn_one_column_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_carts=r_up_carts,
+                                r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                            )
+                        )[:, None]
+                    else:
+                        u = _compute_u_dn_move_from_det_ratio_state(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
-                        )
-                        - compute_geminal_dn_one_column_elements(
-                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
-                        )
-                    )[:, None]
+                            state=det_ratio_state,
+                            moved_index=dn_index,
+                            r_dn_carts_proposed=new_r_dn_carts,
+                        )[:, None]
                     v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
@@ -1196,6 +1221,7 @@ class GFMC_t:
                 non_local_move,
                 alat,
                 hamiltonian_data,
+                det_ratio_state=kinetic_state.det_state,
             )
             moved_spin_is_up = has_up
             moved_index = jnp.where(has_up, up_idx, dn_idx)
@@ -1211,10 +1237,12 @@ class GFMC_t:
             return (e_L, pc, tl, wL, ru, rd, Ainv, kinetic_state_new, key, RT)
 
         # Python-static dispatch: streaming is incompatible with NN three-body
-        # Jastrow (J_NN has no rank-1 advance), and offers no benefit when J3 is
-        # absent. Mirrors the GFMC_n dispatch policy.
+        # Jastrow (J_NN has no rank-1 advance). The determinant streaming
+        # path (now consuming ``kinetic_state.det_state`` in the LRDMC mesh
+        # kernels and the GFMC inv-update) brings benefit even when J3 is
+        # absent, so the dispatch gate depends only on ``jastrow_nn_data``.
         jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data
-        use_streaming = jastrow_data.jastrow_nn_data is None and jastrow_data.jastrow_three_body_data is not None
+        use_streaming = jastrow_data.jastrow_nn_data is None
 
         # projection compilation.
         start_init = time.perf_counter()
@@ -4780,6 +4808,7 @@ class GFMC_n:
                 diagonal_kinetic_continuum_elements_up,
                 diagonal_kinetic_continuum_elements_dn,
                 j3_state=None,
+                det_ratio_state=None,
             ):
                 """Single GFMC projection step, parameterized by per-electron continuum kinetic energy.
 
@@ -4821,6 +4850,7 @@ class GFMC_n:
                         r_dn_carts=r_dn_carts,
                         RT=R.T,
                         j3_state=j3_state,
+                        det_ratio_state=det_ratio_state,
                     )
                 )
                 # spin-filp
@@ -4955,6 +4985,7 @@ class GFMC_n:
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
                                 j3_state=j3_state,
+                                det_ratio_state=det_ratio_state,
                             )
                         )
 
@@ -4982,6 +5013,7 @@ class GFMC_n:
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
                                 j3_state=j3_state,
+                                det_ratio_state=det_ratio_state,
                             )
                         )
 
@@ -5075,18 +5107,29 @@ class GFMC_n:
                     dn_index = jnp.argmax(dn_diff)
 
                 def _update_inv_up_n(_):
-                    v = (
-                        compute_geminal_up_one_row_elements(
+                    # v construction: streaming path uses cached AO +
+                    # paired_dn from ``det_ratio_state``; legacy path falls
+                    # back to the twice-called row helper.
+                    if det_ratio_state is None:
+                        v = (
+                            compute_geminal_up_one_row_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_cart=jnp.reshape(proposed_r_up_carts[up_index], (1, 3)),
+                                r_dn_carts=r_dn_carts,
+                            )
+                            - compute_geminal_up_one_row_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                                r_dn_carts=r_dn_carts,
+                            )
+                        )[:, None]
+                    else:
+                        v = _compute_v_up_move_from_det_ratio_state(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_cart=jnp.reshape(proposed_r_up_carts[up_index], (1, 3)),
-                            r_dn_carts=r_dn_carts,
-                        )
-                        - compute_geminal_up_one_row_elements(
-                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
-                            r_dn_carts=r_dn_carts,
-                        )
-                    )[:, None]
+                            state=det_ratio_state,
+                            moved_index=up_index,
+                            r_up_carts_proposed=proposed_r_up_carts,
+                        )[:, None]
                     u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
@@ -5105,18 +5148,26 @@ class GFMC_n:
                 else:
 
                     def _update_inv_dn_n(_):
-                        u = (
-                            compute_geminal_dn_one_column_elements(
+                        if det_ratio_state is None:
+                            u = (
+                                compute_geminal_dn_one_column_elements(
+                                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                    r_up_carts=r_up_carts,
+                                    r_dn_cart=jnp.reshape(proposed_r_dn_carts[dn_index], (1, 3)),
+                                )
+                                - compute_geminal_dn_one_column_elements(
+                                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                    r_up_carts=r_up_carts,
+                                    r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                                )
+                            )[:, None]
+                        else:
+                            u = _compute_u_dn_move_from_det_ratio_state(
                                 geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                                r_up_carts=r_up_carts,
-                                r_dn_cart=jnp.reshape(proposed_r_dn_carts[dn_index], (1, 3)),
-                            )
-                            - compute_geminal_dn_one_column_elements(
-                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                                r_up_carts=r_up_carts,
-                                r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
-                            )
-                        )[:, None]
+                                state=det_ratio_state,
+                                moved_index=dn_index,
+                                r_dn_carts_proposed=proposed_r_dn_carts,
+                            )[:, None]
                         v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
                         Ainv_u = A_old_inv @ u
                         vT_Ainv = v.T @ A_old_inv
@@ -5243,6 +5294,7 @@ class GFMC_n:
                     ke_up,
                     ke_dn,
                     j3_state=kinetic_state.j3_state,
+                    det_ratio_state=kinetic_state.det_state,
                 )
 
                 kinetic_state_new = _advance_kinetic_energy_all_elements_streaming_state(
@@ -5276,14 +5328,14 @@ class GFMC_n:
 
             latest_jax_PRNG_key, (rotation_keys, move_keys) = _split_step_keys(init_jax_PRNG_key, num_mcmc_per_measurement)
 
-            # Python-static dispatch: the streaming path is incompatible with
-            # the NN three-body Jastrow (J_NN has no rank-1 advance -- see
-            # lrdmc_refactoring.md 1-4). When NN J3 is present, fall back to
-            # the legacy path that recomputes kinetic energies fresh each step.
-            # The streaming path is also compatible only when J3 is present;
-            # otherwise the gain over legacy is zero, so we still use legacy.
+            # Python-static dispatch: streaming is incompatible with NN three-body
+            # Jastrow (J_NN has no rank-1 advance). The determinant streaming
+            # path (now consuming ``kinetic_state.det_state`` in the LRDMC
+            # mesh kernels and the GFMC inv-update) brings benefit even when
+            # J3 is absent, so the dispatch gate depends only on
+            # ``jastrow_nn_data``. Mirrors the GFMC_t dispatch policy.
             jastrow_data = hamiltonian_data.wavefunction_data.jastrow_data
-            use_streaming = jastrow_data.jastrow_nn_data is None and jastrow_data.jastrow_three_body_data is not None
+            use_streaming = jastrow_data.jastrow_nn_data is None
 
             if use_streaming:
                 init_kinetic_state = _init_kinetic_energy_all_elements_streaming_state(

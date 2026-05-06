@@ -65,7 +65,7 @@ from jqmc.coulomb_potential import (
     compute_ecp_non_local_parts_nearest_neighbors,
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
-from jqmc.determinant import compute_geminal_all_elements
+from jqmc.determinant import _init_det_ratio_streaming_state, compute_geminal_all_elements
 from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_one_body_data,
@@ -707,6 +707,98 @@ def test_fast_update_ecp_non_local_partial_NN(trexio_file: str):
         assert not np.any(np.isnan(np.asarray(np.asarray(mesh_dn_fast)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(mesh_dn_ref)))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(mesh_dn_fast), np.asarray(mesh_dn_ref), atol=atol, rtol=rtol)
+
+
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
+def test_streaming_ecp_non_local_step_consistency(trexio_file: str):
+    """``compute_ecp_non_local_parts_nearest_neighbors_fast_update`` must
+    return identical mesh ratios when called with a consistent
+    ``det_ratio_state`` vs the legacy ``det_ratio_state=None`` path.
+
+    The streaming caller forwards ``Det_ratio_streaming_state`` (or
+    ``Det_streaming_state``) so the kernel can skip the bulk-side AO eval
+    and the ``lambda @ ao_*`` precontracts.
+    """
+    atol, rtol = get_tolerance("coulomb", "strict")
+    (
+        structure_data,
+        _aos_data,
+        _mos_data_up,
+        _mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    rng = np.random.default_rng(0)
+    jastrow_data = _build_full_jastrow_data(structure_data, geminal_mo_data, coulomb_potential_data, rng)
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    r_up_carts = jnp.asarray(rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_up, 3)))
+    r_dn_carts = jnp.asarray(rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_dn, 3)))
+
+    geminal_old = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+    A_old_inv = jnp.linalg.inv(geminal_old)
+
+    # Build a fresh slim state at the reference config (consistent with r_up/r_dn).
+    state = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    Nv = 6
+    RT = jnp.eye(3)
+
+    for NN in range(1, structure_data.natom):
+        # Legacy path (no state).
+        (
+            mesh_up_legacy,
+            mesh_dn_legacy,
+            V_legacy,
+            sum_V_legacy,
+        ) = compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            RT=RT,
+            A_old_inv=A_old_inv,
+            NN=NN,
+            Nv=Nv,
+            flag_determinant_only=False,
+            det_ratio_state=None,
+        )
+
+        # Streaming path (with state).
+        (
+            mesh_up_streaming,
+            mesh_dn_streaming,
+            V_streaming,
+            sum_V_streaming,
+        ) = compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            RT=RT,
+            A_old_inv=A_old_inv,
+            NN=NN,
+            Nv=Nv,
+            flag_determinant_only=False,
+            det_ratio_state=state,
+        )
+
+        np.testing.assert_allclose(np.asarray(sum_V_streaming), np.asarray(sum_V_legacy), atol=atol, rtol=rtol)
+        np.testing.assert_allclose(np.asarray(V_streaming), np.asarray(V_legacy), atol=atol, rtol=rtol)
+        np.testing.assert_allclose(np.asarray(mesh_up_streaming), np.asarray(mesh_up_legacy), atol=atol, rtol=rtol)
+        np.testing.assert_allclose(np.asarray(mesh_dn_streaming), np.asarray(mesh_dn_legacy), atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])

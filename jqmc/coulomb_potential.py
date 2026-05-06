@@ -1485,6 +1485,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
     j3_state: "Jastrow_three_body_streaming_state | None" = None,
+    det_ratio_state=None,
 ) -> tuple[list, list, list, float]:
     """Fast-update variant of non-local ECP contributions (nearest neighbors).
 
@@ -1507,6 +1508,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             recomputation. Use the value carried in the projection's
             ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
             the original 1-shot path used by observation/MCMC code.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or a
+            superset like :class:`Det_streaming_state`) consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to
+            ``_compute_ratio_determinant_part_split_spin`` so it can skip
+            the bulk-side AO eval and the two ``lambda_paired @ ao_*``
+            precontracts.
 
     Returns:
         tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
@@ -1667,6 +1674,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         old_r_dn_carts=r_dn_carts,
         new_r_up_shifted=up_mesh_r_up,
         new_r_dn_shifted=dn_mesh_r_dn,
+        det_ratio_state=det_ratio_state,
     )
     # Cast determinant/Jastrow ratio terms to the local coulomb zone dtype
     # before downstream contractions; avoid relying on implicit promotion.
@@ -2165,6 +2173,7 @@ def compute_ecp_coulomb_potential_fast(
     A_old_inv: jax.Array,
     NN: int = NN_default,
     Nv: int = Nv_default,
+    det_ratio_state=None,
 ) -> float:
     """Compute total ECP energy (local + non-local) using a pre-computed geminal inverse.
 
@@ -2183,6 +2192,9 @@ def compute_ecp_coulomb_potential_fast(
         A_old_inv (jax.Array): Pre-computed inverse of the reference geminal matrix.
         NN (int): Number of nearest nuclei to include for each electron in the non-local term.
         Nv (int): Number of quadrature points on the sphere.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or
+            superset). Forwarded to the non-local ECP ratio kernel so it can
+            skip the bulk-side AO eval and ``lambda @ ao_*`` precontracts.
 
     Returns:
         float: Sum of local and non-local ECP contributions for the given geometry.
@@ -2213,6 +2225,7 @@ def compute_ecp_coulomb_potential_fast(
         NN=NN,
         Nv=Nv,
         flag_determinant_only=False,
+        det_ratio_state=det_ratio_state,
     )
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
@@ -2700,6 +2713,7 @@ def compute_coulomb_potential_fast(
     NN: int = NN_default,
     Nv: int = Nv_default,
     wavefunction_data: Wavefunction_data = None,
+    det_ratio_state=None,
 ) -> float:
     """Compute total Coulomb energy using a pre-computed geminal inverse for ECP non-local terms.
 
@@ -2718,6 +2732,11 @@ def compute_coulomb_potential_fast(
         NN (int): Number of nearest nuclei to include for each electron in the non-local term.
         Nv (int): Number of quadrature points on the sphere.
         wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ECP ratios; required when ``ecp_flag`` is True.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or
+            superset) consistent with ``(r_up_carts, r_dn_carts)``.
+            Forwarded to :func:`compute_ecp_coulomb_potential_fast` so the
+            non-local ECP ratio kernel can skip the bulk-side AO eval and
+            ``lambda @ ao_*`` precontracts.
 
     Returns:
         float: Sum of bare Coulomb (ion-ion, electron-ion, electron-electron) and ECP (local + non-local) energies.
@@ -2755,6 +2774,7 @@ def compute_coulomb_potential_fast(
             A_old_inv=A_old_inv,
             NN=NN,
             Nv=Nv,
+            det_ratio_state=det_ratio_state,
         )
 
     return bare_coulomb_potential + ecp_coulomb_potential

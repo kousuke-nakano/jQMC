@@ -228,6 +228,7 @@ def compute_local_energy_fast(
     r_dn_carts: jnpt.ArrayLike,
     RT: jnpt.ArrayLike,
     geminal_inverse: jnpt.ArrayLike,
+    det_ratio_state=None,
 ) -> float:
     """Compute local energy using a precomputed geminal inverse.
 
@@ -252,6 +253,10 @@ def compute_local_energy_fast(
             Precomputed inverse of the geminal matrix ``G(r_up_carts, r_dn_carts)``
             with shape ``(N_up, N_up)``.  Typically the Sherman-Morrison running
             inverse from the MCMC loop.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or
+            superset) consistent with ``(r_up_carts, r_dn_carts)``.
+            Forwarded to ``compute_coulomb_potential_fast`` so the non-local
+            ECP ratio kernel can skip the AO/precontract recomputation.
 
     Returns:
         float: Local energy :math:`e_L` at the supplied configuration.
@@ -284,6 +289,7 @@ def compute_local_energy_fast(
         RT=RT,
         A_old_inv=geminal_inverse,
         wavefunction_data=hamiltonian_data.wavefunction_data,
+        det_ratio_state=det_ratio_state,
     )
 
     # Cast scalar zone outputs to local_energy zone at the sum (Principle 3b).

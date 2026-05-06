@@ -69,7 +69,12 @@ from ._setting import (
 )
 from .atomic_orbital import compute_overlap_matrix
 from .determinant import (
+    Det_ratio_streaming_state,
     Geminal_data,
+    _advance_det_ratio_streaming_state,
+    _compute_u_dn_move_from_det_ratio_state,
+    _compute_v_up_move_from_det_ratio_state,
+    _init_det_ratio_streaming_state,
     compute_AS_regularization_factor,
     compute_AS_regularization_factor_fast_update,
     compute_det_geminal_all_elements,
@@ -503,6 +508,15 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
+        # Warm-up slim state for the JIT trace. The real chain-entry init
+        # is rebuilt below in the run body; this throwaway value only exists
+        # to compile the update functions with the new argument shape.
+        det_ratio_state_warmup = _jit_vmap_init_det_ratio_state(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+
         dtype_jnp = jnp.float64
         dtype_np = np.float64
 
@@ -525,6 +539,7 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state_warmup,
                 )
             else:
                 _ = _jit_vmap_update(
@@ -537,9 +552,15 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state_warmup,
                 )
             _ = _jit_vmap_e_L_fast(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
+                geminal_inv,
+                det_ratio_state_warmup,
             )
             _ = _jit_vmap_as_reg(
                 self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -660,6 +681,17 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
+        # Slim AO + paired streaming state for ratio kernels. Built once at
+        # MCMC chain entry and advanced via
+        # ``_advance_det_ratio_streaming_state`` on every accepted move
+        # inside the fori_loop body. Lifecycle matches ``geminal_inv``:
+        # carried throughout the entire MCMC run, no periodic rebuild.
+        det_ratio_state = _jit_vmap_init_det_ratio_state(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -679,6 +711,7 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
                 ) = _jit_vmap_update_up(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -689,6 +722,7 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
                 )
             else:
                 (
@@ -699,6 +733,7 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
                 ) = _jit_vmap_update(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -709,6 +744,7 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
                 )
             self.__latest_r_up_carts.block_until_ready()
             self.__latest_r_dn_carts.block_until_ready()
@@ -729,7 +765,12 @@ class MCMC:
             start = time.perf_counter()
             # logger.debug("    Evaluating e_L ...")
             e_L_step = _jit_vmap_e_L_fast(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
+                geminal_inv,
+                det_ratio_state,
             )
             e_L_step.block_until_ready()
             end = time.perf_counter()
@@ -4283,6 +4324,7 @@ def _update_electron_positions(
     epsilon_AS,
     geminal_inv_init,
     geminal_init,
+    det_ratio_state_init,
 ):
     """Update electron positions based on the MH method.
 
@@ -4294,6 +4336,13 @@ def _update_electron_positions(
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data.
         Dt (float): the step size in the MH method.
         epsilon_AS (float): the exponent of the AS regularization.
+        geminal_inv_init: Sherman-Morrison running inverse for the geminal at
+            ``(init_r_up_carts, init_r_dn_carts)``.
+        geminal_init: Geminal matrix at ``(init_r_up_carts, init_r_dn_carts)``.
+        det_ratio_state_init: ``Det_ratio_streaming_state`` consistent with
+            ``(init_r_up_carts, init_r_dn_carts)``. Built once at the MCMC
+            chain entry by :func:`_init_det_ratio_streaming_state` and
+            advanced via :func:`_advance_det_ratio_streaming_state` on accept.
 
     Returns:
         jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
@@ -4309,9 +4358,19 @@ def _update_electron_positions(
     r_dn_carts = jnp.asarray(init_r_dn_carts, dtype=dtype_jnp)
     geminal = geminal_init
     geminal_inv = geminal_inv_init
+    det_ratio_state = det_ratio_state_init
 
     def body_fun(_, carry):
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = carry
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        ) = carry
         total_electrons = len(r_up_carts) + len(r_dn_carts)
         num_up_electrons = len(r_up_carts)
 
@@ -4407,25 +4466,20 @@ def _update_electron_positions(
         )[0]
 
         # Determinant part, fast update using the matrix determinant lemma.
-        # Consumer-zone explicit cast: cast both lax.cond branches to the local
-        # mcmc zone dtype. The geminal-diff branch lives in the det_eval zone
-        # (fp64) while jax.nn.one_hot defaults to fp32, so without an explicit
-        # cast the cond branches disagree in mixed precision.
+        # The v / u construction reuses the cached AO + paired matrices in
+        # ``det_ratio_state`` so the bulk-side AO eval and ``lambda @ ao_dn``
+        # GEMM are skipped.
+        # Consumer-zone explicit cast: cast both lax.cond branches to the
+        # local mcmc zone dtype so the branches agree under mixed precision
+        # (one_hot defaults to fp32, slim helpers return det_ratio zone).
         v = lax.cond(
             is_up,
             lambda _: jnp.asarray(
-                (
-                    compute_geminal_up_one_row_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        # inline "as_row3": force (1,3) even if source is (3,)
-                        r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                    - compute_geminal_up_one_row_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
+                _compute_v_up_move_from_det_ratio_state(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    state=det_ratio_state,
+                    moved_index=selected_electron_index,
+                    r_up_carts_proposed=proposed_r_up_carts,
                 )[:, None],
                 dtype=dtype_jnp,
             ),
@@ -4443,18 +4497,12 @@ def _update_electron_positions(
                 dtype=dtype_jnp,
             ),
             lambda _: jnp.asarray(
-                (
-                    compute_geminal_dn_one_column_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
-                    )
-                    - compute_geminal_dn_one_column_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
-                    )
-                )[:, None],  # -> (N_up, 1)
+                _compute_u_dn_move_from_det_ratio_state(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    state=det_ratio_state,
+                    moved_index=selected_electron_index,
+                    r_dn_carts_proposed=proposed_r_dn_carts,
+                )[:, None],
                 dtype=dtype_jnp,
             ),
             operand=None,
@@ -4496,6 +4544,19 @@ def _update_electron_positions(
         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
         b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
 
+        # On accept, advance the slim ratio state to the new configuration.
+        # The advance refreshes one column of state.ao_{up,dn} and the
+        # corresponding row/column of state.paired_{up_lambda,dn} from a
+        # fresh single-electron AO eval (no rank-1 drift).
+        det_ratio_state_new = _advance_det_ratio_streaming_state(
+            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+            state=det_ratio_state,
+            moved_spin_is_up=is_up,
+            moved_index=selected_electron_index,
+            r_up_carts_new=proposed_r_up_carts,
+            r_dn_carts_new=proposed_r_dn_carts,
+        )
+
         def _accepted_fun(_):
             # Move accepted
             return (
@@ -4505,29 +4566,80 @@ def _update_electron_positions(
                 proposed_r_dn_carts,
                 geminal_inv_new,
                 geminal_new,
+                det_ratio_state_new,
             )
 
         def _rejected_fun(_):
             # Move rejected
-            return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts, geminal_inv, geminal)
+            return (
+                accepted_moves,
+                rejected_moves + 1,
+                r_up_carts,
+                r_dn_carts,
+                geminal_inv,
+                geminal,
+                det_ratio_state,
+            )
 
         # judge accept or reject the propsed move using jax.lax.cond
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, geminal_inv, geminal = lax.cond(
-            b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
-        )
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        ) = lax.cond(b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None)
 
-        carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+        carry = (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        )
         return carry
 
     # main MCMC loop
-    accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = jax.lax.fori_loop(
+    (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+    ) = jax.lax.fori_loop(
         0,
         num_mcmc_per_measurement,
         body_fun,
-        (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal),
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        ),
     )
 
-    return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+    return (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+    )
 
 
 @partial(jit, static_argnums=3)
@@ -4541,8 +4653,14 @@ def _update_electron_positions_only_up_electron(
     epsilon_AS,
     geminal_inv_init,
     geminal_init,
+    det_ratio_state_init,
 ):
-    """Update electron positions based on the MH method (up-spin electrons only)."""
+    """Update electron positions based on the MH method (up-spin electrons only).
+
+    See :func:`_update_electron_positions` for the slim state ``det_ratio_state_init``
+    contract; here only up-electrons move so ``state.ao_dn`` and ``state.paired_dn``
+    stay constant for the entire chain.
+    """
     dtype_jnp = jnp.float64
     accepted_moves = 0
     rejected_moves = 0
@@ -4550,9 +4668,19 @@ def _update_electron_positions_only_up_electron(
     r_dn_carts = jnp.asarray(init_r_dn_carts, dtype=dtype_jnp)
     geminal_inv = geminal_inv_init
     geminal = geminal_init
+    det_ratio_state = det_ratio_state_init
 
     def body_fun(_, carry):
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = carry
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        ) = carry
         num_up_electrons = len(r_up_carts)
 
         # dummy jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -4634,19 +4762,15 @@ def _update_electron_positions_only_up_electron(
         Jastrow_T_p = jnp.asarray(Jastrow_T_p, dtype=dtype_jnp)
         Jastrow_T_o = jnp.asarray(Jastrow_T_o, dtype=dtype_jnp)
 
-        # Determinant part, fast update using the matrix determinant lemma
-        v = (
-            compute_geminal_up_one_row_elements(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                # inline "as_row3": force (1,3) even if source is (3,)
-                r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
-                r_dn_carts=r_dn_carts,
-            )
-            - compute_geminal_up_one_row_elements(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
-                r_dn_carts=r_dn_carts,
-            )
+        # Determinant part, fast update using the matrix determinant lemma.
+        # v is built from the cached AO + paired_dn -- skips the
+        # lambda @ ao_dn GEMM and the bulk-side AO eval paid by the legacy
+        # ``compute_geminal_up_one_row_elements`` pattern.
+        v = _compute_v_up_move_from_det_ratio_state(
+            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+            state=det_ratio_state,
+            moved_index=selected_electron_index,
+            r_up_carts_proposed=proposed_r_up_carts,
         )[:, None]
 
         u = jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None]
@@ -4685,6 +4809,17 @@ def _update_electron_positions_only_up_electron(
         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
         b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
 
+        # On accept, advance the slim ratio state (always up-move in this
+        # variant -- state.ao_dn / state.paired_dn stay constant).
+        det_ratio_state_new = _advance_det_ratio_streaming_state(
+            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+            state=det_ratio_state,
+            moved_spin_is_up=jnp.bool_(True),
+            moved_index=selected_electron_index,
+            r_up_carts_new=proposed_r_up_carts,
+            r_dn_carts_new=proposed_r_dn_carts,
+        )
+
         def _accepted_fun(_):
             # Move accepted
             return (
@@ -4694,43 +4829,97 @@ def _update_electron_positions_only_up_electron(
                 proposed_r_dn_carts,
                 geminal_inv_new,
                 geminal_new,
+                det_ratio_state_new,
             )
 
         def _rejected_fun(_):
             # Move rejected
-            return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts, geminal_inv, geminal)
+            return (
+                accepted_moves,
+                rejected_moves + 1,
+                r_up_carts,
+                r_dn_carts,
+                geminal_inv,
+                geminal,
+                det_ratio_state,
+            )
 
         # judge accept or reject the propsed move using jax.lax.cond
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, geminal_inv, geminal = lax.cond(
-            b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
-        )
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        ) = lax.cond(b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None)
 
-        carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+        carry = (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        )
         return carry
 
     # main MCMC loop
-    accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = jax.lax.fori_loop(
+    (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+    ) = jax.lax.fori_loop(
         0,
         num_mcmc_per_measurement,
         body_fun,
-        (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal),
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+        ),
     )
 
-    return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+    return (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+    )
 
 
 # Module-level vmap/jit wrappers for MCMC kernels.
 # Created once at import time so subsequent MCMC.run() calls reuse
 # the same Python function objects and hit JAX's compilation cache.
 _jit_vmap_update = jit(
-    vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+    vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0)),
     static_argnums=3,
 )
 _jit_vmap_update_up = jit(
-    vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+    vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0)),
     static_argnums=3,
 )
-_jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0)))
+_jit_vmap_init_det_ratio_state = jit(
+    vmap(_init_det_ratio_streaming_state, in_axes=(None, 0, 0)),
+)
+_jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0, 0)))
 _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
 _jit_vmap_generate_RTs = jit(vmap(_generate_rotation_matrix, in_axes=0))
 _jit_vmap_as_reg_fast = jit(vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0)))

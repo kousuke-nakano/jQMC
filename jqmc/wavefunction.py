@@ -1773,6 +1773,7 @@ def compute_discretized_kinetic_energy_fast_update(
     r_dn_carts: jax.Array,
     RT: jax.Array,
     j3_state: "Jastrow_three_body_streaming_state | None" = None,
+    det_ratio_state=None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     r"""Fast-update version of discretized kinetic mesh and ratios.
 
@@ -1794,6 +1795,12 @@ def compute_discretized_kinetic_energy_fast_update(
             recomputation. Use the value carried in the projection's
             ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
             the original 1-shot path used by observation/MCMC code.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or a
+            superset like :class:`Det_streaming_state`) consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to
+            ``_compute_ratio_determinant_part_split_spin`` so it can skip
+            the bulk-side AO eval and the two ``lambda_paired @ ao_*``
+            precontracts.
 
     Returns:
         Tuple ``(r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part)`` with combined
@@ -1865,6 +1872,7 @@ def compute_discretized_kinetic_energy_fast_update(
             old_r_dn_carts=r_dn,
             new_r_up_shifted=r_up_carts_shifted,
             new_r_dn_shifted=r_dn_carts_shifted,
+            det_ratio_state=det_ratio_state,
         ),
         dtype=dtype_wf_ratio_jnp,
     )
