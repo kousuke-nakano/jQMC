@@ -648,11 +648,6 @@ class MCMC:
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         num_mcmc_done = 0
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        mcmc_total_current = time.perf_counter()
-        logger.info(
-            f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
-        )
         mcmc_interval = max(1, int(num_mcmc_steps / 100))  # %
 
         # adjust_epsilon_AS = self.__adjust_epsilon_AS
@@ -692,12 +687,13 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
+        mcmc_loop_start = time.perf_counter()
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 mcmc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_loop_start):.1f} sec."
                 )
 
             # electron positions are goint to be updated!
@@ -1005,6 +1001,12 @@ class MCMC:
                 logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
                 logger.info("  Break the mcmc loop.")
                 break
+
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        mcmc_total_current = time.perf_counter()
+        logger.info(
+            f"  Progress: MCMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_loop_start):.1f} sec."
+        )
 
         # Barrier after MCMC operation
         start = time.perf_counter()
@@ -5122,15 +5124,13 @@ class _MCMC_debug:
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         num_mcmc_done = 0
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %"
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %"
                 )
 
             accepted_moves_nw = np.zeros(self.__num_walkers, dtype=np.int32)
@@ -5484,6 +5484,11 @@ class _MCMC_debug:
                     self.__stored_e_L_param_grads[name].append(grad_val)
 
             num_mcmc_done += 1
+
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(
+            f"  Progress: MCMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %"
+        )
 
         logger.info("End MCMC")
         logger.info("")
