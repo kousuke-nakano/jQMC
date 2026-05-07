@@ -1269,30 +1269,25 @@ def _compute_kinetic_energy_all_elements_fast_update_debug(
 class Kinetic_streaming_state:
     """Streaming state for per-electron kinetic-energy evaluation.
 
-    Fields evaluated at the current ``(r_up_carts, r_dn_carts)``:
+    Carry-fields at the current ``(r_up_carts, r_dn_carts)``:
 
-    - ``j3_state``: J3 auxiliary tables (None if no J3 component is active).
-    - ``det_state``: det auxiliary tables (always populated in PR2+; the
-      determinant per-electron grad/lap fields below mirror its outputs).
-    - ``grad_J_up`` / ``grad_J_dn``: total Jastrow per-electron gradient.
-    - ``lap_J_up`` / ``lap_J_dn``: total Jastrow per-electron Laplacian.
-    - ``grad_ln_D_up`` / ``grad_ln_D_dn``: per-electron ``nablaln|Det|`` from the
-      geminal at the current ``A_old_inv``.
-    - ``lap_ln_D_up`` / ``lap_ln_D_dn``: per-electron ``nabla^2ln|Det|``.
+    - ``j1_state`` / ``j2_state`` / ``j3_state``: per-Jastrow streaming
+      sub-states (None when the corresponding component is absent).
+    - ``det_state``: det streaming sub-state (always populated in PR2+).
+    - ``ke_up`` / ``ke_dn``: per-electron kinetic-energy values, pre-assembled
+      so that :func:`_kinetic_energy_from_streaming_state` becomes a free
+      struct-field read. Both init and advance compute these from the
+      freshly produced grad/lap totals while those are still register-resident,
+      avoiding a separate read kernel that would otherwise re-load all
+      grad/lap totals from DRAM.
     """
 
     j1_state: Jastrow_one_body_streaming_state | None = struct.field(pytree_node=True, default=None)
     j2_state: Jastrow_two_body_streaming_state | None = struct.field(pytree_node=True, default=None)
     j3_state: Jastrow_three_body_streaming_state | None = struct.field(pytree_node=True, default=None)
     det_state: Det_streaming_state | None = struct.field(pytree_node=True, default=None)
-    grad_J_up: jax.Array = struct.field(pytree_node=True, default=None)
-    grad_J_dn: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_J_up: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_J_dn: jax.Array = struct.field(pytree_node=True, default=None)
-    grad_ln_D_up: jax.Array = struct.field(pytree_node=True, default=None)
-    grad_ln_D_dn: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_ln_D_up: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_ln_D_dn: jax.Array = struct.field(pytree_node=True, default=None)
+    ke_up: jax.Array = struct.field(pytree_node=True, default=None)
+    ke_dn: jax.Array = struct.field(pytree_node=True, default=None)
 
 
 def _kinetic_energy_from_grads_laps(
@@ -1383,34 +1378,38 @@ def _init_kinetic_energy_all_elements_streaming_state(
         else None
     )
 
+    # Assemble per-electron kinetic energies once here so the streaming carry
+    # only stores the small ke_up/ke_dn arrays. Subsequent reads via
+    # _kinetic_energy_from_streaming_state become free struct-field accesses.
+    ke_up, ke_dn = _kinetic_energy_from_grads_laps(
+        grad_J_up,
+        grad_J_dn,
+        lap_J_up,
+        lap_J_dn,
+        det_state.grad_ln_D_up,
+        det_state.grad_ln_D_dn,
+        det_state.lap_ln_D_up,
+        det_state.lap_ln_D_dn,
+    )
+
     return Kinetic_streaming_state(
         j1_state=j1_state,
         j2_state=j2_state,
         j3_state=j3_state,
         det_state=det_state,
-        grad_J_up=grad_J_up,
-        grad_J_dn=grad_J_dn,
-        lap_J_up=lap_J_up,
-        lap_J_dn=lap_J_dn,
-        grad_ln_D_up=det_state.grad_ln_D_up,
-        grad_ln_D_dn=det_state.grad_ln_D_dn,
-        lap_ln_D_up=det_state.lap_ln_D_up,
-        lap_ln_D_dn=det_state.lap_ln_D_dn,
+        ke_up=ke_up,
+        ke_dn=ke_dn,
     )
 
 
 def _kinetic_energy_from_streaming_state(state: Kinetic_streaming_state):
-    """Per-electron kinetic energies extracted from a streaming state."""
-    return _kinetic_energy_from_grads_laps(
-        state.grad_J_up,
-        state.grad_J_dn,
-        state.lap_J_up,
-        state.lap_J_dn,
-        state.grad_ln_D_up,
-        state.grad_ln_D_dn,
-        state.lap_ln_D_up,
-        state.lap_ln_D_dn,
-    )
+    """Per-electron kinetic energies extracted from a streaming state.
+
+    Returns the pre-assembled ``ke_up`` / ``ke_dn`` carried in the streaming
+    state. Init and advance produce these in the same kernel that produced
+    the grad/lap totals, so this read costs no DRAM traffic of its own.
+    """
+    return state.ke_up, state.ke_dn
 
 
 def _advance_kinetic_energy_all_elements_streaming_state(
@@ -1454,10 +1453,10 @@ def _advance_kinetic_energy_all_elements_streaming_state(
         lap_J1_dn = new_j1_state.lap_J1_dn
     else:
         new_j1_state = None
-        grad_J1_up = jnp.zeros_like(state.grad_J_up)
-        grad_J1_dn = jnp.zeros_like(state.grad_J_dn)
-        lap_J1_up = jnp.zeros_like(state.lap_J_up)
-        lap_J1_dn = jnp.zeros_like(state.lap_J_dn)
+        grad_J1_up = jnp.zeros_like(state.det_state.grad_ln_D_up)
+        grad_J1_dn = jnp.zeros_like(state.det_state.grad_ln_D_dn)
+        lap_J1_up = jnp.zeros_like(state.det_state.lap_ln_D_up)
+        lap_J1_dn = jnp.zeros_like(state.det_state.lap_ln_D_dn)
 
     # --- J2: incremental advance via streaming state ---------------------
     j2_data = jastrow_data.jastrow_two_body_data
@@ -1476,10 +1475,10 @@ def _advance_kinetic_energy_all_elements_streaming_state(
         lap_J2_dn = new_j2_state.lap_J2_dn
     else:
         new_j2_state = None
-        grad_J2_up = jnp.zeros_like(state.grad_J_up)
-        grad_J2_dn = jnp.zeros_like(state.grad_J_dn)
-        lap_J2_up = jnp.zeros_like(state.lap_J_up)
-        lap_J2_dn = jnp.zeros_like(state.lap_J_dn)
+        grad_J2_up = jnp.zeros_like(state.det_state.grad_ln_D_up)
+        grad_J2_dn = jnp.zeros_like(state.det_state.grad_ln_D_dn)
+        lap_J2_up = jnp.zeros_like(state.det_state.lap_ln_D_up)
+        lap_J2_dn = jnp.zeros_like(state.det_state.lap_ln_D_dn)
 
     # --- J3: incremental advance via streaming state ---------------------
     j3_data = jastrow_data.jastrow_three_body_data
@@ -1498,10 +1497,10 @@ def _advance_kinetic_energy_all_elements_streaming_state(
         lap_J3_dn = new_j3_state.lap_J3_dn
     else:
         new_j3_state = None
-        grad_J3_up = jnp.zeros_like(state.grad_J_up)
-        grad_J3_dn = jnp.zeros_like(state.grad_J_dn)
-        lap_J3_up = jnp.zeros_like(state.lap_J_up)
-        lap_J3_dn = jnp.zeros_like(state.lap_J_dn)
+        grad_J3_up = jnp.zeros_like(state.det_state.grad_ln_D_up)
+        grad_J3_dn = jnp.zeros_like(state.det_state.grad_ln_D_dn)
+        lap_J3_up = jnp.zeros_like(state.det_state.lap_ln_D_up)
+        lap_J3_dn = jnp.zeros_like(state.det_state.lap_ln_D_dn)
 
     # Reassemble Jastrow totals from the streamed sub-state contributions.
     grad_J_up = grad_J1_up + grad_J2_up + grad_J3_up
@@ -1540,19 +1539,27 @@ def _advance_kinetic_energy_all_elements_streaming_state(
     lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
     lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
 
+    # Assemble per-electron kinetic energies in-kernel: the new grad/lap
+    # totals are still register-resident here, so this avoids the dedicated
+    # read kernel that would otherwise re-load all 8 arrays from DRAM.
+    ke_up, ke_dn = _kinetic_energy_from_grads_laps(
+        grad_J_up,
+        grad_J_dn,
+        lap_J_up,
+        lap_J_dn,
+        new_det_state.grad_ln_D_up,
+        new_det_state.grad_ln_D_dn,
+        new_det_state.lap_ln_D_up,
+        new_det_state.lap_ln_D_dn,
+    )
+
     return state.replace(
         j1_state=new_j1_state,
         j2_state=new_j2_state,
         j3_state=new_j3_state,
         det_state=new_det_state,
-        grad_J_up=grad_J_up,
-        grad_J_dn=grad_J_dn,
-        lap_J_up=lap_J_up,
-        lap_J_dn=lap_J_dn,
-        grad_ln_D_up=new_det_state.grad_ln_D_up,
-        grad_ln_D_dn=new_det_state.grad_ln_D_dn,
-        lap_ln_D_up=new_det_state.lap_ln_D_up,
-        lap_ln_D_dn=new_det_state.lap_ln_D_dn,
+        ke_up=ke_up,
+        ke_dn=ke_dn,
     )
 
 
