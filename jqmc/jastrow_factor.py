@@ -2591,11 +2591,19 @@ def _compute_ratio_Jastrow_part_rank1_update(
             W_dn = j3_state.j3_mat_aos_dn.astype(dtype_jnp)
             U_up = j3_state.j3_mat_T_aos_up.astype(dtype_jnp).T
             U_dn = j3_state.j3_mat_T_aos_dn.astype(dtype_jnp).T
-            # cross_vec equivalences:
-            #   j3_mat @ sum(aos_dn, axis=1) = sum(j3_mat @ aos_dn, axis=1) = sum(W_dn, axis=1)
-            #   sum(aos_up, axis=1) @ j3_mat = sum(j3_mat.T @ aos_up, axis=1) = sum(j3_mat_T_aos_up, axis=1)
-            dn_cross_vec = jnp.sum(W_dn, axis=1)
-            up_cross_vec = jnp.sum(j3_state.j3_mat_T_aos_up.astype(dtype_jnp), axis=1)
+            # cross_vec are now precomputed and rank-1 advanced in the streaming
+            # state (``j3_mat_aos_dn_rowsum`` / ``j3_mat_T_aos_up_rowsum``).
+            # Equivalences:
+            #   dn_cross_vec = j3_mat @ sum(aos_dn, axis=1)
+            #                = sum(j3_mat @ aos_dn, axis=1) = sum(W_dn, axis=1)
+            #                = j3_mat_aos_dn_rowsum
+            #   up_cross_vec = sum(aos_up, axis=1) @ j3_mat
+            #                = sum(j3_mat.T @ aos_up, axis=1)
+            #                = j3_mat_T_aos_up_rowsum
+            # Reading the cached ``(n_ao,)`` rowsum avoids the per-call
+            # ``(W, n_ao, N_e)`` HBM-bound reduction.
+            dn_cross_vec = j3_state.j3_mat_aos_dn_rowsum.astype(dtype_jnp)
+            up_cross_vec = j3_state.j3_mat_T_aos_up_rowsum.astype(dtype_jnp)
 
         # Q index: idx_up for UP configs, idx_dn for DN configs
         idx_for_Q = jnp.where(up_moved_batch, idx_up, idx_dn)  # (N,)
@@ -2863,8 +2871,10 @@ def _compute_ratio_Jastrow_part_split_spin(
             W_dn = j3_state.j3_mat_aos_dn.astype(dtype_jnp)
             U_up = j3_state.j3_mat_T_aos_up.astype(dtype_jnp).T
             U_dn = j3_state.j3_mat_T_aos_dn.astype(dtype_jnp).T
-            dn_cross_vec = jnp.sum(W_dn, axis=1)
-            up_cross_vec = jnp.sum(j3_state.j3_mat_T_aos_up.astype(dtype_jnp), axis=1)
+            # See ``_compute_ratio_Jastrow_part_rank1_update`` for why the
+            # cross_vec are now read from the cached rank-1-advanced rowsums.
+            dn_cross_vec = j3_state.j3_mat_aos_dn_rowsum.astype(dtype_jnp)
+            up_cross_vec = j3_state.j3_mat_T_aos_up_rowsum.astype(dtype_jnp)
 
         # -- UP BLOCK ---------------------------------------------------------
         # New AOs at the moved up-electron positions; old AOs by column-slice.
@@ -2873,9 +2883,8 @@ def _compute_ratio_Jastrow_part_split_spin(
         aos_p_up = aos_up_new_moved - aos_up_old_moved  # (n_ao, G_up)
 
         term1_up = j1_vec @ aos_p_up  # (G_up,)
-        # tensordot avoids the explicit transpose of ``aos_p_up`` (1.8 GB on
-        # GH200 ECP-nonlocal benchmark) -- see ``_compute_ratio_Jastrow_part_rank1_update``
-        # for the same rewrite rationale.
+        # tensordot avoids the explicit transpose of ``aos_p_up``; see
+        # ``_compute_ratio_Jastrow_part_rank1_update`` for the same rewrite rationale.
         V_up_block = jnp.tensordot(aos_p_up, W_up, axes=((0,), (0,)))  # (G_up, N_up)
         P_up_block = jnp.dot(U_up, aos_p_up)  # (N_up, G_up)
         Q_up_c = (idx_up_block[:, None] < jnp.arange(num_up)[None, :]).astype(dtype_jnp)  # (G_up, N_up)
@@ -4055,6 +4064,13 @@ class Jastrow_three_body_streaming_state:
     - ``lap_aos_up`` / ``lap_aos_dn``: ``(n_orb, N_up)`` / ``(n_orb, N_dn)``.
     - ``j3_mat_aos_up`` / ``j3_mat_aos_dn``: ``j3_mat @ aos_*`` (shapes match aos_*).
     - ``j3_mat_T_aos_up`` / ``j3_mat_T_aos_dn``: ``j3_mat.T @ aos_*``.
+    - ``j3_mat_aos_dn_rowsum`` / ``j3_mat_T_aos_up_rowsum``: ``(n_orb,)``
+      row-sums ``sum(j3_mat_aos_dn, axis=1)`` / ``sum(j3_mat_T_aos_up, axis=1)``.
+      Equivalent to ``j3_mat @ sum(aos_dn, axis=1)`` and
+      ``sum(aos_up, axis=1) @ j3_mat`` and consumed by
+      :func:`_compute_ratio_Jastrow_part_rank1_update` as the
+      ``dn_cross_vec`` / ``up_cross_vec``. Caching avoids the
+      ``(W, n_orb, N_e)`` HBM-bound reduction every ratio call.
     - ``g_up`` / ``g_dn``: ``(n_orb, N_up)`` / ``(n_orb, N_dn)`` ``dJ/dA`` per electron.
     - ``grad_J3_up`` / ``grad_J3_dn``: ``(N_up, 3)`` / ``(N_dn, 3)`` per-electron grad.
     - ``lap_J3_up`` / ``lap_J3_dn``: ``(N_up,)`` / ``(N_dn,)`` per-electron lap.
@@ -4070,6 +4086,8 @@ class Jastrow_three_body_streaming_state:
     j3_mat_aos_dn: jax.Array = struct.field(pytree_node=True)
     j3_mat_T_aos_up: jax.Array = struct.field(pytree_node=True)
     j3_mat_T_aos_dn: jax.Array = struct.field(pytree_node=True)
+    j3_mat_aos_dn_rowsum: jax.Array = struct.field(pytree_node=True)
+    j3_mat_T_aos_up_rowsum: jax.Array = struct.field(pytree_node=True)
     g_up: jax.Array = struct.field(pytree_node=True)
     g_dn: jax.Array = struct.field(pytree_node=True)
     grad_J3_up: jax.Array = struct.field(pytree_node=True)
@@ -4144,6 +4162,10 @@ def _init_grads_laplacian_Jastrow_three_body_streaming_state(
     j3_mat_T_aos_up = j3_mat.T @ aos_up
     j3_mat_aos_dn = j3_mat @ aos_dn
     j3_mat_T_aos_dn = j3_mat.T @ aos_dn
+    # Row-sums consumed by ``_compute_ratio_Jastrow_part_rank1_update`` as
+    # ``dn_cross_vec`` / ``up_cross_vec`` (see field docstring above).
+    j3_mat_aos_dn_rowsum = jnp.sum(j3_mat_aos_dn, axis=1)
+    j3_mat_T_aos_up_rowsum = jnp.sum(j3_mat_T_aos_up, axis=1)
 
     upper_up = jnp.triu(jnp.ones((num_up, num_up), dtype=dtype_jnp), k=1)
     lower_up = jnp.tril(jnp.ones((num_up, num_up), dtype=dtype_jnp), k=-1)
@@ -4179,6 +4201,8 @@ def _init_grads_laplacian_Jastrow_three_body_streaming_state(
         j3_mat_aos_dn=j3_mat_aos_dn,
         j3_mat_T_aos_up=j3_mat_T_aos_up,
         j3_mat_T_aos_dn=j3_mat_T_aos_dn,
+        j3_mat_aos_dn_rowsum=j3_mat_aos_dn_rowsum,
+        j3_mat_T_aos_up_rowsum=j3_mat_T_aos_up_rowsum,
         g_up=g_up,
         g_dn=g_dn,
         grad_J3_up=grad_J3_up,
@@ -4271,6 +4295,9 @@ def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
             lap_aos_up=new_lap_aos_up,
             j3_mat_aos_up=new_j3_mat_aos_up,
             j3_mat_T_aos_up=new_j3_mat_T_aos_up,
+            # Only j3_mat_T_aos_up changes (column ``moved_index``); the row-sum
+            # picks up exactly ``d_JT``. The dn row-sum is unchanged.
+            j3_mat_T_aos_up_rowsum=state.j3_mat_T_aos_up_rowsum + d_JT,
             g_up=new_g_up,
             g_dn=new_g_dn,
             grad_J3_up=grad_J3_up,
@@ -4317,6 +4344,9 @@ def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
             lap_aos_dn=new_lap_aos_dn,
             j3_mat_aos_dn=new_j3_mat_aos_dn,
             j3_mat_T_aos_dn=new_j3_mat_T_aos_dn,
+            # Only j3_mat_aos_dn changes (column ``moved_index``); the row-sum
+            # picks up exactly ``d_J``. The up row-sum is unchanged.
+            j3_mat_aos_dn_rowsum=state.j3_mat_aos_dn_rowsum + d_J,
             g_up=new_g_up,
             g_dn=new_g_dn,
             grad_J3_up=grad_J3_up,
