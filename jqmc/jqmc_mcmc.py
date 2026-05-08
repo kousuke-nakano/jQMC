@@ -58,7 +58,7 @@ from jax import numpy as jnp
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
-from ._jqmc_utility import _generate_init_electron_configurations
+from ._jqmc_utility import _generate_init_electron_configurations, check_mpi4py_jax_distribution_consistency
 from ._setting import (
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
@@ -677,6 +677,8 @@ class MCMC:
             - Accumulates energies, weights, forces, and wavefunction gradients into public buffers (``w_L``, ``e_L``, ``dln_Psi_*`` etc.).
             - Logs timing statistics and acceptance ratios at the end of the run.
         """
+        check_mpi4py_jax_distribution_consistency()
+
         # timer_counter
         timer_mcmc_total = 0.0
         timer_mcmc_update_init = 0.0
@@ -2765,7 +2767,7 @@ class MCMC:
         opt_lambda_basis_exp: bool = False,
         opt_lambda_basis_coeff: bool = False,
         optimizer_kwargs: dict | None = None,
-        use_device_collectives: bool = False,
+        use_device_collectives: bool = True,
     ):
         """Optimize wavefunction parameters using SR or optax.
 
@@ -2799,13 +2801,21 @@ class MCMC:
                 ``use_lm=True`` enables LM with keys (``lm_subspace_dim``, ``lm_cond``);
                 other ``method`` names are optax constructors (e.g., ``"adam"``) and
                 receive remaining keys.
-            use_device_collectives (bool, optional): If True, run the SR
-                direct-solve cross-rank reductions and linear solve via
-                ``jax.shard_map`` + ``jax.lax.psum`` instead of
-                ``mpi_comm.Reduce`` + ``scipy.linalg.solve``. Currently
-                only the wide-matrix direct path is migrated; CG and tall
-                paths still use the host/mpi4py code regardless of this
-                flag. Defaults to False (legacy CPU path).
+            use_device_collectives (bool, optional): If True (default), run
+                the SR cross-rank reductions and linear solve via
+                ``jax.shard_map`` + ``jax.lax.psum`` / ``all_gather`` (NCCL on
+                multi-process GPU, Gloo on multi-process CPU, trivial on
+                single-process). If False, fall back to ``mpi_comm.Reduce`` /
+                ``Allreduce`` / ``Alltoallv`` + ``scipy.linalg.solve`` (legacy
+                mpi4py + SciPy path).
+
+                When True under ``mpirun -n N>=2``, ``jax.distributed.initialize(
+                cluster_detection_method="mpi4py")`` must have been called
+                before ``run_optimize``; otherwise the device path silently
+                produces per-rank-local results that don't match the global
+                solution. ``run_optimize`` raises ``RuntimeError`` if it
+                detects ``mpi_size != jax.process_count()`` to surface this
+                misconfiguration.
 
         Notes:
             - Persists optax optimizer state across calls when method and hyperparameters match.
@@ -2849,6 +2859,8 @@ class MCMC:
                 raise RuntimeError("use_lm requires compute_log_WF_param_deriv=True.")
             if not self.__comput_e_L_param_deriv:
                 raise RuntimeError("use_lm requires comput_e_L_param_deriv=True.")
+
+        check_mpi4py_jax_distribution_consistency()
 
         optax_kwargs = {
             k: v
