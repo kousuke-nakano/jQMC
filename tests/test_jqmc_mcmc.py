@@ -48,6 +48,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc._precision import get_tolerance_min
+from jqmc._setting import atol_consistency, rtol_consistency
 from jqmc.determinant import Geminal_data
 from jqmc.hamiltonians import Hamiltonian_data
 from jqmc.jastrow_factor import (
@@ -929,6 +930,243 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
     # At least one param should have been updated (non-trivial SR solve).
     any_changed = any(not np.array_equal(before[k], current_params[k]) for k in before)
     assert any_changed, f"Expected at least one parameter to change (regime={regime}, cg_flag={cg_flag})"
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "regime,cg_flag",
+    [
+        ("wide", False),
+        ("wide", True),
+        ("tall", False),
+        ("tall", True),
+    ],
+)
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvtz_cart.h5"])
+def test_sr_device_matches_cpu(trexio_file, regime, cg_flag, monkeypatch):
+    """Each of the four SR solve paths (wide/tall x direct/CG) must produce
+    the same parameter update on the JAX-native device branch as on the
+    legacy NumPy/SciPy/mpi4py CPU branch, given identical inputs.
+
+    Single-process: ``psum`` is trivial and the device path reduces to its
+    local computation; this test verifies numerical agreement only.
+    Multi-rank validation requires actually running ``mpirun`` and is out of
+    scope for the unit suite.
+    """
+    from mpi4py import MPI as _MPI
+
+    if _MPI.COMM_WORLD.Get_size() != 1:
+        pytest.skip("Numerical-agreement test runs single-process only.")
+
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=1.0,
+        structure_data=structure_data,
+        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+        jastrow_1b_type="pade",
+    )
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade")
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=None,
+        jastrow_nn_data=None,
+    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    num_walkers = 2
+    Dt = 2.0
+    mcmc_seed = 12345
+    epsilon_AS = 1.0e-6
+
+    # Build a parameter set sized for the requested regime. Single-process,
+    # so num_samples_total = num_mcmc * num_walkers.
+    base_params: dict[str, np.ndarray] = {
+        "j1_param": np.ones_like(np.array(jastrow_onebody_data.jastrow_1b_param)),
+        "j2_param": np.ones_like(np.array(jastrow_twobody_data.jastrow_2b_param)),
+    }
+    fixed_param_size = sum(v.size for v in base_params.values())
+
+    if regime == "tall":
+        num_mcmc = 1
+        min_samples_total = num_mcmc * num_walkers
+        # Pad lambda_matrix so num_params >= num_samples_total.
+        lambda_size_needed = max(1, min_samples_total - fixed_param_size + 1)
+        base_params["lambda_matrix"] = np.ones(lambda_size_needed, dtype=float)
+    else:
+        base_params["lambda_matrix"] = np.array([[2.0, -2.0], [3.0, -3.0]], dtype=float)
+        total_params_tmp = sum(v.size for v in base_params.values())
+        num_mcmc = total_params_tmp // num_walkers + 2
+
+    total_params = sum(v.size for v in base_params.values())
+    num_samples_total = num_mcmc * num_walkers
+    if regime == "wide":
+        assert total_params < num_samples_total, f"wide setup invalid: {total_params} >= {num_samples_total}"
+    else:
+        assert total_params >= num_samples_total, f"tall setup invalid: {total_params} < {num_samples_total}"
+
+    rng = np.random.default_rng(42)
+    fake_w_L_data = np.ones((num_mcmc, num_walkers))
+    fake_e_L_data = rng.standard_normal((num_mcmc, num_walkers)) * 0.1
+
+    params_registry: dict[int, dict[str, np.ndarray]] = {}
+
+    def register_params(wf, params):
+        params_registry[id(wf)] = params
+
+    def lookup_params(wf):
+        return params_registry[id(wf)]
+
+    def fake_get_variational_blocks(
+        self,
+        opt_J1_param=True,
+        opt_J2_param=True,
+        opt_J3_param=True,
+        opt_JNN_param=True,
+        opt_lambda_param=False,
+        opt_J3_basis_exp=False,
+        opt_J3_basis_coeff=False,
+        opt_lambda_basis_exp=False,
+        opt_lambda_basis_coeff=False,
+    ):
+        blocks = []
+        pos = lookup_params(self)
+        if opt_J1_param and "j1_param" in pos:
+            arr = pos["j1_param"]
+            blocks.append(VariationalParameterBlock(name="j1_param", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_J2_param and "j2_param" in pos:
+            arr = pos["j2_param"]
+            blocks.append(VariationalParameterBlock(name="j2_param", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_lambda_param and "lambda_matrix" in pos:
+            arr = pos["lambda_matrix"]
+            blocks.append(VariationalParameterBlock(name="lambda_matrix", values=arr, shape=arr.shape, size=int(arr.size)))
+        return blocks
+
+    def fake_apply_block_updates(self, blocks, thetas, learning_rate):
+        params = lookup_params(self)
+        idx = 0
+        for block in blocks:
+            blk_slice = thetas[idx : idx + block.size]
+            idx += block.size
+            if blk_slice.size == 0:
+                continue
+            delta = blk_slice.reshape(block.shape)
+            params[block.name] = params[block.name] + learning_rate * delta
+        return self
+
+    def fake_run(self, num_mcmc_steps: int = 0, max_time=None):
+        return None
+
+    # Deterministic O matrix so both runs see identical inputs.
+    def fake_get_dln_WF(
+        self,
+        blocks,
+        num_mcmc_warmup_steps=0,
+        chosen_param_index=None,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        total = sum(block.size for block in blocks)
+        rng_local = np.random.default_rng(123)
+        return rng_local.standard_normal((num_mcmc, self.num_walkers, total)) * 0.01
+
+    def fake_get_E(self, num_mcmc_warmup_steps: int = 0, num_mcmc_bin_blocks: int = 1):
+        return (0.0, 0.0, 0.0, 0.0)
+
+    def fake_get_gF(
+        self,
+        num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks,
+        blocks,
+        lambda_projectors=None,
+        num_orb_projection=None,
+        chosen_param_index=None,
+    ):
+        total = sum(block.size for block in blocks)
+        return np.ones(total, dtype=float), np.ones(total, dtype=float)
+
+    monkeypatch.setattr(Wavefunction_data, "get_variational_blocks", fake_get_variational_blocks, raising=False)
+    monkeypatch.setattr(Wavefunction_data, "apply_block_updates", fake_apply_block_updates, raising=False)
+    monkeypatch.setattr(MCMC, "run", fake_run, raising=False)
+    monkeypatch.setattr(MCMC, "get_E", fake_get_E, raising=False)
+    monkeypatch.setattr(MCMC, "get_gF", fake_get_gF, raising=False)
+    monkeypatch.setattr(MCMC, "get_dln_WF", fake_get_dln_WF, raising=False)
+    monkeypatch.setattr(MCMC, "w_L", property(lambda self: fake_w_L_data), raising=False)
+    monkeypatch.setattr(MCMC, "e_L", property(lambda self: fake_e_L_data), raising=False)
+
+    def run_once(use_device_collectives: bool):
+        mcmc = MCMC(
+            hamiltonian_data=hamiltonian_data,
+            Dt=Dt,
+            mcmc_seed=mcmc_seed,
+            epsilon_AS=epsilon_AS,
+            num_walkers=num_walkers,
+            comput_position_deriv=False,
+            comput_log_WF_param_deriv=True,
+            comput_e_L_param_deriv=False,
+            random_discretized_mesh=True,
+        )
+        params = {k: v.copy() for k, v in base_params.items()}
+        register_params(mcmc.hamiltonian_data.wavefunction_data, params)
+        mcmc.run_optimize(
+            num_mcmc_steps=num_mcmc,
+            num_opt_steps=1,
+            num_mcmc_warmup_steps=0,
+            num_mcmc_bin_blocks=1,
+            opt_J1_param=True,
+            opt_J2_param=True,
+            opt_J3_param=False,
+            opt_JNN_param=False,
+            opt_lambda_param=True,
+            optimizer_kwargs={
+                "method": "sr",
+                "delta": 1.0e-3,
+                "epsilon": 1.0e-3,
+                "cg_flag": cg_flag,
+                "cg_max_iter": 200,
+                # CG iteration tolerance well below the project consistency
+                # tolerance, so the device-vs-CPU difference is dominated by
+                # float64 round-off, not CG residual.
+                "cg_tol": 1.0e-12,
+            },
+            use_device_collectives=use_device_collectives,
+        )
+        return params
+
+    cpu_params = run_once(use_device_collectives=False)
+    dev_params = run_once(use_device_collectives=True)
+
+    # Both branches do exactly the same float64 SR arithmetic, just with
+    # NumPy/SciPy/mpi4py vs JAX/shard_map; difference is round-off only.
+    # Use the project's strict-float64 consistency tolerance.
+    for key in cpu_params:
+        cpu_v = cpu_params[key]
+        dev_v = dev_params[key]
+        # Sanity: CPU branch produced a non-trivial update.
+        assert not np.array_equal(cpu_v, base_params[key]), f"baseline CPU update is trivial for {key}"
+        np.testing.assert_allclose(
+            dev_v,
+            cpu_v,
+            atol=atol_consistency,
+            rtol=rtol_consistency,
+            err_msg=f"device vs CPU mismatch for {key} (regime={regime}, cg={cg_flag})",
+        )
 
     jax.clear_caches()
 
