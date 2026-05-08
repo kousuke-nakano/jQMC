@@ -47,19 +47,19 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.determinant import Geminal_data  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc._precision import get_tolerance_min
+from jqmc.determinant import Geminal_data
+from jqmc.hamiltonians import Hamiltonian_data
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_mcmc import MCMC, _MCMC_debug  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, evaluate_ln_wavefunction  # noqa: E402
+from jqmc.jqmc_mcmc import MCMC, _MCMC_debug
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, evaluate_ln_wavefunction
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -414,7 +414,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
 
     def fake_run(self, num_mcmc_steps: int = 0, max_time=None):
         """No-op MCMC run to skip sampling in the unit test."""
-        return None
+        return
 
     def fake_get_dln_WF(
         self,
@@ -502,7 +502,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
                 "lambda_matrix": True,
             },
         },
-        # ── AO basis optimization cases ──
+        # -- AO basis optimization cases --
         {
             "name": "j3_basis_exp_only",
             "flags": dict(
@@ -635,7 +635,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
 
         jax.clear_caches()
 
-    # ── use_lm (LM/aSR) smoke test ──────────────────────────────────────────
+    # -- use_lm (LM/aSR) smoke test ------------------------------------------
     # A separate MCMC instance with comput_e_L_param_deriv=True.
     # get_aH is patched at instance level so that no real sampled data are
     # needed; the dummy return values have H_1 < 0 so compute_asr_gamma
@@ -760,7 +760,7 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
     mcmc_seed = 12345
     epsilon_AS = 1.0e-6
 
-    # Build base parameter registry — j1, j2, lambda.
+    # Build base parameter registry -- j1, j2, lambda.
     # For the "tall" regime, pad lambda_matrix so that total_params stays
     # larger than num_samples_total even with multiple MPI ranks.
     base_params = {}
@@ -805,7 +805,7 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
     fake_w_L_data = np.ones((num_mcmc, num_walkers))
     fake_e_L_data = rng.standard_normal((num_mcmc, num_walkers)) * 0.1
 
-    # ── monkeypatch helpers ──────────────────────────────────────────────────
+    # -- monkeypatch helpers --------------------------------------------------
     params_registry: dict[int, dict[str, np.ndarray]] = {}
 
     def register_params(wf, params):
@@ -890,7 +890,7 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
     monkeypatch.setattr(MCMC, "w_L", property(lambda self: fake_w_L_data), raising=False)
     monkeypatch.setattr(MCMC, "e_L", property(lambda self: fake_e_L_data), raising=False)
 
-    # ── run the test ─────────────────────────────────────────────────────────
+    # -- run the test ---------------------------------------------------------
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
         Dt=Dt,
@@ -954,7 +954,7 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
         store_tuple=True,
     )
 
-    # Minimal 2-body Jastrow — no 3-body/NN to keep the test fast.
+    # Minimal 2-body Jastrow -- no 3-body/NN to keep the test fast.
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=None,
         jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp"),
@@ -1054,18 +1054,18 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# L3: VMC optimization loop — symmetry preservation tests
+# L3: VMC optimization loop -- symmetry preservation tests
 # ---------------------------------------------------------------------------
 
 # Test parameters: (j3_type, lambda_type)
 _SYMMETRY_TEST_CASES = [
     # L3-1: baseline, both symmetric, all params
     ("sym", "square_sym"),
-    # L3-5: j3 symmetric, lambda non-symmetric → only j3 preserved
+    # L3-5: j3 symmetric, lambda non-symmetric -> only j3 preserved
     ("sym", "square_nonsym"),
-    # L3-6: j3 non-symmetric, lambda symmetric → only lambda preserved
+    # L3-6: j3 non-symmetric, lambda symmetric -> only lambda preserved
     ("nonsym", "square_sym"),
-    # L3-7: both non-symmetric → no symmetrization (no-op)
+    # L3-7: both non-symmetric -> no symmetrization (no-op)
     ("nonsym", "square_nonsym"),
     # L3-8: j3 symmetric, rectangular lambda with paired-symmetric sub-block
     ("sym", "rect_paired_sym"),
@@ -1091,7 +1091,7 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=trexio_file, store_tuple=True)
 
-    # ── Build j3 matrix ──────────────────────────────────────────────────────
+    # -- Build j3 matrix ------------------------------------------------------
     rng = np.random.RandomState(42)
     n_orb = aos_data._num_orb
     if j3_type == "sym":
@@ -1106,7 +1106,7 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
     jastrow_threebody_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j3_matrix)
     jastrow_data = Jastrow_data(jastrow_three_body_data=jastrow_threebody_data)
 
-    # ── Build lambda matrix ──────────────────────────────────────────────────
+    # -- Build lambda matrix --------------------------------------------------
     n_up_elec = geminal_mo_data.num_electron_up
     n_dn_elec = geminal_mo_data.num_electron_dn
     orb_num = geminal_mo_data.orb_num_up  # = orb_num_dn for MO geminals
@@ -1151,8 +1151,8 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
 
     num_walkers = 2
 
-    # ── Mock only the sampling/energy; leave get_variational_blocks and
-    #    apply_block_updates real so symmetrize_metric is exercised. ────────
+    # -- Mock only the sampling/energy; leave get_variational_blocks and
+    #    apply_block_updates real so symmetrize_metric is exercised. --------
 
     def fake_run(self, num_mcmc_steps=0, max_time=None):
         return None
@@ -1226,7 +1226,7 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
     j3_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix)
     lam_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix)
 
-    # ── Assertions ───────────────────────────────────────────────────────────
+    # -- Assertions -----------------------------------------------------------
     # j3 / lambda_matrix live in jastrow_eval / det_eval zones; symmetry is a structural
     # property of the matrix itself, so use those zones' tolerances.
     atol, rtol = get_tolerance_min(("jastrow_eval", "det_eval"), "strict")
@@ -1442,7 +1442,7 @@ class TestSolveLinearMethod:
         assert np.isfinite(E_lm)
 
     def test_all_diag_S_zero(self):
-        """All diag(S) = 0 → dgelscut removes all parameters → zero update, E_lm == H_0."""
+        """All diag(S) = 0 -> dgelscut removes all parameters -> zero update, E_lm == H_0."""
         p = 3
         H_0 = -1.5
         f_vec = np.ones(p) * 0.1
@@ -1473,7 +1473,7 @@ class TestSolveLinearMethod:
 
 
 def test_optimize_lm_e2e_smoke():
-    """End-to-end LM optimisation — verifies no NaN/Inf after 1 step."""
+    """End-to-end LM optimisation -- verifies no NaN/Inf after 1 step."""
     trexio_file = os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvdz_cart.h5")
     (
         structure_data,

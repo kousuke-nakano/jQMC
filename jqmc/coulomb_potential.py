@@ -320,8 +320,7 @@ class Coulomb_potential_data:
         """
         if self.ecp_flag:
             return np.array(self.structure_data.atomic_numbers) - np.array(self.z_cores)
-        else:
-            return np.array(self.structure_data.atomic_numbers)
+        return np.array(self.structure_data.atomic_numbers)
 
     @property
     def _global_max_ang_mom_plus_1(self) -> int:
@@ -616,7 +615,7 @@ def _compute_ecp_local_parts_all_pairs_debug(
     Returns:
         float: The sum of local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). The
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). The
     # accumulated scalar V_local is cast to the coulomb zone before return.
     dtype_np = get_dtype_np("coulomb")
 
@@ -690,9 +689,9 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
         list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
         float: sum of the V_nonlocal
     """
-    # Forward r_up/dn_carts/RT as-is (Principle 3a — no parameter rebind).
+    # Forward r_up/dn_carts/RT as-is (Principle 3a -- no parameter rebind).
     # Cast RT to coulomb zone at the use site (the grid_points rotation below).
-    dtype_np = get_dtype_np("coulomb")  # noqa: F841
+    dtype_np = get_dtype_np("coulomb")
 
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
@@ -878,9 +877,9 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
         list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
         float: sum of the V_nonlocal
     """
-    # Forward r_up/dn_carts/RT as-is (Principle 3a — no parameter rebind).
+    # Forward r_up/dn_carts/RT as-is (Principle 3a -- no parameter rebind).
     # Cast RT to coulomb zone at the use site (the grid_points rotation below).
-    dtype_np = get_dtype_np("coulomb")  # noqa: F841
+    dtype_np = get_dtype_np("coulomb")
 
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
@@ -1119,7 +1118,7 @@ def _compute_ecp_coulomb_potential_debug(
     Returns:
         float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-    # Forward r_up/dn_carts/RT as-is (Principle 3a — no parameter rebind).
+    # Forward r_up/dn_carts/RT as-is (Principle 3a -- no parameter rebind).
 
     ecp_local_parts = _compute_ecp_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -1147,7 +1146,7 @@ def compute_ecp_local_parts_all_pairs(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Compute local ECP contribution over all nucleus–electron pairs.
+    """Compute local ECP contribution over all nucleus-electron pairs.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
@@ -1380,7 +1379,7 @@ def compute_ecp_non_local_parts_nearest_neighbors(
 
         def _V_l_mapped(rel, ang_mom, exponent, coefficient, power):
             # NOTE: see compute_ecp_non_local_parts_nearest_neighbors_fast_update
-            # below for the rationale — `jax.ops.segment_sum` inside vmap(vmap(...))
+            # below for the rationale -- `jax.ops.segment_sum` inside vmap(vmap(...))
             # lowers to a 4096*32*1*L-iter while_loop on GPU. For small L
             # (typically 2-3) a masked dense reduce is dramatically faster.
             V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
@@ -1486,6 +1485,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
     j3_state: "Jastrow_three_body_streaming_state | None" = None,
+    det_ratio_state=None,
 ) -> tuple[list, list, list, float]:
     """Fast-update variant of non-local ECP contributions (nearest neighbors).
 
@@ -1508,6 +1508,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             recomputation. Use the value carried in the projection's
             ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
             the original 1-shot path used by observation/MCMC code.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or a
+            superset like :class:`Det_streaming_state`) consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to
+            ``_compute_ratio_determinant_part_split_spin`` so it can skip
+            the bulk-side AO eval and the two ``lambda_paired @ ao_*``
+            precontracts.
 
     Returns:
         tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
@@ -1520,7 +1526,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
         at the supplied electron positions.  Correctness is only guaranteed when
         the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialized LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse -- the pattern
         used in the MCMC loop.  Passing an inverse from a different configuration
         silently produces incorrect non-local ECP contributions.
     """
@@ -1630,7 +1636,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             # vmap(vmap(...)) the scatter was lowered to a 1-element-per-iter
             # GPU while_loop with batch dim flattened to 4096*32*1*L =
             # ~262k iters/call, dominating LRDMC launch storm (see
-            # work/05nvidia-nsight/analysis.md §13). For small L (typically 2-3
+            # work/05nvidia-nsight/analysis.md Section13). For small L (typically 2-3
             # for cc-ECP) a masked dense reduce avoids the scatter entirely.
             V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
             mask = ang_mom[:, None] == jnp.arange(global_max_ang_mom_plus_1)[None, :]
@@ -1668,6 +1674,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         old_r_dn_carts=r_dn_carts,
         new_r_up_shifted=up_mesh_r_up,
         new_r_dn_shifted=dn_mesh_r_dn,
+        det_ratio_state=det_ratio_state,
     )
     # Cast determinant/Jastrow ratio terms to the local coulomb zone dtype
     # before downstream contractions; avoid relying on implicit promotion.
@@ -1722,7 +1729,7 @@ def compute_ecp_non_local_parts_all_pairs(
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> tuple[list, list, list, float]:
-    """Compute non-local ECP contribution considering all nucleus–electron pairs.
+    """Compute non-local ECP contribution considering all nucleus-electron pairs.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
@@ -1795,7 +1802,7 @@ def compute_ecp_non_local_parts_all_pairs(
     # NOTE: previously two `jax.ops.segment_sum(..., num_segments=num_segments)`.
     # Replaced with a masked dense reduce (matmul over the kr-pair axis) so the
     # XLA scatter-pathology that bites V_l (see compute_ecp_non_local_parts_nearest_neighbors_fast_update
-    # and analysis.md §13/§14) cannot resurface here. n_kr_pairs and num_segments
+    # and analysis.md Section13/Section14) cannot resurface here. n_kr_pairs and num_segments
     # are both small (~tens), so the dense reduce is essentially free.
     nucleus_index_non_local_part_jnp = jnp.asarray(nucleus_index_non_local_part)
     _aggregator_mask = nucleus_index_non_local_part_jnp[:, None] == jnp.arange(num_segments)[None, :]
@@ -2124,7 +2131,7 @@ def compute_ecp_coulomb_potential(
         float: Sum of local and non-local ECP contributions for the given geometry.
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts/RT here (forwarded to downstream
-    # functions that handle their own use-site casts — Principle 3a).
+    # functions that handle their own use-site casts -- Principle 3a).
 
     ecp_local_parts = compute_ecp_local_parts_all_pairs(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -2166,13 +2173,14 @@ def compute_ecp_coulomb_potential_fast(
     A_old_inv: jax.Array,
     NN: int = NN_default,
     Nv: int = Nv_default,
+    det_ratio_state=None,
 ) -> float:
     """Compute total ECP energy (local + non-local) using a pre-computed geminal inverse.
 
     This is the fast variant of :func:`compute_ecp_coulomb_potential`.  Instead of
     performing a fresh LU factorisation of the current-configuration geminal matrix,
     it accepts ``A_old_inv`` directly.  This avoids NaN when the current configuration
-    is near-singular—provided ``A_old_inv`` is the inverse of a nearby, well-conditioned
+    is near-singular--provided ``A_old_inv`` is the inverse of a nearby, well-conditioned
     reference configuration (e.g., the previous MCMC step).
 
     Args:
@@ -2184,6 +2192,9 @@ def compute_ecp_coulomb_potential_fast(
         A_old_inv (jax.Array): Pre-computed inverse of the reference geminal matrix.
         NN (int): Number of nearest nuclei to include for each electron in the non-local term.
         Nv (int): Number of quadrature points on the sphere.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or
+            superset). Forwarded to the non-local ECP ratio kernel so it can
+            skip the bulk-side AO eval and ``lambda @ ao_*`` precontracts.
 
     Returns:
         float: Sum of local and non-local ECP contributions for the given geometry.
@@ -2192,13 +2203,13 @@ def compute_ecp_coulomb_potential_fast(
         ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly at the
         supplied electron positions.  Correctness is only guaranteed when the inverse is
         maintained via **single-electron (rank-1) Sherman-Morrison updates** starting from
-        a freshly initialized LU inverse — the pattern used in the MCMC loop.  If multiple
-        electrons have moved simultaneously, the Sherman–Morrison rank-1 update used inside
+        a freshly initialized LU inverse -- the pattern used in the MCMC loop.  If multiple
+        electrons have moved simultaneously, the Sherman-Morrison rank-1 update used inside
         :func:`compute_ecp_non_local_parts_nearest_neighbors_fast_update` becomes incorrect
         and the non-local ratios will be silently wrong.
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts/RT here (forwarded to downstream
-    # functions that handle their own use-site casts — Principle 3a).
+    # functions that handle their own use-site casts -- Principle 3a).
 
     ecp_local_parts = compute_ecp_local_parts_all_pairs(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -2214,6 +2225,7 @@ def compute_ecp_coulomb_potential_fast(
         NN=NN,
         Nv=Nv,
         flag_determinant_only=False,
+        det_ratio_state=det_ratio_state,
     )
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
@@ -2227,7 +2239,7 @@ def _compute_bare_coulomb_potential_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_bare_coulomb_potential_api."""
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). The
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). The
     # accumulated scalar is cast to the coulomb zone before return (Principle 3b).
     dtype_np = get_dtype_np("coulomb")
 
@@ -2255,7 +2267,7 @@ def compute_bare_coulomb_potential(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Compute bare Coulomb interaction (ion–ion, electron–ion, electron–electron).
+    """Compute bare Coulomb interaction (ion-ion, electron-ion, electron-electron).
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
@@ -2287,7 +2299,7 @@ def compute_bare_coulomb_potential_el_ion_element_wise(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
-    """Element-wise electron–ion Coulomb interactions.
+    """Element-wise electron-ion Coulomb interactions.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
@@ -2295,7 +2307,7 @@ def compute_bare_coulomb_potential_el_ion_element_wise(
         r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
 
     Returns:
-        tuple[jax.Array, jax.Array]: Element-wise ion–electron interactions for up spins and down spins (shape ``(N_up,)`` and ``(N_dn,)``).
+        tuple[jax.Array, jax.Array]: Element-wise ion-electron interactions for up spins and down spins (shape ``(N_up,)`` and ``(N_dn,)``).
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts. el_ion_interaction reconstructs
     # r_i - r_j in fp64 internally to avoid catastrophic cancellation; a fp32 pre-cast
@@ -2335,7 +2347,7 @@ def compute_discretized_bare_coulomb_potential_el_ion_element_wise(
     r_dn_carts: jax.Array,
     alat: float,
 ) -> tuple[jax.Array, jax.Array]:
-    """Element-wise electron–ion Coulomb interactions with distance floor ``alat``.
+    """Element-wise electron-ion Coulomb interactions with distance floor ``alat``.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
@@ -2344,7 +2356,7 @@ def compute_discretized_bare_coulomb_potential_el_ion_element_wise(
         alat (float): Minimum allowed distance to avoid divergence.
 
     Returns:
-        tuple[jax.Array, jax.Array]: Element-wise ion–electron interactions for up spins and down spins (shape ``(N_up,)`` and ``(N_dn,)``).
+        tuple[jax.Array, jax.Array]: Element-wise ion-electron interactions for up spins and down spins (shape ``(N_up,)`` and ``(N_dn,)``).
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts. el_ion_interaction reconstructs
     # r_i - r_j in fp64 internally to avoid catastrophic cancellation.
@@ -2384,7 +2396,7 @@ def _compute_bare_coulomb_potential_el_ion_element_wise_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """See compute_bare_coulomb_potential_api."""
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). The
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). The
     # accumulators are cast to the coulomb zone before return (Principle 3b).
     dtype_np = get_dtype_np("coulomb")
     R_carts = coulomb_potential_data.structure_data._positions_cart_np  # fp64 storage accessor
@@ -2426,7 +2438,7 @@ def _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
     alat: float,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """See compute_bare_coulomb_potential_api."""
-    # Forward r_up/dn_carts as-is (Principle 3a — no parameter rebind). The
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). The
     # accumulators are cast to the coulomb zone before return (Principle 3b).
     dtype_np = get_dtype_np("coulomb")
     R_carts = coulomb_potential_data.structure_data._positions_cart_np  # fp64 storage accessor
@@ -2466,14 +2478,14 @@ def compute_bare_coulomb_potential_el_el(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Electron–electron Coulomb interaction energy.
+    """Electron-electron Coulomb interaction energy.
 
     Args:
         r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
         r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
 
     Returns:
-        float: Electron–electron Coulomb energy.
+        float: Electron-electron Coulomb energy.
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts. el_el_interaction reconstructs
     # r_i - r_j in fp64 internally to avoid catastrophic cancellation.
@@ -2522,13 +2534,13 @@ def compute_bare_coulomb_potential_el_el(
 def compute_bare_coulomb_potential_ion_ion(
     coulomb_potential_data: Coulomb_potential_data,
 ) -> float:
-    """Ion–ion Coulomb interaction energy.
+    """Ion-ion Coulomb interaction energy.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
 
     Returns:
-        float: Ion–ion Coulomb energy.
+        float: Ion-ion Coulomb energy.
     """
     dtype_jnp = get_dtype_jnp("coulomb")
     dtype_np = get_dtype_np("coulomb")
@@ -2577,7 +2589,7 @@ def compute_bare_coulomb_potential_el_ion(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Total electron–ion Coulomb interaction energy.
+    """Total electron-ion Coulomb interaction energy.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
@@ -2585,7 +2597,7 @@ def compute_bare_coulomb_potential_el_ion(
         r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
 
     Returns:
-        float: Electron–ion Coulomb energy.
+        float: Electron-ion Coulomb energy.
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts (forwarded to el_ion_element_wise which reconstructs in fp64).
     interactions_el_ion_elements_up, interactions_el_ion_elements_dn = compute_bare_coulomb_potential_el_ion_element_wise(
@@ -2605,7 +2617,7 @@ def _compute_coulomb_potential_debug(
     wavefunction_data: Wavefunction_data = None,
 ) -> float:
     """See compute_coulomb_potential_api."""
-    # Forward r_up/dn_carts and RT as-is (Principle 3a — no parameter rebind).
+    # Forward r_up/dn_carts and RT as-is (Principle 3a -- no parameter rebind).
     # Each downstream debug function casts to its own zone at the use site;
     # the accumulated scalar is cast to the coulomb zone before return.
     dtype_np = get_dtype_np("coulomb")
@@ -2661,10 +2673,10 @@ def compute_coulomb_potential(
         wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ECP ratios; required when ``ecp_flag`` is True.
 
     Returns:
-        float: Sum of bare Coulomb (ion–ion, electron–ion, electron–electron) and ECP (local + non-local) energies.
+        float: Sum of bare Coulomb (ion-ion, electron-ion, electron-electron) and ECP (local + non-local) energies.
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts/RT (forwarded to downstream
-    # functions that handle their own use-site casts — Principle 3a).
+    # functions that handle their own use-site casts -- Principle 3a).
 
     # all-electron
     if not coulomb_potential_data.ecp_flag:
@@ -2701,11 +2713,12 @@ def compute_coulomb_potential_fast(
     NN: int = NN_default,
     Nv: int = Nv_default,
     wavefunction_data: Wavefunction_data = None,
+    det_ratio_state=None,
 ) -> float:
     """Compute total Coulomb energy using a pre-computed geminal inverse for ECP non-local terms.
 
     This is the fast variant of :func:`compute_coulomb_potential`.  For ECP systems the
-    non-local Ψ(r')/Ψ(r) ratios are evaluated via
+    non-local Psi(r')/Psi(r) ratios are evaluated via
     :func:`compute_ecp_coulomb_potential_fast`, which accepts ``A_old_inv`` directly
     and therefore avoids the fresh LU factorisation performed by the standard path.
     This prevents NaN when the current-configuration geminal matrix is nearly singular.
@@ -2719,29 +2732,34 @@ def compute_coulomb_potential_fast(
         NN (int): Number of nearest nuclei to include for each electron in the non-local term.
         Nv (int): Number of quadrature points on the sphere.
         wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ECP ratios; required when ``ecp_flag`` is True.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or
+            superset) consistent with ``(r_up_carts, r_dn_carts)``.
+            Forwarded to :func:`compute_ecp_coulomb_potential_fast` so the
+            non-local ECP ratio kernel can skip the bulk-side AO eval and
+            ``lambda @ ao_*`` precontracts.
 
     Returns:
-        float: Sum of bare Coulomb (ion–ion, electron–ion, electron–electron) and ECP (local + non-local) energies.
+        float: Sum of bare Coulomb (ion-ion, electron-ion, electron-electron) and ECP (local + non-local) energies.
 
     Warning:
         ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly at the
         supplied electron positions.  Correctness is only guaranteed when the inverse is
         maintained via **single-electron (rank-1) Sherman-Morrison updates** starting from
-        a freshly initialized LU inverse — the pattern used in the MCMC loop.  If multiple
-        electrons have moved simultaneously the underlying Sherman–Morrison rank-1 update is
+        a freshly initialized LU inverse -- the pattern used in the MCMC loop.  If multiple
+        electrons have moved simultaneously the underlying Sherman-Morrison rank-1 update is
         incorrect and non-local ratios will be silently wrong.
     """
     # NOTE: Do NOT pre-cast r_up_carts/r_dn_carts/RT (forwarded to downstream
-    # functions that handle their own use-site casts — Principle 3a).
+    # functions that handle their own use-site casts -- Principle 3a).
 
-    # all-electron — no ECP, no need for A_old_inv
+    # all-electron -- no ECP, no need for A_old_inv
     if not coulomb_potential_data.ecp_flag:
         bare_coulomb_potential = compute_bare_coulomb_potential(
             coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
         )
         ecp_coulomb_potential = 0
 
-    # pseudo-potential — use pre-computed inverse to avoid fresh LU
+    # pseudo-potential -- use pre-computed inverse to avoid fresh LU
     else:
         bare_coulomb_potential = compute_bare_coulomb_potential(
             coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -2756,6 +2774,7 @@ def compute_coulomb_potential_fast(
             A_old_inv=A_old_inv,
             NN=NN,
             Nv=Nv,
+            det_ratio_state=det_ratio_state,
         )
 
     return bare_coulomb_potential + ecp_coulomb_potential

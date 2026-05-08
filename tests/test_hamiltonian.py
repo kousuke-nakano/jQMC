@@ -45,26 +45,26 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min
 from jqmc.determinant import (
-    Geminal_data,  # noqa: E402
-    compute_geminal_all_elements,  # noqa: E402
+    Geminal_data,
+    compute_geminal_all_elements,
 )
-from jqmc.hamiltonians import (  # noqa: E402
+from jqmc.hamiltonians import (
     Hamiltonian_data,
     _compute_local_energy_auto,
     compute_local_energy,
     compute_local_energy_fast,
 )
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import (  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import (
     Wavefunction_data,
 )
 
@@ -215,7 +215,12 @@ def test_compute_local_energy_fast(trexio_file):
     n_up = geminal_data.num_electron_up
     n_dn = geminal_data.num_electron_dn
 
-    atol, rtol = get_tolerance("local_energy", "strict")
+    # e_L crosses ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic/local_energy
+    # zones; the achievable agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic", "local_energy"),
+        "strict",
+    )
     for _ in range(10):
         r_up = jnp.array(first_nucleus + rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
         r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
@@ -274,7 +279,7 @@ def test_grad_compute_local_energy(trexio_file):
     Both functions compute e_L = T + V.  compute_local_energy uses the custom VJP in
     compute_grads_and_laplacian_ln_Det (and _ln_det_bwd), while _compute_local_energy_auto
     uses a fully-automatic Laplacian via JAX second-order AD.  The gradients w.r.t.
-    all Hamiltonian pytree leaves (lambda_matrix, Jastrow params, positions, …) must
+    all Hamiltonian pytree leaves (lambda_matrix, Jastrow params, positions, ...) must
     be numerically identical for a well-conditioned geminal matrix.
     """
     seed = 123

@@ -44,7 +44,6 @@ import re
 import sys
 from enum import Enum
 from logging import Formatter, StreamHandler, getLogger
-from typing import List
 
 import click
 import jax.numpy as jnp
@@ -94,7 +93,6 @@ log.addHandler(stream_handler)
 @click.group()
 def _cli():
     """The jQMC tools."""
-    pass
 
 
 # trexio_app
@@ -241,7 +239,7 @@ def trexio_convert_to(
         "--jastrow-nn-type",
         help="NN Jastrow type (e.g. 'schnet'). If set, an NN-based Jastrow term is added.",
     ),
-    j_nn_params: List[str] = typer.Option(
+    j_nn_params: list[str] = typer.Option(
         None,
         "-jp",
         "--jastrow-nn-param",
@@ -590,7 +588,7 @@ def hamiltonian_convert_wavefunction(
 
     if convert_to == "jsd":
         raise NotImplementedError("Conversion to JSD is not implemented yet.")
-    elif convert_to == "jagp":
+    if convert_to == "jagp":
         # conversion of SD to AGP
         typer.echo("Convert SD to AGP.")
         geminal_data = Geminal_data.convert_from_MOs_to_AOs(geminal_data)
@@ -657,7 +655,7 @@ def vmc_generate_input(
 
 @vmc_app.command("analyze-output")
 def vmc_analyze_output(
-    filenames: List[str] = typer.Argument(..., help="Output files of vmc optimizations."),
+    filenames: list[str] = typer.Argument(..., help="Output files of vmc optimizations."),
     plot_graph: bool = typer.Option(False, "-p", "--plot_graph", help="Plot a graph summerizing the result using matplotlib."),
     save_graph: str = typer.Option(None, "-s", "--save-graph", help="Specify a graph filename."),
 ):
@@ -673,7 +671,7 @@ def vmc_analyze_output(
     signal_to_noise_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?")
 
     for filename in filenames:
-        with open(filename, "r") as f:
+        with open(filename) as f:
             for line in f:
                 # iter
                 iter_match = iter_pattern.search(line)
@@ -1282,7 +1280,7 @@ def lrdmc_compute_force(
 
 @lrdmc_app.command("extrapolate-energy")
 def lrdmc_extrapolate_energy(
-    restart_chks: List[str] = typer.Argument(..., help="Restart checkpoint files, e.g. lrdmc.rchk"),
+    restart_chks: list[str] = typer.Argument(..., help="Restart checkpoint files, e.g. lrdmc.rchk"),
     polynomial_order: int = typer.Option(
         2,
         "-p",

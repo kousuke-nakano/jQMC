@@ -1,5 +1,10 @@
 # See https://pre-commit.com for more informatio
 # See https://pre-commit.com/hooks.html for more hooks
+
+# Restrict hooks to the pre-commit stage by default; only hooks with an
+# explicit `stages: [commit-msg]` (or other) run on those events.
+default_stages: [pre-commit]
+
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v6.0.0
@@ -11,6 +16,22 @@ repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.15.12
   hooks:
-  #- id: ruff
-  #  args: [ "--fix", "--show-fixes" ]
+  - id: ruff
+    name: ruff (ambiguous unicode only)
+    args: ["--select", "RUF001,RUF002,RUF003", "--no-fix"]
   - id: ruff-format
+
+- repo: local
+  hooks:
+  - id: ascii-only
+    name: Reject non-ASCII bytes in source / config / docs
+    entry: scripts/check_ascii.sh
+    language: system
+    types_or: [python, toml, yaml, markdown, shell]
+    exclude: '^(jqmc/obsolete/|prototypes/)'
+    pass_filenames: true
+  - id: ascii-only-commit-msg
+    name: Reject non-ASCII bytes in commit message
+    entry: scripts/check_ascii.sh
+    language: system
+    stages: [commit-msg]

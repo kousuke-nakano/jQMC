@@ -1,4 +1,4 @@
-"""VMC_Workflow — Jastrow / orbital optimization via ``jqmc`` (job_type=vmc).
+"""VMC_Workflow -- Jastrow / orbital optimization via ``jqmc`` (job_type=vmc).
 
 Generates a VMC input TOML, submits the ``jqmc`` binary on a remote (or local)
 machine, monitors until completion, and fetches the results.  The optimized
@@ -42,7 +42,6 @@ import os
 import re
 import time
 from logging import getLogger
-from typing import Optional
 
 from ._error_estimator import (
     _format_duration,
@@ -65,7 +64,7 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
 class VMC_Workflow(Workflow):
-    """VMC (Variational Monte Carlo) Jastrow / orbital optimisation workflow.
+    r"""VMC (Variational Monte Carlo) Jastrow / orbital optimisation workflow.
 
     Generates a ``job_type=vmc`` input TOML, submits ``jqmc``, monitors
     until completion, and collects the optimised
@@ -75,13 +74,13 @@ class VMC_Workflow(Workflow):
 
     **Automatic mode** (default, ``num_mcmc_steps=None``):
 
-    1. **Pilot VMC run** (``_0``) — Runs a short optimisation with
+    1. **Pilot VMC run** (``_0``) -- Runs a short optimisation with
        ``pilot_vmc_steps`` optimisation steps and ``pilot_mcmc_steps``
        MCMC steps per step.  The statistical error of the *last*
        optimisation step is used to estimate the MCMC steps per
        opt-step required to achieve ``target_error`` via
        $\sigma \propto 1/\sqrt{N}$.
-    2. **Production VMC runs** (``_1``, ``_2``, …) — Full optimisation
+    2. **Production VMC runs** (``_1``, ``_2``, ...) -- Full optimisation
        with ``num_opt_steps`` and the estimated MCMC steps per step.
        If a run is interrupted by the wall-time limit, the next
        continuation restarts from the checkpoint.  At most
@@ -184,7 +183,7 @@ class VMC_Workflow(Workflow):
         are always removed; remote files are removed only when the
         workflow targets a remote machine.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     Standalone launch (automatic mode)::
 
@@ -253,7 +252,7 @@ class VMC_Workflow(Workflow):
     energy_slope_std : float
         Standard deviation of the energy slope.
 
-    Notes
+    Notes:
     -----
     * The pilot uses a small number of opt steps (``pilot_vmc_steps``)
       just to estimate the error.  The real optimisation happens in
@@ -261,11 +260,11 @@ class VMC_Workflow(Workflow):
     * The estimation is stored in ``workflow_state.toml`` under
       ``[estimation]``; on re-entrance the pilot is skipped.
 
-    See Also
+    See Also:
     --------
     MCMC_Workflow : VMC production sampling (job_type=mcmc).
     LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
-    WF_Workflow : TREXIO → hamiltonian_data conversion.
+    WF_Workflow : TREXIO -> hamiltonian_data conversion.
     """
 
     def __init__(
@@ -278,39 +277,39 @@ class VMC_Workflow(Workflow):
         number_of_walkers: int = 4,
         max_time: int = 86400,
         # -- [vmc] section parameters --
-        Dt: Optional[float] = None,
-        epsilon_AS: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
-        num_mcmc_warmup_steps: Optional[int] = None,
-        num_mcmc_bin_blocks: Optional[int] = None,
-        wf_dump_freq: Optional[int] = None,
-        opt_J1_param: Optional[bool] = None,
-        opt_J2_param: Optional[bool] = None,
-        opt_J3_param: Optional[bool] = None,
-        opt_JNN_param: Optional[bool] = None,
-        opt_lambda_param: Optional[bool] = None,
-        opt_with_projected_MOs: Optional[bool] = None,
-        opt_J3_basis_exp: Optional[bool] = None,
-        opt_J3_basis_coeff: Optional[bool] = None,
-        opt_lambda_basis_exp: Optional[bool] = None,
-        opt_lambda_basis_coeff: Optional[bool] = None,
-        optimizer_kwargs: Optional[dict] = None,
+        Dt: float | None = None,
+        epsilon_AS: float | None = None,
+        num_mcmc_per_measurement: int | None = None,
+        num_mcmc_warmup_steps: int | None = None,
+        num_mcmc_bin_blocks: int | None = None,
+        wf_dump_freq: int | None = None,
+        opt_J1_param: bool | None = None,
+        opt_J2_param: bool | None = None,
+        opt_J3_param: bool | None = None,
+        opt_JNN_param: bool | None = None,
+        opt_lambda_param: bool | None = None,
+        opt_with_projected_MOs: bool | None = None,
+        opt_J3_basis_exp: bool | None = None,
+        opt_J3_basis_coeff: bool | None = None,
+        opt_lambda_basis_exp: bool | None = None,
+        opt_lambda_basis_coeff: bool | None = None,
+        optimizer_kwargs: dict | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
-        num_mcmc_steps: Optional[int] = None,
+        num_mcmc_steps: int | None = None,
         pilot_mcmc_steps: int = 50,
         pilot_vmc_steps: int = 5,
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         max_continuation: int = 1,
-        target_snr: Optional[float] = None,
+        target_snr: float | None = None,
         snr_avg_window: int = 5,
-        energy_slope_sigma_threshold: Optional[float] = None,
+        energy_slope_sigma_threshold: float | None = None,
         energy_slope_window_size: int = 5,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -358,7 +357,7 @@ class VMC_Workflow(Workflow):
         # [precision] section
         self.precision_mode = precision_mode
 
-    # ── Input generation ──────────────────────────────────────────
+    # -- Input generation ------------------------------------------
 
     def _generate_input(
         self,
@@ -432,10 +431,10 @@ class VMC_Workflow(Workflow):
             filename=input_file,
         )
 
-    # ── Submit / poll / fetch ─────────────────────────────────────
+    # -- Submit / poll / fetch -------------------------------------
     # _submit_and_wait() and _make_job() are inherited from Workflow.
 
-    # ── configure / run ──────────────────────────────────────────
+    # -- configure / run ------------------------------------------
 
     def configure(self) -> dict:
         """Validate parameters and return configuration summary."""
@@ -478,11 +477,11 @@ class VMC_Workflow(Workflow):
         self._ensure_project_dir()
         _wd = self.project_dir
 
-        # ── Fixed-step mode ───────────────────────────────────────
+        # -- Fixed-step mode ---------------------------------------
         if self.num_mcmc_steps is not None:
             return await self._launch_fixed_steps(_wd)
 
-        # ── Automatic mode (pilot + target_error) ─────────────────
+        # -- Automatic mode (pilot + target_error) -----------------
         return await self._launch_auto(_wd)
 
     async def _launch_fixed_steps(self, _wd):
@@ -506,7 +505,7 @@ class VMC_Workflow(Workflow):
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 last_run = i
                 continue
-            elif status in ("submitted", "completed"):
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
@@ -554,8 +553,8 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
-            # ── Abnormal-termination guard (single source of truth) ──
-            # target_error=None → only Program-ends / non-finite-energy
+            # -- Abnormal-termination guard (single source of truth) --
+            # target_error=None -> only Program-ends / non-finite-energy
             # checks are active. VMC's SNR/slope convergence is decided
             # separately at end-of-workflow.
             vstatus, vmsg = validate_completion(_wd, self.output_values)
@@ -565,7 +564,7 @@ class VMC_Workflow(Workflow):
                 self.status = WorkflowStatus.FAILED
                 break
 
-        # ── Collect outputs ───────────────────────────────────────
+        # -- Collect outputs ---------------------------------------
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = h5_files + output_logs
@@ -593,7 +592,7 @@ class VMC_Workflow(Workflow):
 
     async def _launch_auto(self, _wd):
         """Automatic mode: pilot + target_error convergence."""
-        # ── Phase 0: pilot estimation (skip on continuation) ──────
+        # -- Phase 0: pilot estimation (skip on continuation) ------
         estimation = get_estimation(_wd)
 
         if estimation.get("estimated_mcmc_steps") is not None:
@@ -604,7 +603,7 @@ class VMC_Workflow(Workflow):
                 "Skipping pilot."
             )
         else:
-            # ── Run pilot in a subdirectory ───────────────────────
+            # -- Run pilot in a subdirectory -----------------------
             pilot_dir = os.path.join(_wd, "_pilot")
             os.makedirs(pilot_dir, exist_ok=True)
 
@@ -721,7 +720,7 @@ class VMC_Workflow(Workflow):
                 net_pilot_sec=net_pilot_sec or 0,
             )
 
-        # ── Production runs (phase 1..N) ──────────────────────────
+        # -- Production runs (phase 1..N) --------------------------
         _has_convergence_criteria = self.target_snr is not None or self.energy_slope_sigma_threshold is not None
         last_run = 0
         step_files = {}  # {step: (input, output, run_id)}
@@ -736,13 +735,13 @@ class VMC_Workflow(Workflow):
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 last_run = i
                 continue
-            elif status in ("submitted", "completed"):
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
                 logger.info(f"  step {i}: already {status}. Resuming...")
             else:
-                # ── Re-evaluate convergence from fetched runs ─────
+                # -- Re-evaluate convergence from fetched runs -----
                 if _has_convergence_criteria and last_run > 0 and not _checked_fetched_convergence:
                     _checked_fetched_convergence = True
                     converged, converged_snr, converged_slope = self._check_convergence(
@@ -814,8 +813,8 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
-            # ── Abnormal-termination guard (single source of truth) ──
-            # target_error=None → only Program-ends / non-finite-energy
+            # -- Abnormal-termination guard (single source of truth) --
+            # target_error=None -> only Program-ends / non-finite-energy
             # checks; SNR/slope convergence is evaluated separately below.
             vstatus, vmsg = validate_completion(_wd, self.output_values)
             if vstatus == CompletionStatus.FAILED:
@@ -824,7 +823,7 @@ class VMC_Workflow(Workflow):
                 self.status = WorkflowStatus.FAILED
                 break
 
-            # ── Early exit if convergence criteria met ────────────
+            # -- Early exit if convergence criteria met ------------
             if _has_convergence_criteria and i < self.max_continuation:
                 converged, converged_snr, converged_slope = self._check_convergence(
                     _wd,
@@ -835,7 +834,7 @@ class VMC_Workflow(Workflow):
                     logger.info(f"  Convergence achieved at run {i}/{self.max_continuation}. Stopping early.")
                     break
 
-        # ── Collect outputs ───────────────────────────────────────
+        # -- Collect outputs ---------------------------------------
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = h5_files + output_logs
@@ -857,7 +856,7 @@ class VMC_Workflow(Workflow):
             last_output = os.path.join(_wd, step_files[last_run][1])
             self._parse_output(last_output)
 
-        # ── Final convergence check ───────────────────────────────
+        # -- Final convergence check -------------------------------
         if converged is None:
             converged, converged_snr, converged_slope = self._check_convergence(
                 _wd,
@@ -884,7 +883,7 @@ class VMC_Workflow(Workflow):
             self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
-    # ── Utility methods ───────────────────────────────────────────
+    # -- Utility methods -------------------------------------------
 
     def _check_convergence(
         self,
@@ -900,7 +899,7 @@ class VMC_Workflow(Workflow):
         converged_snr = True
         converged_slope = True
 
-        # ── (A) SNR check ──
+        # -- (A) SNR check --
         if self.target_snr is not None:
             all_snr = []
             for j in range(last_run, 0, -1):
@@ -921,7 +920,7 @@ class VMC_Workflow(Workflow):
                 converged_snr = False
                 logger.warning("  Could not parse S/N from production output.")
 
-        # ── (B) Energy slope check ──
+        # -- (B) Energy slope check --
         if self.energy_slope_sigma_threshold is not None:
             all_energies: list[tuple[float, float]] = []
             for j in range(last_run, 0, -1):
@@ -958,7 +957,7 @@ class VMC_Workflow(Workflow):
         converged = converged_snr and converged_slope
         return converged, converged_snr, converged_slope
 
-    def _find_restart_chk(self, work_dir: str) -> Optional[str]:
+    def _find_restart_chk(self, work_dir: str) -> str | None:
         """Locate a VMC restart checkpoint file in *work_dir*."""
         for pattern in ["restart.h5", "vmc.h5", "*.h5"]:
             matches = sorted(glob.glob(os.path.join(work_dir, pattern)))
@@ -966,7 +965,7 @@ class VMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    # ── Output parsing ────────────────────────────────────────────
+    # -- Output parsing --------------------------------------------
 
     def _parse_output(self, output_file=None):
         """Extract the last optimization energy from *output_file*."""
@@ -978,7 +977,7 @@ class VMC_Workflow(Workflow):
         energy_pattern = re.compile(r"E\s*=\s*([+-]?\d+\.\d+(?:[eE][+-]?\d+)?)\s*\+\-\s*(\d+\.\d+(?:[eE][+-]?\d+)?)")
         last_match = None
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 for line in f:
                     m = energy_pattern.search(line)
                     if m:
@@ -995,7 +994,7 @@ class VMC_Workflow(Workflow):
     def _parse_all_snr(output_file):
         """Parse all signal-to-noise ratios from a VMC output file.
 
-        Returns
+        Returns:
         -------
         list[float]
             All ``max(|f|/|std f|)`` values in order, one per
@@ -1008,7 +1007,7 @@ class VMC_Workflow(Workflow):
         snr_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)")
         values = []
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 for line in f:
                     m = snr_pattern.search(line)
                     if m:
@@ -1024,16 +1023,16 @@ class VMC_Workflow(Workflow):
         Uses the existing ``_parse_vmc_log_text()`` parser to obtain
         :class:`VMC_Step_Data` and returns the energy/error pairs.
 
-        Returns
+        Returns:
         -------
         list[tuple[float, float]]
-            ``[(E_1, σ_1), (E_2, σ_2), ...]`` in file order.
+            ``[(E_1, sigma_1), (E_2, sigma_2), ...]`` in file order.
             Empty list if the file is missing or unparseable.
         """
         if not os.path.isfile(output_file):
             return []
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 text = f.read()
             from ._output_parser import _parse_vmc_log_text
 
@@ -1049,7 +1048,7 @@ class VMC_Workflow(Workflow):
     ) -> tuple[float, float]:
         """Weighted linear regression of energy vs optimisation step.
 
-        Model: ``E_k = a + b * k + ε_k``, weight ``w_k = 1 / σ_k²``.
+        Model: ``E_k = a + b * k + eps_k``, weight ``w_k = 1 / sigma_k^2``.
 
         Parameters
         ----------
@@ -1058,7 +1057,7 @@ class VMC_Workflow(Workflow):
         energy_errors : list[float]
             Statistical error per step (length *N*, positive).
 
-        Returns
+        Returns:
         -------
         slope : float
             Weighted least-squares slope *b*.
@@ -1090,7 +1089,7 @@ class VMC_Workflow(Workflow):
         Extracts the energy from the *last* optimization step, which
         reflects the optimized wavefunction quality.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
@@ -1101,7 +1100,7 @@ class VMC_Workflow(Workflow):
         energy_pattern = re.compile(r"E\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*\+\-\s*(\d+\.?\d*(?:[eE][+-]?\d+)?)")
         last_match = None
         try:
-            with open(output_file, "r") as f:
+            with open(output_file) as f:
                 for line in f:
                     m = energy_pattern.search(line)
                     if m:

@@ -1,6 +1,6 @@
 """Structured result types for jQMC output parsing.
 
-These dataclasses represent **facts only** — deterministic data extracted
+These dataclasses represent **facts only** -- deterministic data extracted
 from jQMC stdout/stderr and associated files.  They contain no heuristic
 judgments; diagnostic analysis (failure categorization, convergence
 assessment, etc.) belongs to a higher-level layer (e.g. jqmc-mcp).
@@ -56,33 +56,32 @@ Input_Parameters
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
-# ── VMC ───────────────────────────────────────────────────────────
+# -- VMC -----------------------------------------------------------
 
 
 @dataclass
 class VMC_Step_Data:
     """Data for one VMC optimization step.
 
-    Attributes
+    Attributes:
     ----------
     step : int
-        Optimization step number (``Optimization step = N/M`` → N).
+        Optimization step number (``Optimization step = N/M`` -> N).
     energy : float or None
-        Total energy ``E = X +- Y`` → X  (Ha).
+        Total energy ``E = X +- Y`` -> X  (Ha).
     energy_error : float or None
-        Energy statistical error → Y  (Ha).
+        Energy statistical error -> Y  (Ha).
     max_force : float or None
-        Maximum force ``Max f = X +- Y`` → X  (Ha/a.u.).
+        Maximum force ``Max f = X +- Y`` -> X  (Ha/a.u.).
     max_force_error : float or None
-        Force error → Y  (Ha/a.u.).
+        Force error -> Y  (Ha/a.u.).
     signal_to_noise_ratio : float or None
         ``Max of signal-to-noise of f = max(|f|/|std f|) = X``.
     avg_walker_weight : float or None
         ``Average of walker weights is X``.
     acceptance_ratio : float or None
-        ``Acceptance ratio is X %`` → X / 100.
+        ``Acceptance ratio is X %`` -> X / 100.
     total_time_sec : float or None
         ``Total elapsed time for MCMC N steps. = X sec.``
     precompilation_time_sec : float or None
@@ -95,16 +94,16 @@ class VMC_Step_Data:
     """
 
     step: int
-    energy: Optional[float] = None
-    energy_error: Optional[float] = None
-    max_force: Optional[float] = None
-    max_force_error: Optional[float] = None
-    signal_to_noise_ratio: Optional[float] = None
-    avg_walker_weight: Optional[float] = None
-    acceptance_ratio: Optional[float] = None
-    total_time_sec: Optional[float] = None
-    precompilation_time_sec: Optional[float] = None
-    net_time_sec: Optional[float] = None
+    energy: float | None = None
+    energy_error: float | None = None
+    max_force: float | None = None
+    max_force_error: float | None = None
+    signal_to_noise_ratio: float | None = None
+    avg_walker_weight: float | None = None
+    acceptance_ratio: float | None = None
+    total_time_sec: float | None = None
+    precompilation_time_sec: float | None = None
+    net_time_sec: float | None = None
     timing_breakdown: dict = field(default_factory=dict)
 
 
@@ -112,12 +111,12 @@ class VMC_Step_Data:
 class VMC_Diagnostic_Data:
     """Aggregated parse result for an entire VMC optimization.
 
-    Attributes
+    Attributes:
     ----------
     steps : list of VMC_Step_Data
         Per-step data in chronological order.
     total_opt_steps : int or None
-        Total optimization steps (``Optimization step = N/M`` → M).
+        Total optimization steps (``Optimization step = N/M`` -> M).
     total_opt_time_sec : float or None
         ``Total elapsed time for optimization N steps. = X sec.``
     opt_timing_breakdown : dict
@@ -130,11 +129,11 @@ class VMC_Diagnostic_Data:
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found (indicates abnormal termination).
     num_mpi_processes : int or None
-        ``The number of MPI process = N.`` → N.
+        ``The number of MPI process = N.`` -> N.
     num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` → N.
+        ``The number of walkers assigned for each MPI process = N.`` -> N.
     jax_backend : str or None
-        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
         Set to ``"cpu"`` when the log says
         ``Running on CPUs or single GPU``.
     jax_devices : list or None
@@ -146,29 +145,29 @@ class VMC_Diagnostic_Data:
     """
 
     steps: list = field(default_factory=list)  # list[VMC_Step_Data]
-    total_opt_steps: Optional[int] = None
-    total_opt_time_sec: Optional[float] = None
+    total_opt_steps: int | None = None
+    total_opt_time_sec: float | None = None
     opt_timing_breakdown: dict = field(default_factory=dict)
-    optimized_hamiltonian: Optional[str] = None
-    restart_checkpoint: Optional[str] = None
-    num_mpi_processes: Optional[int] = None
-    num_walkers_per_process: Optional[int] = None
-    jax_backend: Optional[str] = None
-    jax_devices: Optional[list] = None
+    optimized_hamiltonian: str | None = None
+    restart_checkpoint: str | None = None
+    num_mpi_processes: int | None = None
+    num_walkers_per_process: int | None = None
+    jax_backend: str | None = None
+    jax_devices: list | None = None
     stderr_tail: str = ""
 
 
-# ── MCMC ──────────────────────────────────────────────────────────
+# -- MCMC ----------------------------------------------------------
 
 
 @dataclass
 class MCMC_Diagnostic_Data:
     """Parse result for an MCMC sampling run.
 
-    Attributes
+    Attributes:
     ----------
     acceptance_ratio : float or None
-        ``Acceptance ratio is X %`` → X / 100.
+        ``Acceptance ratio is X %`` -> X / 100.
     avg_walker_weight : float or None
         ``Average of walker weights is X``.
     total_time_sec : float or None
@@ -194,46 +193,46 @@ class MCMC_Diagnostic_Data:
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found.
     num_mpi_processes : int or None
-        ``The number of MPI process = N.`` → N.
+        ``The number of MPI process = N.`` -> N.
     num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` → N.
+        ``The number of walkers assigned for each MPI process = N.`` -> N.
     jax_backend : str or None
-        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
     jax_devices : list or None
         Parsed list of global XLA device strings.
     stderr_tail : str
         Last portion of stderr (up to 200 lines).
     """
 
-    acceptance_ratio: Optional[float] = None
-    avg_walker_weight: Optional[float] = None
-    total_time_sec: Optional[float] = None
-    precompilation_time_sec: Optional[float] = None
-    net_time_sec: Optional[float] = None
+    acceptance_ratio: float | None = None
+    avg_walker_weight: float | None = None
+    total_time_sec: float | None = None
+    precompilation_time_sec: float | None = None
+    net_time_sec: float | None = None
     timing_breakdown: dict = field(default_factory=dict)
-    energy: Optional[float] = None
-    energy_error: Optional[float] = None
-    atomic_forces: Optional[list] = None
-    hamiltonian_data_file: Optional[str] = None
-    restart_checkpoint: Optional[str] = None
-    num_mpi_processes: Optional[int] = None
-    num_walkers_per_process: Optional[int] = None
-    jax_backend: Optional[str] = None
-    jax_devices: Optional[list] = None
+    energy: float | None = None
+    energy_error: float | None = None
+    atomic_forces: list | None = None
+    hamiltonian_data_file: str | None = None
+    restart_checkpoint: str | None = None
+    num_mpi_processes: int | None = None
+    num_walkers_per_process: int | None = None
+    jax_backend: str | None = None
+    jax_devices: list | None = None
     stderr_tail: str = ""
 
 
-# ── LRDMC ─────────────────────────────────────────────────────────
+# -- LRDMC ---------------------------------------------------------
 
 
 @dataclass
 class LRDMC_Diagnostic_Data:
     """Parse result for an LRDMC calculation.
 
-    Attributes
+    Attributes:
     ----------
     survived_walkers_ratio : float or None
-        ``Survived walkers ratio = X %`` → X / 100.
+        ``Survived walkers ratio = X %`` -> X / 100.
     avg_num_projections : float or None
         ``Average of the number of projections = X``.
     total_time_sec : float or None
@@ -260,46 +259,46 @@ class LRDMC_Diagnostic_Data:
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found.
     num_mpi_processes : int or None
-        ``The number of MPI process = N.`` → N.
+        ``The number of MPI process = N.`` -> N.
     num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` → N.
+        ``The number of walkers assigned for each MPI process = N.`` -> N.
     jax_backend : str or None
-        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
     jax_devices : list or None
         Parsed list of global XLA device strings.
     stderr_tail : str
         Last portion of stderr (up to 200 lines).
     """
 
-    survived_walkers_ratio: Optional[float] = None
-    avg_num_projections: Optional[float] = None
-    total_time_sec: Optional[float] = None
-    precompilation_time_sec: Optional[float] = None
-    net_time_sec: Optional[float] = None
+    survived_walkers_ratio: float | None = None
+    avg_num_projections: float | None = None
+    total_time_sec: float | None = None
+    precompilation_time_sec: float | None = None
+    net_time_sec: float | None = None
     timing_breakdown: dict = field(default_factory=dict)
-    energy: Optional[float] = None
-    energy_error: Optional[float] = None
-    atomic_forces: Optional[list] = None
-    hamiltonian_data_file: Optional[str] = None
-    restart_checkpoint: Optional[str] = None
-    num_mpi_processes: Optional[int] = None
-    num_walkers_per_process: Optional[int] = None
-    jax_backend: Optional[str] = None
-    jax_devices: Optional[list] = None
+    energy: float | None = None
+    energy_error: float | None = None
+    atomic_forces: list | None = None
+    hamiltonian_data_file: str | None = None
+    restart_checkpoint: str | None = None
+    num_mpi_processes: int | None = None
+    num_walkers_per_process: int | None = None
+    jax_backend: str | None = None
+    jax_devices: list | None = None
     stderr_tail: str = ""
 
 
-# ── LRDMC extrapolation ──────────────────────────────────────────
+# -- LRDMC extrapolation ------------------------------------------
 
 
 @dataclass
 class LRDMC_Ext_Diagnostic_Data:
-    """Parse result for an LRDMC a²→0 extrapolation.
+    """Parse result for an LRDMC a^2->0 extrapolation.
 
-    Attributes
+    Attributes:
     ----------
     extrapolated_energy : float or None
-        ``For a -> 0 bohr: E = X +- Y Ha.`` → X.
+        ``For a -> 0 bohr: E = X +- Y Ha.`` -> X.
     extrapolated_energy_error : float or None
         Y from the above.
     per_alat_results : list of dict
@@ -308,13 +307,13 @@ class LRDMC_Ext_Diagnostic_Data:
         Last portion of stderr (up to 200 lines).
     """
 
-    extrapolated_energy: Optional[float] = None
-    extrapolated_energy_error: Optional[float] = None
+    extrapolated_energy: float | None = None
+    extrapolated_energy_error: float | None = None
     per_alat_results: list = field(default_factory=list)
     stderr_tail: str = ""
 
 
-# ── Input parameters ──────────────────────────────────────────────
+# -- Input parameters ----------------------------------------------
 
 
 @dataclass
@@ -335,7 +334,7 @@ class Input_Parameters:
             "<job_type>": { ... all job-type params with defaults ... },
         }
 
-    Attributes
+    Attributes:
     ----------
     actual_opt_steps : int or None
         For VMC: last completed optimization step stored in
@@ -346,5 +345,5 @@ class Input_Parameters:
         in ``workflow_state.toml``.
     """
 
-    actual_opt_steps: Optional[int] = None
+    actual_opt_steps: int | None = None
     per_input: list = field(default_factory=list)  # list[dict]

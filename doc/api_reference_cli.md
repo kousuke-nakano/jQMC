@@ -17,7 +17,7 @@ mpirun -np <N> jqmc <input-file> > <output.log>
 The input file is a JSON/YAML document whose keys match the parameters listed below.
 
 > **Note**
-> Throughout this document, “per MPI process and per walker” means the quantity is counted for each MPI rank and for each walker on that rank. When relevant, the total across all ranks and walkers is indicated explicitly.
+> Throughout this document, "per MPI process and per walker" means the quantity is counted for each MPI rank and for each walker on that rank. When relevant, the total across all ranks and walkers is indicated explicitly.
 
 ---
 
@@ -42,12 +42,12 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 | Key                        |      Default | Description                                                                                                                                                                                                                                   |
 | -------------------------- | -----------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `num_mcmc_steps`           | **required** | Number of **measurement** steps per MPI process and per walker. Local energy and other observables are measured `num_mcmc_steps` times in total per (rank × walker). The global total equals `num_mcmc_steps × mpi_size × number_of_walkers`. |
+| `num_mcmc_steps`           | **required** | Number of **measurement** steps per MPI process and per walker. Local energy and other observables are measured `num_mcmc_steps` times in total per (rank x walker). The global total equals `num_mcmc_steps x mpi_size x number_of_walkers`. |
 | `num_mcmc_per_measurement` |         `40` | MCMC updates between successive measurements. Observables are recorded every `num_mcmc_per_measurement` steps.                                                                                                                                |
 | `num_mcmc_warmup_steps`    |          `0` | Number of **warm-up** measurement steps to be discarded.                                                                                                                                                                                      |
-| `num_mcmc_bin_blocks`      |          `1` | Number of binning blocks per MPI process and per walker (total binned blocks = `num_mcmc_bin_blocks × mpi_size × number_of_walkers`).                                                                                                         |
+| `num_mcmc_bin_blocks`      |          `1` | Number of binning blocks per MPI process and per walker (total binned blocks = `num_mcmc_bin_blocks x mpi_size x number_of_walkers`).                                                                                                         |
 | `Dt`                       |        `2.0` | MCMC step size (Bohr).                                                                                                                                                                                                                        |
-| `epsilon_AS`               |        `0.0` | ε parameter for the Attaccalite–Sorella regularization.                                                                                                                                                                                       |
+| `epsilon_AS`               |        `0.0` | eps parameter for the Attaccalite-Sorella regularization.                                                                                                                                                                                       |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                                                                                                                             |
 | `use_swct`                 |       `true` | If `true`, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is `true` for MCMC.                                                                                                                                    |
 
@@ -62,15 +62,15 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_mcmc_warmup_steps`    |          `0` | Warm-up steps to discard.                                                                                            |
 | `num_mcmc_bin_blocks`      |          `1` | Binning blocks per MPI process and per walker.                                                                       |
 | `Dt`                       |        `2.0` | MCMC step size (Bohr).                                                                                               |
-| `epsilon_AS`               |        `0.0` | ε for Attaccalite–Sorella regularization.                                                                            |
+| `epsilon_AS`               |        `0.0` | eps for Attaccalite-Sorella regularization.                                                                            |
 | `num_opt_steps`            | **required** | Number of optimization iterations.                                                                                   |
 | `wf_dump_freq`             |          `1` | Write wavefunction/Hamiltonian checkpoint every this many optimization steps.                                        |
-| `optimizer_kwargs`         | `{ "method": "sr", "delta": 0.01, "epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration or to an optax optimizer name (e.g., `"adam"`). For `method = "sr"`: `delta`/`epsilon` control step size and regularization; `cg_*` entries tune the conjugate-gradient solver. To use the linear method, set `method = "sr"` with `use_lm = true`; `delta` controls the learning rate, `epsilon` controls SR regularization, `lm_subspace_dim` (default `0`) sets the LM subspace dimension (`0`=aSR, `>0`=LM with top-N params, `-1`=all params), and `lm_cond` (default `0.001`) sets the dgelscut correlation matrix min eigenvalue threshold (condition number ≤ 1/lm_cond). Any additional keys are forwarded to optax when `method` is an optax optimizer name. |
+| `optimizer_kwargs`         | `{ "method": "sr", "delta": 0.01, "epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration or to an optax optimizer name (e.g., `"adam"`). For `method = "sr"`: `delta`/`epsilon` control step size and regularization; `cg_*` entries tune the conjugate-gradient solver. To use the linear method, set `method = "sr"` with `use_lm = true`; `delta` controls the learning rate, `epsilon` controls SR regularization, `lm_subspace_dim` (default `0`) sets the LM subspace dimension (`0`=aSR, `>0`=LM with top-N params, `-1`=all params), and `lm_cond` (default `0.001`) sets the dgelscut correlation matrix min eigenvalue threshold (condition number <= 1/lm_cond). Any additional keys are forwarded to optax when `method` is an optax optimizer name. |
 | `opt_J1_param`             |       `true` | Optimize J1 parameters.                                                                                              |
 | `opt_J2_param`             |       `true` | Optimize J2 parameters.                                                                                              |
 | `opt_J3_param`             |       `true` | Optimize J3 parameters.                                                                                              |
 | `opt_JNN_param`            |      `false` | Optimize neural-network Jastrow parameters.                                                                          |
-| `opt_lambda_param`         |      `false` | Optimize geminal (λ) parameters.                                                                                     |
+| `opt_lambda_param`         |      `false` | Optimize geminal (lambda) parameters.                                                                                     |
 | `opt_with_projected_MOs`   |      `false` | If `true`, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. |
 | `opt_J3_basis_exp`         |      `false` | Optimize J3 AO Gaussian exponents. Can be combined with `opt_with_projected_MOs`. |
 | `opt_J3_basis_coeff`       |      `false` | Optimize J3 AO contraction coefficients. Can be combined with `opt_with_projected_MOs`. |
@@ -85,15 +85,15 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | -------------------------- | -----------: | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `num_mcmc_steps`           | **required** | Number of **measurement** steps per MPI process and per walker during LRDMC.                                                           |
 | `num_mcmc_per_measurement` |         `40` | Number of GFMC projections between measurements (observables recorded after each block of projections).                                |
-| `alat`                     |       `0.30` | Lattice discretization parameter (grid spacing). The lattice spacing is `alat × a₀`, where `a₀` is the Bohr radius.                    |
+| `alat`                     |       `0.30` | Lattice discretization parameter (grid spacing). The lattice spacing is `alat x a_0`, where `a_0` is the Bohr radius.                    |
 | `non_local_move`           |    `"tmove"` | Treatment of non-local ECP terms: `"tmove"` (T-move) or `"dltmove"` (determinant-locality + T-move).                                   |
 | `num_gfmc_warmup_steps`    |          `0` | Number of warm-up measurement steps to discard.                                                                                        |
-| `num_gfmc_bin_blocks`      |          `1` | Number of binning blocks for GFMC. **Total binned blocks = `num_gfmc_bin_blocks`** (not multiplied by `mpi_size × number_of_walkers`). |
+| `num_gfmc_bin_blocks`      |          `1` | Number of binning blocks for GFMC. **Total binned blocks = `num_gfmc_bin_blocks`** (not multiplied by `mpi_size x number_of_walkers`). |
 | `num_gfmc_collect_steps`   |          `0` | Number of pre-binning measurements used to collect/accumulate weights.                                                                 |
 | `E_scf`                    |        `0.0` | Initial total-energy guess used to set the initial GFMC energy shift.                                                                  |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                      |
 | `use_swct`                 |      `false` | If `true`, apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is `false` for LRDMC.                           |
-| `epsilon_PW`               |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
+| `epsilon_PW`               |        `0.0` | Pathak-Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---
 
@@ -103,14 +103,14 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | ------------------------ | -----------: | ---------------------------------------------------------------------- |
 | `num_mcmc_steps`         | **required** | Number of **measurement** steps per MPI process and per walker.        |
 | `tau`                    |       `0.10` | Imaginary-time step size between projections.                          |
-| `alat`                   |       `0.30` | Lattice discretization parameter; lattice spacing `alat × a₀`.         |
+| `alat`                   |       `0.30` | Lattice discretization parameter; lattice spacing `alat x a_0`.         |
 | `non_local_move`         |    `"tmove"` | Non-local ECP treatment: `"tmove"` or `"dltmove"`.                     |
 | `num_gfmc_warmup_steps`  |          `0` | Warm-up steps to discard.                                              |
 | `num_gfmc_bin_blocks`    |          `1` | Binning blocks for GFMC (total binned blocks = `num_gfmc_bin_blocks`). |
 | `num_gfmc_collect_steps` |          `0` | Pre-binning measurement count for weight collection.                   |
 | `atomic_force`           |      `false` | If `true`, compute atomic forces.                                      |
 | `use_swct`               |      `false` | If `true`, apply SWCT to atomic forces. Default is `false` for LRDMC.  |
-| `epsilon_PW`             |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
+| `epsilon_PW`             |        `0.0` | Pathak-Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---
 

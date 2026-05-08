@@ -119,8 +119,8 @@ for _ in range(REPEATS):
         leaf.block_until_ready()
     all_elements_auto_times.append(time.perf_counter() - start)
 
-print("    all_elements analytic : {:.6f}".format(np.mean(all_elements_analytic_times)))
-print("    all_elements autodiff : {:.6f}".format(np.mean(all_elements_auto_times)))
+print(f"    all_elements analytic : {np.mean(all_elements_analytic_times):.6f}")
+print(f"    all_elements autodiff : {np.mean(all_elements_auto_times):.6f}")
 
 if BENCH_NN:
     jastrow_nn_data = Jastrow_NN_data.init_from_structure(
@@ -191,5 +191,5 @@ if BENCH_NN:
             leaf.block_until_ready()
         all_elements_auto_times.append(time.perf_counter() - start)
 
-    print("    all_elements analytic : {:.6f}".format(np.mean(all_elements_analytic_times)))
-    print("    all_elements autodiff : {:.6f}".format(np.mean(all_elements_auto_times)))
+    print(f"    all_elements analytic : {np.mean(all_elements_analytic_times):.6f}")
+    print(f"    all_elements autodiff : {np.mean(all_elements_auto_times):.6f}")

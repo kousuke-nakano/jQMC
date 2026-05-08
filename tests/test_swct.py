@@ -44,14 +44,14 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance  # noqa: E402
-from jqmc.swct import (  # noqa: E402
+from jqmc._precision import get_tolerance
+from jqmc.swct import (
     _evaluate_swct_domega_debug,
     _evaluate_swct_omega_debug,
     evaluate_swct_domega,
     evaluate_swct_omega,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

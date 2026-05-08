@@ -52,7 +52,6 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
-from jax.scipy import linalg as jsp_linalg  # noqa: F401  (kept for external callers)
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
@@ -78,6 +77,8 @@ from .coulomb_potential import (
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
 from .determinant import (
+    _compute_u_dn_move_from_det_ratio_state,
+    _compute_v_up_move_from_det_ratio_state,
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
@@ -274,7 +275,7 @@ class GFMC_t:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -488,7 +489,7 @@ class GFMC_t:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._GFMC_t__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._GFMC_t__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -736,6 +737,7 @@ class GFMC_t:
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
+            det_ratio_state=None,
         ):
             """Single GFMC_t projection step, parameterized by per-electron continuum kinetic energy.
 
@@ -786,6 +788,7 @@ class GFMC_t:
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
                     j3_state=j3_state,
+                    det_ratio_state=det_ratio_state,
                 )
             )
             # spin-filp
@@ -909,6 +912,7 @@ class GFMC_t:
                             A_old_inv=A_old_inv,
                             RT=R.T,
                             j3_state=j3_state,
+                            det_ratio_state=det_ratio_state,
                         )
                     )
 
@@ -928,6 +932,7 @@ class GFMC_t:
                             A_old_inv=A_old_inv,
                             RT=R.T,
                             j3_state=j3_state,
+                            det_ratio_state=det_ratio_state,
                         )
                     )
 
@@ -1032,18 +1037,29 @@ class GFMC_t:
                 dn_index = jnp.argmax(dn_diff)
 
             def _update_inv_up_t(_):
-                v = (
-                    compute_geminal_up_one_row_elements(
+                # Streaming path uses cached AO + paired_dn from
+                # ``det_ratio_state``; legacy path falls back to the
+                # twice-called row helper.
+                if det_ratio_state is None:
+                    v = (
+                        compute_geminal_up_one_row_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                        - compute_geminal_up_one_row_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                    )[:, None]
+                else:
+                    v = _compute_v_up_move_from_det_ratio_state(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                    - compute_geminal_up_one_row_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                )[:, None]
+                        state=det_ratio_state,
+                        moved_index=up_index,
+                        r_up_carts_proposed=new_r_up_carts,
+                    )[:, None]
                 u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
                 Ainv_u = A_old_inv @ u
                 vT_Ainv = v.T @ A_old_inv
@@ -1062,18 +1078,26 @@ class GFMC_t:
             else:
 
                 def _update_inv_dn_t(_):
-                    u = (
-                        compute_geminal_dn_one_column_elements(
+                    if det_ratio_state is None:
+                        u = (
+                            compute_geminal_dn_one_column_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_carts=r_up_carts,
+                                r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
+                            )
+                            - compute_geminal_dn_one_column_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_carts=r_up_carts,
+                                r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                            )
+                        )[:, None]
+                    else:
+                        u = _compute_u_dn_move_from_det_ratio_state(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
-                        )
-                        - compute_geminal_dn_one_column_elements(
-                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
-                        )
-                    )[:, None]
+                            state=det_ratio_state,
+                            moved_index=dn_index,
+                            r_dn_carts_proposed=new_r_dn_carts,
+                        )[:, None]
                     v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
@@ -1197,6 +1221,7 @@ class GFMC_t:
                 non_local_move,
                 alat,
                 hamiltonian_data,
+                det_ratio_state=kinetic_state.det_state,
             )
             moved_spin_is_up = has_up
             moved_index = jnp.where(has_up, up_idx, dn_idx)
@@ -1212,10 +1237,12 @@ class GFMC_t:
             return (e_L, pc, tl, wL, ru, rd, Ainv, kinetic_state_new, key, RT)
 
         # Python-static dispatch: streaming is incompatible with NN three-body
-        # Jastrow (J_NN has no rank-1 advance), and offers no benefit when J3 is
-        # absent. Mirrors the GFMC_n dispatch policy.
+        # Jastrow (J_NN has no rank-1 advance). The determinant streaming
+        # path (now consuming ``kinetic_state.det_state`` in the LRDMC mesh
+        # kernels and the GFMC inv-update) brings benefit even when J3 is
+        # absent, so the dispatch gate depends only on ``jastrow_nn_data``.
         jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data
-        use_streaming = jastrow_data.jastrow_nn_data is None and jastrow_data.jastrow_three_body_data is not None
+        use_streaming = jastrow_data.jastrow_nn_data is None
 
         # projection compilation.
         start_init = time.perf_counter()
@@ -1534,7 +1561,7 @@ class GFMC_t:
         #     change between branching steps within a single ``run()``.
         # If these were defined inside the per-branching loop, every step
         # would create a fresh function identity and trigger a full
-        # re-trace + re-compile (causing ~7 s/step on H100).
+        # re-trace + re-compile.
         # ------------------------------------------------------------------
         def _cond_t(carry):
             tau_left = carry[2]
@@ -1655,12 +1682,6 @@ class GFMC_t:
         logger.info("")
 
         logger.info("-Start branching-")
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        gmfc_total_current = time.perf_counter()
-        logger.info(
-            f"  branching step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
-        )
-
         num_mcmc_done = 0
 
         # -- Extend stored arrays with zero-padding for new steps --
@@ -1690,12 +1711,13 @@ class GFMC_t:
                     [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
                 )
 
+        gfmc_loop_start = time.perf_counter()
         for i_branching in range(num_mcmc_steps):
-            if (i_branching + 1) % gfmc_interval == 0:
-                progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_branching % gfmc_interval == 0:
+                progress = (i_branching + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  branching step = {i_branching + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
+                    f"  branching step = {i_branching + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_loop_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -1721,12 +1743,9 @@ class GFMC_t:
             # dispatched ``vmap(_projection_t)`` from the host once per
             # projection step and broke on ``np.max(tau_left_list) <= 0``.
             # That ``np.max`` forces a host-side jax->numpy materialization,
-            # which blocks on the GPU once per step (so 27 projections =>
-            # 27 host syncs and 27 jit dispatches per branching). On H100
-            # this dominates wall time for small systems (e.g. 01water:
-            # ~4.5 ms/step vs <0.5 ms/step measured for GFMC_n which uses
-            # ``lax.fori_loop``). We replace it with ``lax.while_loop`` so
-            # the entire projection loop is captured into a single jit graph
+            # which blocks on the GPU once per step and dispatches a fresh
+            # jit per step. We replace it with ``lax.while_loop`` so the
+            # entire projection loop is captured into a single jit graph
             # (CUDA-graph friendly) and only one host sync happens at the
             # end via ``block_until_ready`` below. The cond is evaluated on
             # device (``jnp.max(tau_left) > 0.0``).
@@ -2019,7 +2038,7 @@ class GFMC_t:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -2119,7 +2138,7 @@ class GFMC_t:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -2179,7 +2198,7 @@ class GFMC_t:
             end_ = time.perf_counter()
             logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -2316,6 +2335,11 @@ class GFMC_t:
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        gmfc_total_current = time.perf_counter()
+        logger.info(
+            f"  branching step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_loop_start):.1f} sec."
+        )
         logger.info("")
 
         # count up
@@ -2469,12 +2493,12 @@ class GFMC_t:
                 # Two-pass jackknife std (centered sum of squares) to avoid
                 # catastrophic cancellation in <x^2> - <x>^2.
 
-                # E: 1st pass — mean, 2nd pass — centered sum of squares
+                # E: 1st pass -- mean, 2nd pass -- centered sum of squares
                 E_mean = np.sum(E_jackknife_binned_local) / M_local
                 E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: 1st pass — mean, 2nd pass — centered sum of squares
+                # Var: 1st pass -- mean, 2nd pass -- centered sum of squares
                 Var_mean = np.sum(Var_jackknife_binned_local) / M_total
                 Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -2563,20 +2587,20 @@ class GFMC_t:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: 1st pass — global mean
+            # E: 1st pass -- global mean
             sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
 
-            # E: 2nd pass — centered sum of squares (numerically stable)
+            # E: 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
             E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: 1st pass — global mean
+            # Var: 1st pass -- global mean
             sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
 
-            # Var: 2nd pass — centered sum of squares
+            # Var: 2nd pass -- centered sum of squares
             sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
             Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -2860,13 +2884,13 @@ class GFMC_t:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # 1st pass — global mean
+            # 1st pass -- global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
             sum_force_global = np.empty_like(sum_force_local)
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
             mean_force_global = sum_force_global / M_total
 
-            # 2nd pass — centered sum of squares (numerically stable)
+            # 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
             sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
             mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
@@ -2975,7 +2999,7 @@ class _GFMC_t_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -3331,15 +3355,13 @@ class _GFMC_t_debug:
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  branching step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %.")
 
         num_mcmc_done = 0
         for i_branching in range(num_mcmc_steps):
-            if (i_branching + 1) % gfmc_interval == 0:
-                progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_branching % gfmc_interval == 0:
+                progress = (i_branching + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  branching step = {i_branching + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+                    f"  branching step = {i_branching + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Always set the initial weight list to 1.0
@@ -3620,16 +3642,15 @@ class _GFMC_t_debug:
                     if tau_left <= 0.0:  # '= is very important!!'
                         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                         break
-                    else:
-                        # electron position update
-                        # random choice
-                        # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
-                        jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                        cdf = jnp.cumsum(non_diagonal_move_probabilities)
-                        random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
-                        k = jnp.searchsorted(cdf, random_value)
-                        r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
-                        r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
+                    # electron position update
+                    # random choice
+                    # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
+                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                    cdf = jnp.cumsum(non_diagonal_move_probabilities)
+                    random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                    k = jnp.searchsorted(cdf, random_value)
+                    r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
+                    r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
                 projection_counter_list[i_walker] = projection_counter
                 e_L_list[i_walker] = e_L
@@ -3958,6 +3979,10 @@ class _GFMC_t_debug:
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(
+            f"  branching step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+        )
         logger.info("")
 
         # count up mcmc_counter
@@ -4287,7 +4312,7 @@ class GFMC_n:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -4356,7 +4381,7 @@ class GFMC_n:
         self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
         self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
 
-        # stored G_L and G_e_L for updating the E_scf (kept as lists — variable count per run)
+        # stored G_L and G_e_L for updating the E_scf (kept as lists -- variable count per run)
         self.__G_L = []
         self.__G_e_L = []
 
@@ -4503,7 +4528,7 @@ class GFMC_n:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._GFMC_n__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._GFMC_n__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -4785,6 +4810,7 @@ class GFMC_n:
                 diagonal_kinetic_continuum_elements_up,
                 diagonal_kinetic_continuum_elements_dn,
                 j3_state=None,
+                det_ratio_state=None,
             ):
                 """Single GFMC projection step, parameterized by per-electron continuum kinetic energy.
 
@@ -4803,7 +4829,6 @@ class GFMC_n:
                 ``None`` (default) on the legacy path; the callees fall back to fresh
                 AO evaluation when ``j3_state is None``.
                 """
-
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
@@ -4827,6 +4852,7 @@ class GFMC_n:
                         r_dn_carts=r_dn_carts,
                         RT=R.T,
                         j3_state=j3_state,
+                        det_ratio_state=det_ratio_state,
                     )
                 )
                 # spin-filp
@@ -4961,6 +4987,7 @@ class GFMC_n:
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
                                 j3_state=j3_state,
+                                det_ratio_state=det_ratio_state,
                             )
                         )
 
@@ -4988,6 +5015,7 @@ class GFMC_n:
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
                                 j3_state=j3_state,
+                                det_ratio_state=det_ratio_state,
                             )
                         )
 
@@ -5081,18 +5109,29 @@ class GFMC_n:
                     dn_index = jnp.argmax(dn_diff)
 
                 def _update_inv_up_n(_):
-                    v = (
-                        compute_geminal_up_one_row_elements(
+                    # v construction: streaming path uses cached AO +
+                    # paired_dn from ``det_ratio_state``; legacy path falls
+                    # back to the twice-called row helper.
+                    if det_ratio_state is None:
+                        v = (
+                            compute_geminal_up_one_row_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_cart=jnp.reshape(proposed_r_up_carts[up_index], (1, 3)),
+                                r_dn_carts=r_dn_carts,
+                            )
+                            - compute_geminal_up_one_row_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                                r_dn_carts=r_dn_carts,
+                            )
+                        )[:, None]
+                    else:
+                        v = _compute_v_up_move_from_det_ratio_state(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_cart=jnp.reshape(proposed_r_up_carts[up_index], (1, 3)),
-                            r_dn_carts=r_dn_carts,
-                        )
-                        - compute_geminal_up_one_row_elements(
-                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
-                            r_dn_carts=r_dn_carts,
-                        )
-                    )[:, None]
+                            state=det_ratio_state,
+                            moved_index=up_index,
+                            r_up_carts_proposed=proposed_r_up_carts,
+                        )[:, None]
                     u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
@@ -5111,18 +5150,26 @@ class GFMC_n:
                 else:
 
                     def _update_inv_dn_n(_):
-                        u = (
-                            compute_geminal_dn_one_column_elements(
+                        if det_ratio_state is None:
+                            u = (
+                                compute_geminal_dn_one_column_elements(
+                                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                    r_up_carts=r_up_carts,
+                                    r_dn_cart=jnp.reshape(proposed_r_dn_carts[dn_index], (1, 3)),
+                                )
+                                - compute_geminal_dn_one_column_elements(
+                                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                    r_up_carts=r_up_carts,
+                                    r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                                )
+                            )[:, None]
+                        else:
+                            u = _compute_u_dn_move_from_det_ratio_state(
                                 geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                                r_up_carts=r_up_carts,
-                                r_dn_cart=jnp.reshape(proposed_r_dn_carts[dn_index], (1, 3)),
-                            )
-                            - compute_geminal_dn_one_column_elements(
-                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                                r_up_carts=r_up_carts,
-                                r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
-                            )
-                        )[:, None]
+                                state=det_ratio_state,
+                                moved_index=dn_index,
+                                r_dn_carts_proposed=proposed_r_dn_carts,
+                            )[:, None]
                         v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
                         Ainv_u = A_old_inv @ u
                         vT_Ainv = v.T @ A_old_inv
@@ -5167,7 +5214,7 @@ class GFMC_n:
 
             @jit
             def _body_fun_n(i, carry):
-                """Legacy GFMC projection body — recomputes kinetic energies fresh per step."""
+                """Legacy GFMC projection body -- recomputes kinetic energies fresh per step."""
                 (
                     w_L,
                     r_up_carts,
@@ -5210,7 +5257,7 @@ class GFMC_n:
 
             @jit
             def _body_fun_n_streaming(i, carry):
-                """Streaming GFMC projection body — reads kinetic energies from a maintained
+                """Streaming GFMC projection body -- reads kinetic energies from a maintained
                 ``Kinetic_streaming_state`` (J3 incrementally; J1/J2/det fresh in PR1) and
                 advances the state at the end of each step.
 
@@ -5249,6 +5296,7 @@ class GFMC_n:
                     ke_up,
                     ke_dn,
                     j3_state=kinetic_state.j3_state,
+                    det_ratio_state=kinetic_state.det_state,
                 )
 
                 kinetic_state_new = _advance_kinetic_energy_all_elements_streaming_state(
@@ -5282,14 +5330,14 @@ class GFMC_n:
 
             latest_jax_PRNG_key, (rotation_keys, move_keys) = _split_step_keys(init_jax_PRNG_key, num_mcmc_per_measurement)
 
-            # Python-static dispatch: the streaming path is incompatible with
-            # the NN three-body Jastrow (J_NN has no rank-1 advance — see
-            # lrdmc_refactoring.md 1-4). When NN J3 is present, fall back to
-            # the legacy path that recomputes kinetic energies fresh each step.
-            # The streaming path is also compatible only when J3 is present;
-            # otherwise the gain over legacy is zero, so we still use legacy.
+            # Python-static dispatch: streaming is incompatible with NN three-body
+            # Jastrow (J_NN has no rank-1 advance). The determinant streaming
+            # path (now consuming ``kinetic_state.det_state`` in the LRDMC
+            # mesh kernels and the GFMC inv-update) brings benefit even when
+            # J3 is absent, so the dispatch gate depends only on
+            # ``jastrow_nn_data``. Mirrors the GFMC_t dispatch policy.
             jastrow_data = hamiltonian_data.wavefunction_data.jastrow_data
-            use_streaming = jastrow_data.jastrow_nn_data is None and jastrow_data.jastrow_three_body_data is not None
+            use_streaming = jastrow_data.jastrow_nn_data is None
 
             if use_streaming:
                 init_kinetic_state = _init_kinetic_energy_all_elements_streaming_state(
@@ -5764,19 +5812,15 @@ class GFMC_n:
                     [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
                 )
 
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        gfmc_total_current = time.perf_counter()
-        logger.info(
-            f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
-        )
         mcmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))
 
+        gfmc_loop_start = time.perf_counter()
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 gfmc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
+                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_loop_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -6069,7 +6113,7 @@ class GFMC_n:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -6165,7 +6209,7 @@ class GFMC_n:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -6225,7 +6269,7 @@ class GFMC_n:
             end_ = time.perf_counter()
             logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -6416,6 +6460,11 @@ class GFMC_n:
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        gfmc_total_current = time.perf_counter()
+        logger.info(
+            f"  Progress: GFMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_loop_start):.1f} sec."
+        )
         logger.info("")
 
         # count up mcmc_counter
@@ -6576,12 +6625,12 @@ class GFMC_n:
                 # Two-pass jackknife std (centered sum of squares) to avoid
                 # catastrophic cancellation in <x^2> - <x>^2.
 
-                # E: 1st pass — mean, 2nd pass — centered sum of squares
+                # E: 1st pass -- mean, 2nd pass -- centered sum of squares
                 E_mean = np.sum(E_jackknife_binned_local) / M_local
                 E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: 1st pass — mean, 2nd pass — centered sum of squares
+                # Var: 1st pass -- mean, 2nd pass -- centered sum of squares
                 Var_mean = np.sum(Var_jackknife_binned_local) / M_total
                 Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -6670,20 +6719,20 @@ class GFMC_n:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: 1st pass — global mean
+            # E: 1st pass -- global mean
             sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
 
-            # E: 2nd pass — centered sum of squares (numerically stable)
+            # E: 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
             E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: 1st pass — global mean
+            # Var: 1st pass -- global mean
             sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
 
-            # Var: 2nd pass — centered sum of squares
+            # Var: 2nd pass -- centered sum of squares
             sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
             Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -6970,13 +7019,13 @@ class GFMC_n:
             # Two-pass jackknife std (centered sum of squares) to avoid
             # catastrophic cancellation in <x^2> - <x>^2.
 
-            # 1st pass — global mean
+            # 1st pass -- global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
             sum_force_global = np.empty_like(sum_force_local)
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
             mean_force_global = sum_force_global / M_total
 
-            # 2nd pass — centered sum of squares (numerically stable)
+            # 2nd pass -- centered sum of squares (numerically stable)
             sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
             sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
             mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
@@ -7085,7 +7134,7 @@ class _GFMC_n_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        # NOTE: per-walker debug log loop removed — it was O(num_walkers) Python
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
         # work (np.bincount per walker) executed regardless of log level, which
         # at nw = 16384 added measurable startup overhead.
         # for i_walker in range(self.__num_walkers):
@@ -7786,16 +7835,14 @@ class _GFMC_n_debug:
         # MAIN MCMC loop from here !!!
         logger.info("Start GFMC")
         num_mcmc_done = 0
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))
 
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
 
                 logger.info(
-                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Always set the initial weight list to 1.0
@@ -8190,6 +8237,10 @@ class _GFMC_n_debug:
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(
+            f"  Progress: GFMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+        )
         logger.info("")
 
         # count up mcmc_counter

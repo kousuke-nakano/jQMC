@@ -80,9 +80,7 @@ from .jastrow_factor import (
     _init_grads_laplacian_Jastrow_one_body_streaming_state,
     _init_grads_laplacian_Jastrow_three_body_streaming_state,
     _init_grads_laplacian_Jastrow_two_body_streaming_state,
-    compute_grads_and_laplacian_Jastrow_one_body,
     compute_grads_and_laplacian_Jastrow_part,
-    compute_grads_and_laplacian_Jastrow_two_body,
     compute_Jastrow_part,
 )
 from .molecular_orbital import MOs_data
@@ -731,7 +729,7 @@ def evaluate_ln_wavefunction_fast(
     Identical to :func:`evaluate_ln_wavefunction` in the forward direction.
     The backward pass (used when computing :math:`\partial\ln\Psi/\partial c`
     via JAX autodiff) replaces the fresh LU decomposition of the geminal matrix
-    with ``geminal_inv`` — the Sherman-Morrison running inverse — so that
+    with ``geminal_inv`` -- the Sherman-Morrison running inverse -- so that
     near-singular configurations (``epsilon_AS > 0``) do not produce NaN
     gradients.
 
@@ -751,7 +749,7 @@ def evaluate_ln_wavefunction_fast(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialized LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse -- the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect parameter gradients (``O_matrix`` / SR).
     """
@@ -986,42 +984,72 @@ def _compute_kinetic_energy_all_elements_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
-    """See compute_kinetic_energy_api."""
-    # compute laplacians
-    diff_h = 2.0e-4
+    """See compute_kinetic_energy_api.
 
-    Psi = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
+    Per-electron local kinetic energy via finite differences on ``ln|Psi|``:
+
+        T_L^(i) = -1/2 * ( nabla_i^2 ln|Psi| + |nabla_i ln|Psi||^2 )
+
+    Both the Laplacian and the gradient of ``ln|Psi|`` are computed with the
+    same 4-point 4th-order central stencil (sharing the four function
+    evaluations per coordinate):
+
+        f''(x) ~= (-f(x+2h) + 16 f(x+h) - 30 f(x) + 16 f(x-h) - f(x-2h)) / (12 h^2)
+        f'(x)  ~= ( -f(x+2h) +  8 f(x+h) -  8 f(x-h) + f(x-2h)) / (12 h)
+
+    FD-on-``ln|Psi|`` (instead of FD-on-``Psi`` followed by 1/Psi division)
+    avoids the 1/Psi amplification of round-off near nuclear cusps and keeps
+    the achievable accuracy at the ~h^4 truncation floor of a smooth scalar
+    field.
+    """
+    diff_h = 1.0e-3  # larger h is viable with 4th-order stencil
+
+    ln_Psi_0 = evaluate_ln_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
+
+    def _ln_eval_up(r_up):
+        return evaluate_ln_wavefunction(wavefunction_data, r_up, r_dn_carts)
+
+    def _ln_eval_dn(r_dn):
+        return evaluate_ln_wavefunction(wavefunction_data, r_up_carts, r_dn)
+
+    def _fd4_first_and_second(eval_fn, r_carts, i, d, h):
+        """Return (df/dx, d^2 f/dx^2) from a 4-point 4th-order central stencil."""
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[i, d] += h
+        r_p2[i, d] += 2 * h
+        r_m1[i, d] -= h
+        r_m2[i, d] -= 2 * h
+        f_p1 = eval_fn(r_p1)
+        f_p2 = eval_fn(r_p2)
+        f_m1 = eval_fn(r_m1)
+        f_m2 = eval_fn(r_m2)
+        first = (-f_p2 + 8 * f_p1 - 8 * f_m1 + f_m2) / (12 * h)
+        second = (-f_p2 + 16 * f_p1 - 30 * ln_Psi_0 + 16 * f_m1 - f_m2) / (12 * h**2)
+        return first, second
 
     n_up, d_up = r_up_carts.shape
-    laplacian_Psi_up = np.zeros(n_up)
+    laplacian_ln_Psi_up = np.zeros(n_up)
+    grad_norm_sq_up = np.zeros(n_up)
     for i in range(n_up):
         for d in range(d_up):
-            r_up_plus = r_up_carts.copy()
-            r_up_minus = r_up_carts.copy()
-            r_up_plus[i, d] += diff_h
-            r_up_minus[i, d] -= diff_h
-
-            Psi_plus = evaluate_wavefunction(wavefunction_data, r_up_plus, r_dn_carts)
-            Psi_minus = evaluate_wavefunction(wavefunction_data, r_up_minus, r_dn_carts)
-
-            laplacian_Psi_up[i] += (Psi_plus + Psi_minus - 2 * Psi) / (diff_h**2)
+            g, lap = _fd4_first_and_second(_ln_eval_up, r_up_carts, i, d, diff_h)
+            laplacian_ln_Psi_up[i] += lap
+            grad_norm_sq_up[i] += g * g
 
     n_dn, d_dn = r_dn_carts.shape
-    laplacian_Psi_dn = np.zeros(n_dn)
+    laplacian_ln_Psi_dn = np.zeros(n_dn)
+    grad_norm_sq_dn = np.zeros(n_dn)
     for i in range(n_dn):
         for d in range(d_dn):
-            r_dn_plus = r_dn_carts.copy()
-            r_dn_minus = r_dn_carts.copy()
-            r_dn_plus[i, d] += diff_h
-            r_dn_minus[i, d] -= diff_h
+            g, lap = _fd4_first_and_second(_ln_eval_dn, r_dn_carts, i, d, diff_h)
+            laplacian_ln_Psi_dn[i] += lap
+            grad_norm_sq_dn[i] += g * g
 
-            Psi_plus = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_plus)
-            Psi_minus = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_minus)
-
-            laplacian_Psi_dn[i] += (Psi_plus + Psi_minus - 2 * Psi) / (diff_h**2)
-
-    kinetic_energy_all_elements_up = -1.0 / 2.0 * laplacian_Psi_up / Psi
-    kinetic_energy_all_elements_dn = -1.0 / 2.0 * laplacian_Psi_dn / Psi
+    kinetic_energy_all_elements_up = -0.5 * (laplacian_ln_Psi_up + grad_norm_sq_up)
+    kinetic_energy_all_elements_dn = -0.5 * (laplacian_ln_Psi_dn + grad_norm_sq_dn)
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 
@@ -1162,7 +1190,7 @@ def compute_kinetic_energy_all_elements_fast_update(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialized LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse -- the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """
@@ -1227,7 +1255,7 @@ def _compute_kinetic_energy_all_elements_fast_update_debug(
 # Maintains enough auxiliary information to advance the per-electron kinetic
 # energies after a single-electron move without recomputing them from
 # scratch. PR1 (devel-speedup-lrdmc-incremental) enables this only for the
-# J3 part — J1, J2 and the determinant gradients/Laplacians are still
+# J3 part -- J1, J2 and the determinant gradients/Laplacians are still
 # recomputed fresh inside ``_advance_*``. Subsequent PRs will replace those
 # fresh recomputes with rank-1 updates while keeping the public per-electron
 # fields (``grad_J_up`` etc.) shape-stable.
@@ -1241,30 +1269,25 @@ def _compute_kinetic_energy_all_elements_fast_update_debug(
 class Kinetic_streaming_state:
     """Streaming state for per-electron kinetic-energy evaluation.
 
-    Fields evaluated at the current ``(r_up_carts, r_dn_carts)``:
+    Carry-fields at the current ``(r_up_carts, r_dn_carts)``:
 
-    - ``j3_state``: J3 auxiliary tables (None if no J3 component is active).
-    - ``det_state``: det auxiliary tables (always populated in PR2+; the
-      determinant per-electron grad/lap fields below mirror its outputs).
-    - ``grad_J_up`` / ``grad_J_dn``: total Jastrow per-electron gradient.
-    - ``lap_J_up`` / ``lap_J_dn``: total Jastrow per-electron Laplacian.
-    - ``grad_ln_D_up`` / ``grad_ln_D_dn``: per-electron ``∇ln|Det|`` from the
-      geminal at the current ``A_old_inv``.
-    - ``lap_ln_D_up`` / ``lap_ln_D_dn``: per-electron ``∇²ln|Det|``.
+    - ``j1_state`` / ``j2_state`` / ``j3_state``: per-Jastrow streaming
+      sub-states (None when the corresponding component is absent).
+    - ``det_state``: det streaming sub-state (always populated in PR2+).
+    - ``ke_up`` / ``ke_dn``: per-electron kinetic-energy values, pre-assembled
+      so that :func:`_kinetic_energy_from_streaming_state` becomes a free
+      struct-field read. Both init and advance compute these from the
+      freshly produced grad/lap totals while those are still register-resident,
+      avoiding a separate read kernel that would otherwise re-load all
+      grad/lap totals from DRAM.
     """
 
     j1_state: Jastrow_one_body_streaming_state | None = struct.field(pytree_node=True, default=None)
     j2_state: Jastrow_two_body_streaming_state | None = struct.field(pytree_node=True, default=None)
     j3_state: Jastrow_three_body_streaming_state | None = struct.field(pytree_node=True, default=None)
     det_state: Det_streaming_state | None = struct.field(pytree_node=True, default=None)
-    grad_J_up: jax.Array = struct.field(pytree_node=True, default=None)
-    grad_J_dn: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_J_up: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_J_dn: jax.Array = struct.field(pytree_node=True, default=None)
-    grad_ln_D_up: jax.Array = struct.field(pytree_node=True, default=None)
-    grad_ln_D_dn: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_ln_D_up: jax.Array = struct.field(pytree_node=True, default=None)
-    lap_ln_D_dn: jax.Array = struct.field(pytree_node=True, default=None)
+    ke_up: jax.Array = struct.field(pytree_node=True, default=None)
+    ke_dn: jax.Array = struct.field(pytree_node=True, default=None)
 
 
 def _kinetic_energy_from_grads_laps(
@@ -1277,7 +1300,7 @@ def _kinetic_energy_from_grads_laps(
     lap_ln_D_up,
     lap_ln_D_dn,
 ):
-    """Common assembly: ``-(1/2) * (∇²ln Ψ + ||∇ln Ψ||²)`` per electron."""
+    """Common assembly: ``-(1/2) * (nabla^2ln Psi + ||nablaln Psi||^2)`` per electron."""
     dtype_jnp = get_dtype_jnp("wf_kinetic")
     grad_J_up = jnp.asarray(grad_J_up, dtype=dtype_jnp)
     grad_J_dn = jnp.asarray(grad_J_dn, dtype=dtype_jnp)
@@ -1312,7 +1335,7 @@ def _init_kinetic_energy_all_elements_streaming_state(
     Note: ``geminal_inverse`` must be the inverse of ``G(r_up, r_dn)`` (the
     same invariant as :func:`compute_kinetic_energy_all_elements_fast_update`).
     """
-    # Per-electron Jastrow grad/lap (sum of J1/J2/J3/NN parts) — used as the
+    # Per-electron Jastrow grad/lap (sum of J1/J2/J3/NN parts) -- used as the
     # initial total. Sub-states below are populated for the streaming path.
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
@@ -1321,7 +1344,7 @@ def _init_kinetic_energy_all_elements_streaming_state(
     )
 
     # Cast totals to the jastrow_grad_lap zone so init and advance store
-    # ``grad_J_*`` / ``lap_J_*`` in the same dtype (Principle 3b — required
+    # ``grad_J_*`` / ``lap_J_*`` in the same dtype (Principle 3b -- required
     # for fori_loop carry-shape stability under mixed precision, where
     # ``advance`` reassembles the totals from streaming sub-states that
     # live in the jastrow_grad_lap zone).
@@ -1331,7 +1354,7 @@ def _init_kinetic_energy_all_elements_streaming_state(
     lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
     lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
 
-    # Determinant streaming state — drives grad_ln_D_*/lap_ln_D_* fields.
+    # Determinant streaming state -- drives grad_ln_D_*/lap_ln_D_* fields.
     det_state = _init_grads_laplacian_ln_Det_streaming_state(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
@@ -1355,34 +1378,38 @@ def _init_kinetic_energy_all_elements_streaming_state(
         else None
     )
 
+    # Assemble per-electron kinetic energies once here so the streaming carry
+    # only stores the small ke_up/ke_dn arrays. Subsequent reads via
+    # _kinetic_energy_from_streaming_state become free struct-field accesses.
+    ke_up, ke_dn = _kinetic_energy_from_grads_laps(
+        grad_J_up,
+        grad_J_dn,
+        lap_J_up,
+        lap_J_dn,
+        det_state.grad_ln_D_up,
+        det_state.grad_ln_D_dn,
+        det_state.lap_ln_D_up,
+        det_state.lap_ln_D_dn,
+    )
+
     return Kinetic_streaming_state(
         j1_state=j1_state,
         j2_state=j2_state,
         j3_state=j3_state,
         det_state=det_state,
-        grad_J_up=grad_J_up,
-        grad_J_dn=grad_J_dn,
-        lap_J_up=lap_J_up,
-        lap_J_dn=lap_J_dn,
-        grad_ln_D_up=det_state.grad_ln_D_up,
-        grad_ln_D_dn=det_state.grad_ln_D_dn,
-        lap_ln_D_up=det_state.lap_ln_D_up,
-        lap_ln_D_dn=det_state.lap_ln_D_dn,
+        ke_up=ke_up,
+        ke_dn=ke_dn,
     )
 
 
 def _kinetic_energy_from_streaming_state(state: Kinetic_streaming_state):
-    """Per-electron kinetic energies extracted from a streaming state."""
-    return _kinetic_energy_from_grads_laps(
-        state.grad_J_up,
-        state.grad_J_dn,
-        state.lap_J_up,
-        state.lap_J_dn,
-        state.grad_ln_D_up,
-        state.grad_ln_D_dn,
-        state.lap_ln_D_up,
-        state.lap_ln_D_dn,
-    )
+    """Per-electron kinetic energies extracted from a streaming state.
+
+    Returns the pre-assembled ``ke_up`` / ``ke_dn`` carried in the streaming
+    state. Init and advance produce these in the same kernel that produced
+    the grad/lap totals, so this read costs no DRAM traffic of its own.
+    """
+    return state.ke_up, state.ke_dn
 
 
 def _advance_kinetic_energy_all_elements_streaming_state(
@@ -1398,7 +1425,7 @@ def _advance_kinetic_energy_all_elements_streaming_state(
 
     PR1+PR2+PR3 scope: J1, J2, J3, and det sub-states are all updated
     incrementally. NN three-body falls back to a fresh
-    ``compute_grads_and_laplacian_Jastrow_part`` call (defensive — the
+    ``compute_grads_and_laplacian_Jastrow_part`` call (defensive -- the
     streaming dispatch in ``jqmc_gfmc.py`` excludes the NN case so this
     branch is unreachable in production).
 
@@ -1426,10 +1453,10 @@ def _advance_kinetic_energy_all_elements_streaming_state(
         lap_J1_dn = new_j1_state.lap_J1_dn
     else:
         new_j1_state = None
-        grad_J1_up = jnp.zeros_like(state.grad_J_up)
-        grad_J1_dn = jnp.zeros_like(state.grad_J_dn)
-        lap_J1_up = jnp.zeros_like(state.lap_J_up)
-        lap_J1_dn = jnp.zeros_like(state.lap_J_dn)
+        grad_J1_up = jnp.zeros_like(state.det_state.grad_ln_D_up)
+        grad_J1_dn = jnp.zeros_like(state.det_state.grad_ln_D_dn)
+        lap_J1_up = jnp.zeros_like(state.det_state.lap_ln_D_up)
+        lap_J1_dn = jnp.zeros_like(state.det_state.lap_ln_D_dn)
 
     # --- J2: incremental advance via streaming state ---------------------
     j2_data = jastrow_data.jastrow_two_body_data
@@ -1448,10 +1475,10 @@ def _advance_kinetic_energy_all_elements_streaming_state(
         lap_J2_dn = new_j2_state.lap_J2_dn
     else:
         new_j2_state = None
-        grad_J2_up = jnp.zeros_like(state.grad_J_up)
-        grad_J2_dn = jnp.zeros_like(state.grad_J_dn)
-        lap_J2_up = jnp.zeros_like(state.lap_J_up)
-        lap_J2_dn = jnp.zeros_like(state.lap_J_dn)
+        grad_J2_up = jnp.zeros_like(state.det_state.grad_ln_D_up)
+        grad_J2_dn = jnp.zeros_like(state.det_state.grad_ln_D_dn)
+        lap_J2_up = jnp.zeros_like(state.det_state.lap_ln_D_up)
+        lap_J2_dn = jnp.zeros_like(state.det_state.lap_ln_D_dn)
 
     # --- J3: incremental advance via streaming state ---------------------
     j3_data = jastrow_data.jastrow_three_body_data
@@ -1470,10 +1497,10 @@ def _advance_kinetic_energy_all_elements_streaming_state(
         lap_J3_dn = new_j3_state.lap_J3_dn
     else:
         new_j3_state = None
-        grad_J3_up = jnp.zeros_like(state.grad_J_up)
-        grad_J3_dn = jnp.zeros_like(state.grad_J_dn)
-        lap_J3_up = jnp.zeros_like(state.lap_J_up)
-        lap_J3_dn = jnp.zeros_like(state.lap_J_dn)
+        grad_J3_up = jnp.zeros_like(state.det_state.grad_ln_D_up)
+        grad_J3_dn = jnp.zeros_like(state.det_state.grad_ln_D_dn)
+        lap_J3_up = jnp.zeros_like(state.det_state.lap_ln_D_up)
+        lap_J3_dn = jnp.zeros_like(state.det_state.lap_ln_D_dn)
 
     # Reassemble Jastrow totals from the streamed sub-state contributions.
     grad_J_up = grad_J1_up + grad_J2_up + grad_J3_up
@@ -1481,7 +1508,7 @@ def _advance_kinetic_energy_all_elements_streaming_state(
     lap_J_up = lap_J1_up + lap_J2_up + lap_J3_up
     lap_J_dn = lap_J1_dn + lap_J2_dn + lap_J3_dn
 
-    # NN three-body (autodiff path) — defensive fallback. The streaming
+    # NN three-body (autodiff path) -- defensive fallback. The streaming
     # dispatch in ``jqmc_gfmc.py`` already routes NN-on cases to the legacy
     # body, so this branch is unreachable in production.
     if jastrow_data.jastrow_nn_data is not None:
@@ -1512,19 +1539,27 @@ def _advance_kinetic_energy_all_elements_streaming_state(
     lap_J_up = jnp.asarray(lap_J_up, dtype=dtype_jnp)
     lap_J_dn = jnp.asarray(lap_J_dn, dtype=dtype_jnp)
 
+    # Assemble per-electron kinetic energies in-kernel: the new grad/lap
+    # totals are still register-resident here, so this avoids the dedicated
+    # read kernel that would otherwise re-load all 8 arrays from DRAM.
+    ke_up, ke_dn = _kinetic_energy_from_grads_laps(
+        grad_J_up,
+        grad_J_dn,
+        lap_J_up,
+        lap_J_dn,
+        new_det_state.grad_ln_D_up,
+        new_det_state.grad_ln_D_dn,
+        new_det_state.lap_ln_D_up,
+        new_det_state.lap_ln_D_dn,
+    )
+
     return state.replace(
         j1_state=new_j1_state,
         j2_state=new_j2_state,
         j3_state=new_j3_state,
         det_state=new_det_state,
-        grad_J_up=grad_J_up,
-        grad_J_dn=grad_J_dn,
-        lap_J_up=lap_J_up,
-        lap_J_dn=lap_J_dn,
-        grad_ln_D_up=new_det_state.grad_ln_D_up,
-        grad_ln_D_dn=new_det_state.grad_ln_D_dn,
-        lap_ln_D_up=new_det_state.lap_ln_D_up,
-        lap_ln_D_dn=new_det_state.lap_ln_D_dn,
+        ke_up=ke_up,
+        ke_dn=ke_dn,
     )
 
 
@@ -1745,6 +1780,7 @@ def compute_discretized_kinetic_energy_fast_update(
     r_dn_carts: jax.Array,
     RT: jax.Array,
     j3_state: "Jastrow_three_body_streaming_state | None" = None,
+    det_ratio_state=None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     r"""Fast-update version of discretized kinetic mesh and ratios.
 
@@ -1766,6 +1802,12 @@ def compute_discretized_kinetic_energy_fast_update(
             recomputation. Use the value carried in the projection's
             ``Kinetic_streaming_state.j3_state``; pass ``None`` (default) for
             the original 1-shot path used by observation/MCMC code.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or a
+            superset like :class:`Det_streaming_state`) consistent with
+            ``(r_up_carts, r_dn_carts)``. Forwarded to
+            ``_compute_ratio_determinant_part_split_spin`` so it can skip
+            the bulk-side AO eval and the two ``lambda_paired @ ao_*``
+            precontracts.
 
     Returns:
         Tuple ``(r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part)`` with combined
@@ -1837,6 +1879,7 @@ def compute_discretized_kinetic_energy_fast_update(
             old_r_dn_carts=r_dn,
             new_r_up_shifted=r_up_carts_shifted,
             new_r_dn_shifted=r_dn_carts_shifted,
+            det_ratio_state=det_ratio_state,
         ),
         dtype=dtype_wf_ratio_jnp,
     )
@@ -1957,18 +2000,15 @@ def _compute_nodal_distance_debug(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> jax.Array:
-    r"""Compute the nodal distance using the paper's original formula (debug).
+    r"""Compute the nodal distance using autodiff of ``ln|Psi|`` (debug).
 
-    Uses the definition from Eq. (2) of Pathak & Wagner (2020):
-
-    .. math::
-
-        \vec{x} = \frac{\Psi \, \nabla \Psi}{|\nabla \Psi|^2},
-
-    and returns :math:`|x|`.  This is mathematically identical to
-    :func:`compute_nodal_distance` (:math:`1/|\nabla \ln|\Psi||`), but uses
-    :func:`evaluate_wavefunction` and automatic differentiation of :math:`\Psi`
-    instead of analytic :math:`\nabla \ln|\Psi|` derivatives.
+    Computes :math:`1 / |\nabla \ln|\Psi||` directly via
+    ``jax.grad(evaluate_ln_wavefunction)``.  This is mathematically identical
+    to the paper's :math:`|x| = |\Psi| / |\nabla \Psi|` formula but avoids the
+    1/|grad Psi| amplification that arises near the node from a Psi-side
+    autodiff path.  As a result the debug path matches the analytic path
+    (which sums analytic :math:`\nabla J` and :math:`\nabla \ln |\det|`)
+    to ordinary autodiff round-off.
 
     Args:
         wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
@@ -1982,15 +2022,12 @@ def _compute_nodal_distance_debug(
     r_up = jnp.asarray(r_up_carts, dtype=dtype_jnp)
     r_dn = jnp.asarray(r_dn_carts, dtype=dtype_jnp)
 
-    Psi = evaluate_wavefunction(wavefunction_data, r_up, r_dn)
+    grad_ln_Psi_up = grad(evaluate_ln_wavefunction, argnums=1)(wavefunction_data, r_up, r_dn)  # (n_up, 3)
+    grad_ln_Psi_dn = grad(evaluate_ln_wavefunction, argnums=2)(wavefunction_data, r_up, r_dn)  # (n_dn, 3)
 
-    grad_Psi_r_up = grad(evaluate_wavefunction, argnums=1)(wavefunction_data, r_up, r_dn)  # (n_up, 3)
-    grad_Psi_r_dn = grad(evaluate_wavefunction, argnums=2)(wavefunction_data, r_up, r_dn)  # (n_dn, 3)
+    grad_norm_sq = jnp.sum(grad_ln_Psi_up**2) + jnp.sum(grad_ln_Psi_dn**2)
 
-    grad_Psi_norm_sq = jnp.sum(grad_Psi_r_up**2) + jnp.sum(grad_Psi_r_dn**2)
-
-    # x_vec = Psi * grad_Psi / |grad_Psi|^2, so |x| = |Psi| / |grad_Psi|
-    return jnp.abs(Psi) / jnp.sqrt(grad_Psi_norm_sq)
+    return 1.0 / jnp.sqrt(grad_norm_sq)
 
 
 """

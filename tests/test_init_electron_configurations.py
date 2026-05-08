@@ -161,7 +161,7 @@ def test_per_atom_spin_counts_match_reference(name, charges, coords, tot_up, tot
 # Identical-atom dimers in the global singlet (S=0) configuration. The expected
 # physical behavior at any separation: each atom carries zeta electrons with
 # Hund-maximum local moment, anti-aligned to its partner so the global S=0.
-# E.g., for N2 (zeta=7 each) at S=0 → one atom (4u, 3d), the other (3u, 4d).
+# E.g., for N2 (zeta=7 each) at S=0 -> one atom (4u, 3d), the other (3u, 4d).
 @pytest.mark.parametrize("elem_z", [3, 6, 7, 8])  # Li, C, N, O (AE valence counts)
 @pytest.mark.parametrize("separation", [0.5, 2.0, 5.0, 100.0])
 def test_dimer_singlet_atoms_are_antialigned(elem_z, separation):
@@ -299,11 +299,12 @@ def test_dimer_per_atom_counts_match_reference_for_all_S(label, zeta_pair):
             )
 
 
-# Triatomic (linear, well-separated) chain — exercises ion_seq logic for >2 atoms.
+# Triatomic (linear, well-separated) chain -- exercises ion_seq logic for >2 atoms.
 @pytest.mark.parametrize("elem_z", [3, 7])
 def test_linear_triatomic_charge_neutrality(elem_z):
     """For a homonuclear linear triatomic at separation 5 bohr each, every atom
-    receives exactly zeta electrons (charge-neutral assignment)."""
+    receives exactly zeta electrons (charge-neutral assignment).
+    """
     charges = np.array([float(elem_z)] * 3)
     coords = np.array([[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [10.0, 0.0, 0.0]])
     nion = 3

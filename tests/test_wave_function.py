@@ -45,24 +45,22 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc.determinant import compute_geminal_all_elements
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import (  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import (
     Wavefunction_data,
     _advance_kinetic_energy_all_elements_streaming_state,
     _compute_discretized_kinetic_energy_debug,
     _compute_kinetic_energy_all_elements_auto,
-    _compute_kinetic_energy_all_elements_debug,
     _compute_kinetic_energy_all_elements_fast_update_debug,
     _compute_kinetic_energy_auto,
-    _compute_kinetic_energy_debug,
     _compute_nodal_distance_debug,
     _init_kinetic_energy_all_elements_streaming_state,
     _kinetic_energy_from_streaming_state,
@@ -80,59 +78,6 @@ from jqmc.wavefunction import (  # noqa: E402
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-
-@pytest.mark.activate_if_skip_heavy
-@pytest.mark.numerical_diff
-@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
-def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
-    """Test the kinetic energy computation."""
-    (
-        structure_data,
-        aos_data,
-        _,
-        _,
-        geminal_mo_data,
-        _,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
-    )
-
-    jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
-        orb_data=aos_data, random_init=True, random_scale=1.0e-3
-    )
-    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
-
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=jastrow_onebody_data,
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=jastrow_threebody_data,
-        jastrow_nn_data=jastrow_nn_data,
-    )
-    jastrow_data.sanity_check()
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-    wavefunction_data.sanity_check()
-
-    num_ele_up = geminal_mo_data.num_electron_up
-    num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -2.0, +2.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
-
-    K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(K_debug),
-        np.asarray(K_jax),
-        rtol=rtol,
-        atol=atol,
-    )
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
@@ -165,8 +110,21 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
     r_cart_min, r_cart_max = -2.0, +2.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    # Reject configurations near the wavefunction node: 1/|Psi| amplification
+    # near the node breaks the analytic-vs-auto comparison under fp32.
+    from jqmc.wavefunction import evaluate_wavefunction
+
+    rng = np.random.default_rng(42)
+    r_up_carts = r_dn_carts = None
+    for _ in range(50):
+        r_up_carts = (r_cart_max - r_cart_min) * rng.random((num_ele_up, 3)) + r_cart_min
+        r_dn_carts = (r_cart_max - r_cart_min) * rng.random((num_ele_dn, 3)) + r_cart_min
+        psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts, r_dn_carts)
+        if abs(float(psi_val)) > 1.0e-8:
+            break
+    else:
+        pytest.skip("Could not find electron configuration sufficiently far from node")
 
     K_analytic = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_auto = _compute_kinetic_energy_auto(
@@ -175,80 +133,15 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # T_L crosses ao_eval/jastrow_eval/jastrow_grad_lap/wf_kinetic zones; the
+    # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in mixed).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(K_analytic, K_auto, atol=atol, rtol=rtol)
-
-
-@pytest.mark.activate_if_skip_heavy
-@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
-def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
-    """Debug vs autodiff kinetic energy per-electron arrays."""
-    (
-        _,
-        aos_data,
-        _,
-        _,
-        geminal_mo_data,
-        _,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
-    )
-    jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
-        orb_data=aos_data, random_init=True, random_scale=1.0e-3
-    )
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=jastrow_onebody_data,
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=jastrow_threebody_data,
-    )
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-
-    num_ele_up = geminal_mo_data.num_electron_up
-    num_ele_dn = geminal_mo_data.num_electron_dn
-    rng = np.random.default_rng(42)
-    r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
-    r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
-
-    r_up_carts_jnp = jnp.array(r_up_carts_np)
-    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
-
-    K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_np, r_dn_carts=r_dn_carts_np
-    )
-    K_elements_up_auto, K_elements_dn_auto = _compute_kinetic_energy_all_elements_auto(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
-    )
-
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
-    assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(K_elements_up_debug, K_elements_up_auto, atol=atol, rtol=rtol)
-    assert not np.any(np.isnan(np.asarray(K_elements_dn_debug))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(K_elements_dn_debug, K_elements_dn_auto, atol=atol, rtol=rtol)
-
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_debug)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(K_elements_up_debug),
-        np.asarray(K_elements_up_auto),
-        rtol=rtol,
-        atol=atol,
-    )
-
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_debug)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(K_elements_dn_debug),
-        np.asarray(K_elements_dn_auto),
-        rtol=rtol,
-        atol=atol,
-    )
 
 
 @pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
@@ -294,7 +187,16 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # T_L crosses ao_eval/jastrow_eval/jastrow_grad_lap/wf_kinetic zones; the
+    # achievable analytic-vs-auto agreement is bounded by the weakest (fp32 in
+    # mixed). Autodiff path inherits ao_eval = fp32 in its grad/hessian, so
+    # use the 'medium' tolerance (slightly looser than strict in fp64 to
+    # absorb the autodiff-side fp32 grad/lap noise the analytic path does
+    # not see).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
+        "medium",
+    )
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
     np.testing.assert_allclose(K_elements_up_auto, K_elements_up_analytic, atol=atol, rtol=rtol)
@@ -362,7 +264,13 @@ def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
         geminal_inverse=A_inv,
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # Fast-update path crosses ao_eval/jastrow_eval/jastrow_grad_lap/det_ratio/
+    # wf_kinetic zones; the achievable agreement is bounded by the weakest
+    # (fp32 in mixed for ao_eval / jastrow_eval / jastrow_grad_lap).
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "det_ratio", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(ke_up_fast, ke_up_debug, atol=atol, rtol=rtol)
@@ -444,7 +352,22 @@ def test_debug_and_jax_discretized_kinetic_energy(trexio_file: str):
         RT=RT,
     )
 
-    atol, rtol = get_tolerance("wf_kinetic", "strict")
+    # Discretized kinetic energy (LRDMC) crosses ao_eval/jastrow_eval/
+    # jastrow_grad_lap/jastrow_ratio/det_ratio/wf_ratio/wf_kinetic zones; the
+    # fast_update path uses Sherman-Morrison ratios. Agreement is bounded by
+    # the weakest (fp32 in mixed for ao_eval / jastrow_* zones).
+    atol, rtol = get_tolerance_min(
+        (
+            "ao_eval",
+            "jastrow_eval",
+            "jastrow_grad_lap",
+            "jastrow_ratio",
+            "det_ratio",
+            "wf_ratio",
+            "wf_kinetic",
+        ),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -523,19 +446,31 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
     r_cart_min, r_cart_max = -3.0, +3.0
-    np.random.seed(42)
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    r_up_carts_jnp = jnp.asarray(r_up_carts)
-    r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+    # Reject configurations near the wavefunction node: when |Psi| ~ 0 the
+    # quantity |grad ln|Psi|| diverges, which makes the analytic vs autodiff
+    # comparison sensitive to floating-point round-off (a few percent in
+    # mixed precision). Same node-avoidance pattern as other tests.
+    from jqmc.wavefunction import evaluate_wavefunction
 
-    # Analytic path
-    nd_analytic = compute_nodal_distance(
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts_jnp,
-        r_dn_carts=r_dn_carts_jnp,
-    )
+    rng = np.random.default_rng(42)
+    nd_analytic = None
+    r_up_carts_jnp = r_dn_carts_jnp = None
+    for _ in range(50):
+        r_up_carts = (r_cart_max - r_cart_min) * rng.random((num_ele_up, 3)) + r_cart_min
+        r_dn_carts = (r_cart_max - r_cart_min) * rng.random((num_ele_dn, 3)) + r_cart_min
+        r_up_carts_jnp = jnp.asarray(r_up_carts)
+        r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+        psi_val = evaluate_wavefunction(wavefunction_data, r_up_carts_jnp, r_dn_carts_jnp)
+        if abs(float(psi_val)) > 1.0e-8:
+            nd_analytic = compute_nodal_distance(
+                wavefunction_data=wavefunction_data,
+                r_up_carts=r_up_carts_jnp,
+                r_dn_carts=r_dn_carts_jnp,
+            )
+            break
+    else:
+        pytest.skip(f"Could not find electron configuration sufficiently far from node for {trexio_file}")
 
     # Debug path (paper formula)
     nd_debug = _compute_nodal_distance_debug(
@@ -544,8 +479,14 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
         r_dn_carts=r_dn_carts_jnp,
     )
 
-    # They should be identical up to numerical noise
-    atol, rtol = get_tolerance("wf_kinetic", "loose")
+    # Both paths are autodiff/analytic (no FD), so under medium tolerance the
+    # only source of disagreement is fp32 round-off in the mixed-precision
+    # build.  Avoiding the node keeps |grad ln|Psi|| bounded and that
+    # round-off well within medium rtol.
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "jastrow_grad_lap", "wf_kinetic"),
+        "medium",
+    )
     np.testing.assert_allclose(
         np.asarray(nd_analytic),
         np.asarray(nd_debug),
@@ -676,7 +617,8 @@ def _build_A_inv_from_carts(geminal_data, r_up_jnp, r_dn_jnp):
 def _streaming_step_consistency_one(wavefunction_data, r_up0, r_dn0, K, atol, rtol, seed=0):
     """Run K random single-electron moves through the streaming state and
     compare the resulting kinetic energies with a fresh fast-update call at
-    the final configuration."""
+    the final configuration.
+    """
     rng = np.random.RandomState(seed)
     r_up = np.asarray(r_up0, dtype=np.float64).copy()
     r_dn = np.asarray(r_dn0, dtype=np.float64).copy()
@@ -712,7 +654,7 @@ def _streaming_step_consistency_one(wavefunction_data, r_up0, r_dn0, K, atol, rt
             moved_index = idx
 
         # rebuild A_inv at the new configuration (mirrors what Sherman-Morrison
-        # produces in the GFMC loop, modulo round-off — comparing at the same
+        # produces in the GFMC loop, modulo round-off -- comparing at the same
         # numerical reference here).
         A_inv = _build_A_inv_from_carts(wavefunction_data.geminal_data, jnp.asarray(r_up), jnp.asarray(r_dn))
         state = _advance_kinetic_energy_all_elements_streaming_state(
@@ -790,7 +732,8 @@ def _build_wavefunction_J3(trexio_file, j2_type="exp", with_J1=False, with_J2=Tr
 def test_streaming_kinetic_energy_step_consistency(trexio_file):
     """K=32 random single-electron moves advanced via the streaming kinetic
     state must reproduce the fresh fast-update kinetic energy at the resulting
-    configuration within strict tolerance."""
+    configuration within strict tolerance.
+    """
     wf, gem = _build_wavefunction_J3(trexio_file)
     n_up = gem.num_electron_up
     n_dn = gem.num_electron_dn
@@ -804,13 +747,16 @@ def test_streaming_kinetic_energy_step_consistency(trexio_file):
 @pytest.mark.parametrize("K", [32, 100, 1000])
 def test_streaming_kinetic_drift_accumulation(K):
     """Drift accumulation: K-step advance vs fresh init at config_K must stay
-    within ``loose`` tolerance even at K=1000, which sets the safety margin
-    for ``num_mcmc_per_measurement``."""
+    within strict tolerance even at K=1000. Empirically the streaming and
+    fresh paths agree to machine precision because the kinetic-energy
+    assembly (`wf_kinetic` zone, fp64) is recomputed in both paths from the
+    same per-step inputs.
+    """
     wf, gem = _build_wavefunction_J3("H2_ae_ccpvdz_cart.h5")
     rng = np.random.RandomState(1)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
     r_dn0 = 4.0 * rng.rand(gem.num_electron_dn, 3) - 2.0
-    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "loose")
+    atol, rtol = get_tolerance_min(["wf_kinetic", "jastrow_grad_lap"], "strict")
     _streaming_step_consistency_one(wf, r_up0, r_dn0, K=K, atol=atol, rtol=rtol, seed=2)
 
 
@@ -820,7 +766,8 @@ def test_streaming_kinetic_drift_accumulation(K):
 )
 def test_streaming_kinetic_edge_cases(trexio_file):
     """Edge cases: small electron counts and ``N_up != N_dn`` (Li, N) must
-    still match the fresh fast-update result."""
+    still match the fresh fast-update result.
+    """
     wf, gem = _build_wavefunction_J3(trexio_file)
     rng = np.random.RandomState(3)
     r_up0 = 4.0 * rng.rand(gem.num_electron_up, 3) - 2.0
@@ -832,7 +779,8 @@ def test_streaming_kinetic_edge_cases(trexio_file):
 @pytest.mark.parametrize("jastrow_combo", ["J3_only", "J1_J3", "J2_J3", "J1_J2_J3"])
 def test_streaming_kinetic_jastrow_combinations(jastrow_combo):
     """Streaming path must work for every J3-containing Jastrow combination
-    (PR1 dispatch requires J3 + ``jastrow_nn_data is None``)."""
+    (PR1 dispatch requires J3 + ``jastrow_nn_data is None``).
+    """
     with_J1 = "J1" in jastrow_combo
     with_J2 = "J2" in jastrow_combo
     wf, gem = _build_wavefunction_J3("water_ccecp_ccpvqz.h5", with_J1=with_J1, with_J2=with_J2)
@@ -846,7 +794,8 @@ def test_streaming_kinetic_jastrow_combinations(jastrow_combo):
 def test_streaming_kinetic_walker_axis_vmap():
     """``vmap`` over the walker axis must produce results equal to the
     independent per-walker streaming chains. Confirms the state pytree carries
-    walkers correctly along the leading axis."""
+    walkers correctly along the leading axis.
+    """
     wf, gem = _build_wavefunction_J3("H2_ae_ccpvdz_cart.h5")
     n_walkers = 4
     rng = np.random.RandomState(7)

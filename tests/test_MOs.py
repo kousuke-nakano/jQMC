@@ -47,13 +47,12 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import (  # noqa: E402
+from jqmc.atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
 )
-from jqmc.molecular_orbital import (  # noqa: E402
+from jqmc.molecular_orbital import (
     MOs_data,
-    _cart_to_spherical_matrix,
     _compute_MOs_debug,
     _compute_MOs_grad_autodiff,
     _compute_MOs_grad_debug,
@@ -64,9 +63,10 @@ from jqmc.molecular_orbital import (  # noqa: E402
     compute_MOs_laplacian,
     compute_MOs_value_grad_lap,
 )
-from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.structure import Structure_data  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc._jqmc_utility import _cart_to_spherical_matrix
+from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min
+from jqmc.structure import Structure_data
+from jqmc.trexio_wrapper import read_trexio_file
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -254,7 +254,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_grad", "loose")
+    atol, rtol = get_tolerance("mo_grad", "strict")
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
@@ -391,7 +391,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    atol, rtol = get_tolerance("mo_lap", "loose")
+    atol, rtol = get_tolerance("mo_lap", "medium")
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -457,8 +457,11 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad_lap (fp64) -> mo_grad (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
+    # Autodiff differentiates compute_MOs -> compute_AOs (ao_eval, fp32 in
+    # mixed mode); analytic path uses compute_AOs_grad (ao_grad_lap, fp64).
+    # Achievable agreement is bounded by ao_eval (the fp32 forward kernel the
+    # autodiff side runs through), not by ao_grad_lap or mo_grad.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap", "mo_grad"], "strict")
     assert not np.any(np.isnan(np.asarray(grad_x_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_x_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol, rtol=rtol)
@@ -525,8 +528,11 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    # Path crosses ao_grad_lap (fp64) -> mo_lap (fp64); use min.
-    atol, rtol = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
+    # Autodiff differentiates compute_MOs -> compute_AOs (ao_eval, fp32 in
+    # mixed mode); analytic path uses compute_AOs_laplacian (ao_grad_lap,
+    # fp64). Achievable agreement is bounded by ao_eval (the fp32 forward
+    # kernel the autodiff side runs through), not by ao_grad_lap or mo_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_lap_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_lap_auto))), "NaN detected in second argument"
     np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol, rtol=rtol)
@@ -536,7 +542,6 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
 def test_MOs_sphe_to_cart():
     """Ensure spherical -> Cartesian conversion preserves MO values up to l=6."""
-
     rng = np.random.default_rng(0)
 
     nucleus_index = []
@@ -627,7 +632,6 @@ def test_MOs_sphe_to_cart():
 
 def test_MOs_cart_to_sphe():
     """Ensure Cartesian -> spherical conversion preserves MO values up to l=6."""
-
     rng = np.random.default_rng(1)
 
     nucleus_index = []
@@ -643,7 +647,7 @@ def test_MOs_cart_to_sphe():
     ao_idx = 0
     for l in range(7):  # l = 0..6
         shell_indices: list[int] = []
-        for nx, ny, nz in [(nx, ny, l - nx - ny) for nx in range(l, -1, -1) for ny in range(l - nx, -1, -1)]:
+        for nx, ny, nz in [(_nx, _ny, l - _nx - _ny) for _nx in range(l, -1, -1) for _ny in range(l - _nx, -1, -1)]:
             nucleus_index.append(0)
             orbital_indices.append(ao_idx)
             exponents.append(float(l + 1))
@@ -740,7 +744,7 @@ def test_MOs_cart_to_sphe():
         "N_ae_ccpvdz_cart.h5",
     ],
 )
-def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
+def test_MOs_value_grad_lap(trexio_file: str):
     """Fused ``compute_MOs_value_grad_lap`` matches the standalone APIs.
 
     All outputs (val/grad/lap) are bounded by ULP-level differences in
@@ -789,8 +793,8 @@ def test_fused_MOs_value_grad_lap_matches_split(trexio_file: str):
 def test_fused_MOs_dtypes_match_zones(trexio_file: str):
     """``compute_MOs_value_grad_lap`` outputs are pinned to their zones.
 
-    val ↔ ``mo_eval`` (fp32 mixed / fp64 full); gx/gy/gz ↔ ``mo_grad``
-    (fp64); lap ↔ ``mo_lap`` (fp64).
+    val <-> ``mo_eval`` (fp32 mixed / fp64 full); gx/gy/gz <-> ``mo_grad``
+    (fp64); lap <-> ``mo_lap`` (fp64).
     """
     parsed = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),

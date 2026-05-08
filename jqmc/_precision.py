@@ -9,60 +9,60 @@ is the most important in practice; almost every precision bug we have seen is
 a violation of 3a or 3b.
 
 ------------------------------------------------------------
-Principle 1 — One Precision Zone is owned by exactly one module.
+Principle 1 -- One Precision Zone is owned by exactly one module.
 ------------------------------------------------------------
 A zone (e.g. ``ao_eval``, ``coulomb``) is *defined and consumed* in a single
-module. The mapping zone ↔ owning module is one-to-one and is documented in
+module. The mapping zone <-> owning module is one-to-one and is documented in
 the table below (and enforced by convention in ``_FULL_PRECISION`` /
 ``_MIXED_PRECISION``).
 
 ------------------------------------------------------------
-Principle 2 — A module may own multiple Precision Zones.
+Principle 2 -- A module may own multiple Precision Zones.
 ------------------------------------------------------------
 Different code paths in the same module legitimately need different precisions
 (e.g. ``ao_eval`` vs ``ao_grad_lap``, or ``det_eval`` vs ``det_ratio``). Each
 zone is named for its *purpose*, not for its dtype.
 
 ------------------------------------------------------------
-Principle 3 — Cast responsibility lies with the function that does
+Principle 3 -- Cast responsibility lies with the function that does
               arithmetic on the value, never with passthrough wrappers.
 ------------------------------------------------------------
 
 Definition. *arithmetic* means consuming a value as an operand of a numerical
 operation (``+ - * /``, ``jnp.linalg.norm``, ``jnp.dot``, ``@``, ``jnp.exp``,
-…) **or** as an input to ``jax.grad`` / ``jax.jacrev`` / ``jax.hessian``.
+...) **or** as an input to ``jax.grad`` / ``jax.jacrev`` / ``jax.hessian``.
 Operations that do *not* count as arithmetic and therefore do *not* trigger a
 cast: ``len(x)``, ``x.shape``, ``x[i]`` (index lookup), the *target* of
 ``.at[i].set(y)``, and forwarding ``x`` as an argument to another function.
 
-Principle 3a — Arguments are frozen.
+Principle 3a -- Arguments are frozen.
     Function arguments are treated as **frozen**, in the same sense as the
     attributes of a ``@dataclass(frozen=True)``: the name introduced by the
     parameter list **must not be rebound** for the entire body of the
     function. In particular, ``arg = jnp.asarray(arg, dtype=...)`` at the
-    top of a function is forbidden — it silently coerces the argument for
+    top of a function is forbidden -- it silently coerces the argument for
     every later use, including forwarding.
 
-    Consequences (not extra rules — direct corollaries of "frozen"):
+    Consequences (not extra rules -- direct corollaries of "frozen"):
       * Forwarding neutrality. A value forwarded to a callee transits in
         the dtype it was received in; the callee is responsible for casting
         it to *its* own zone (Principle 3b).
       * Cast at the use site. When the function consumes ``arg`` as an
         operand of its own arithmetic, the cast appears **inside the
         expression** (``arg.astype(dtype)``). Do *not* preemptively
-        introduce a local alias just to hold the cast — only do so when
+        introduce a local alias just to hold the cast -- only do so when
         the cast result is reused multiple times, in which case introduce
         a *new* local variable with a different name (e.g.
         ``arg_local = arg.astype(dtype)``). The original ``arg`` always
         remains frozen.
 
-Principle 3b — Local cast at the point of arithmetic.
+Principle 3b -- Local cast at the point of arithmetic.
     A function casts a value to its own zone's dtype **immediately before**
     consuming it as an operand. Inputs and outputs of the function's
     arithmetic both live in its zone. Intermediate computations may use a
     higher precision when needed for numerical reasons (the canonical case
     being ``r - R``: reconstruct the difference in the **dtype the value
-    was received in** — i.e. the precision chosen by the upper layer —
+    was received in** -- i.e. the precision chosen by the upper layer --
     to avoid catastrophic cancellation, then down-cast the result back to
     the function's own zone). In jQMC the upstream (mcmc walker state) is
     always fp64, so in practice the reconstruction happens in fp64; the
@@ -72,7 +72,7 @@ Principle 3b — Local cast at the point of arithmetic.
     name when the incoming value's own dtype already carries the right
     precision.
 
-Worked example (the ECP → AO bug this design prevents)::
+Worked example (the ECP -> AO bug this design prevents)::
 
     # WRONG: rebinding `r_carts` at the top of compute_coulomb forwards a
     # fp32-truncated array to compute_AOs, even though `ao_eval` is fp64.
@@ -86,7 +86,7 @@ Worked example (the ECP → AO bug this design prevents)::
 
     # RIGHT: forwarding stays in the caller's dtype; the local arithmetic
     # reconstructs the difference in the dtype the values were received in
-    # (the upper-layer precision — fp64 in jQMC because mcmc walker state
+    # (the upper-layer precision -- fp64 in jQMC because mcmc walker state
     # is fp64) and casts the result back to the function's own zone.
     def compute_coulomb(r_carts, R_carts):
         ao = compute_AOs(..., r_carts, R_carts)          # 3a: forward as-is
@@ -98,7 +98,7 @@ Worked example (the ECP → AO bug this design prevents)::
 Auditing recipe.
     To verify a module:
       * (3a) Search for ``arg = jnp.asarray(arg, dtype=...)`` at the top of
-        any public function. Each occurrence is a 3a candidate violation —
+        any public function. Each occurrence is a 3a candidate violation --
         the rebind silently coerces the argument for any subsequent
         forwarding too.
       * (3b) For each arithmetic expression, check that all operands have
@@ -132,7 +132,7 @@ No hardcoded dtypes inside selectable-precision modules.
       * Basis-data storage accessors. ``_*_jnp`` properties on
         selectable-precision dataclasses whose underlying storage
         field is typed ``npt.NDArray[np.float64]`` are *lift-only*
-        adapters (numpy → ``jax.Array``), not arithmetic. The dtype
+        adapters (numpy -> ``jax.Array``), not arithmetic. The dtype
         is fp64 by construction: storage is loaded from
         HDF5/TREXIO/optimizer output (see Phase A1 numpy-storage
         migration), and downcasting at the accessor would silently
@@ -158,8 +158,8 @@ No hardcoded dtypes inside selectable-precision modules.
 
 Users choose one of two modes:
 
-- ``"full"``  (default) — all zones float64 (backward compatible).
-- ``"mixed"`` — recommended mixed precision; low-risk zones become
+- ``"full"``  (default) -- all zones float64 (backward compatible).
+- ``"mixed"`` -- recommended mixed precision; low-risk zones become
   float32 while numerically sensitive zones stay float64.
 
 Individual zone assignments are **not** user-configurable; they are
@@ -174,18 +174,18 @@ Precision Zones
 Zone                Owning module                      Default    Mixed     risk   E_L path
 ==================  =================================  =========  ========  =====  =========
 ``ao_eval``         atomic_orbital.py (forward)        float64    float32   low    core
-``ao_grad_lap``     atomic_orbital.py (grad/Lap)       float64    float64   high§  core
+``ao_grad_lap``     atomic_orbital.py (grad/Lap)       float64    float64   highSection  core
 ``mo_eval``         molecular_orbital.py (forward)     float64    float64   high*  core
 ``mo_grad``         molecular_orbital.py (gradient)    float64    float64   high   core
 ``mo_lap``          molecular_orbital.py (Laplacian)   float64    float64   high   core
-``jastrow_eval``    jastrow_factor.py (forward)        float64    float32   low    core†
+``jastrow_eval``    jastrow_factor.py (forward)        float64    float32   low    core*
 ``jastrow_grad_lap`` jastrow_factor.py (grad/lap)      float64    float32   low    core
-``jastrow_ratio``   jastrow_factor.py (ratio update)   float64    float32   low    indirect‡
+``jastrow_ratio``   jastrow_factor.py (ratio update)   float64    float32   low    indirect**
 ``det_eval``        determinant.py (geminal + log-det) float64    float64   high   core
 ``det_grad_lap``    determinant.py (grad/lap of lnDet) float64    float64   high   core
-``det_ratio``       determinant.py (SM ratio update)   float64    float64   high   indirect‡
+``det_ratio``       determinant.py (SM ratio update)   float64    float64   high   indirect**
 ``coulomb``         coulomb_potential.py               float64    float32   low-med core
-``wf_eval``         wavefunction.py (Psi, ln Psi)      float64    float64   high   core†
+``wf_eval``         wavefunction.py (Psi, ln Psi)      float64    float64   high   core*
 ``wf_kinetic``      wavefunction.py (T_L assembly)     float64    float64   high   core
 ``wf_ratio``        wavefunction.py (Psi(R')/Psi(R))   float64    float64   high   no
 ``local_energy``    hamiltonians.py (T + V assembly)   float64    float64   high   core
@@ -195,31 +195,26 @@ Zone                Owning module                      Default    Mixed     risk
 \\* ``mo_eval`` is a high-risk zone even though the consumed AO values are
 fp32: the small ``mo_coefficients @ aos`` matmul is run in this zone, and
 its output feeds the determinant matrix, where fp32 round-off is
-amplified by log|det|.  See ``bug/fp32`` diagnostics.
+amplified by log|det|.
 
-† ``jastrow_eval`` and ``wf_eval`` are on the E_L core path but their
+* ``jastrow_eval`` and ``wf_eval`` are on the E_L core path but their
 forward values (J and ln|Psi|) do not enter the E_L formula directly
-(E_L depends on *derivatives* of ln|Psi|).  Diagnostics show zero E_L
-bias when these zones alone are fp32.
+(E_L depends on *derivatives* of ln|Psi|), so fp32 in these zones alone
+has no E_L impact.
 
-§ ``ao_grad_lap`` is fp64 even in mixed mode because the analytic
+Section ``ao_grad_lap`` is fp64 even in mixed mode because the analytic
 Laplacian kernel for spherical AOs contains catastrophic cancellation
-(``4 Z² r² − 6 Z`` and ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``
-terms) that fp32 cannot resolve for tight Gaussians. Diagnostic
-``bug/fp32/diag_07_ao_grad_vs_lap_split.py`` showed that
-``ao_lap=fp32`` alone reproduces the full atomic-force bias
-(``max|dF| ≈ 1.9 Ha/bohr`` on N₂ at scale=0.3, ``≈ 2e−2 Ha/bohr`` on
-the water-cluster-8 system); the historical ``ao_grad=fp32`` zone was
-safe in isolation (``max|dF| < 8e−3 Ha/bohr``) but is merged here with
-``ao_lap`` because the fused ``compute_AOs_value_grad_lap`` kernel
-shares one heavy expression (``exp / pow / phi / S_l_m``) across grad
-and lap. Running that shared kernel at fp32 would break the lap path,
-so the unified zone is fp64 always — a small extra cost on the
-standalone ``compute_AOs_grad`` (which is not on the per-step hot
-path) in exchange for a single source of truth for the shared kernel
-dtype.
+(``4 Z^2 r^2 - 6 Z`` and ``(safe_div - 2 Z*base)^2 - safe_div^2 - 2 Z``
+terms) that fp32 cannot resolve for tight Gaussians. ``ao_grad`` is
+merged with ``ao_lap`` into this single zone because the fused
+``compute_AOs_value_grad_lap`` kernel shares one heavy expression
+(``exp / pow / phi / S_l_m``) across grad and lap. Running that shared
+kernel at fp32 would break the lap path, so the unified zone is fp64
+always -- a small extra cost on the standalone ``compute_AOs_grad``
+(which is not on the per-step hot path) in exchange for a single
+source of truth for the shared kernel dtype.
 
-‡ ``det_ratio`` and ``jastrow_ratio`` affect E_L **indirectly** through
+** ``det_ratio`` and ``jastrow_ratio`` affect E_L **indirectly** through
 the ECP non-local potential, which evaluates Psi(R')/Psi(R) on a
 quadrature grid via rank-1 ratio updates (see
 ``coulomb_potential.compute_ecp_non_local_parts_nearest_neighbors_fast_update``).
@@ -241,8 +236,8 @@ Usage::
         # the atomic centers are loaded from disk as fp64). The result
         # is then down-cast to this function's own zone (``ao_eval``).
         # NOTE: never reach for another module's zone (e.g.
-        # ``get_dtype_jnp("local_energy")``) here — that violates
-        # Principle 1 (zone ↔ owning module is 1:1). atomic_orbital.py
+        # ``get_dtype_jnp("local_energy")``) here -- that violates
+        # Principle 1 (zone <-> owning module is 1:1). atomic_orbital.py
         # may only consult ao_eval / ao_grad_lap.
         dtype_jnp = get_dtype_jnp("ao_eval")
         R_carts = aos_data._atomic_center_carts_jnp
@@ -328,44 +323,35 @@ _FULL_PRECISION: dict[str, str] = {
 #                      result up before any sensitive arithmetic.
 #   jastrow_eval     - smooth correlation function value (pre-exp).
 #   jastrow_grad_lap - nabla J, nabla^2 J; smooth Jastrow factor, low
-#                      cancellation. Diagnostics show bias < 8e-06 Ha
-#                      at 32 electrons (0.05 kcal/mol margin ×11).
-#                      Kept as a single zone (no grad/lap split) because
-#                      both halves share the same fp32 risk profile and
-#                      Jastrow grad/lap functions compute the two
-#                      together (``compute_grads_and_laplacian_*``).
+#                      cancellation. Kept as a single zone (no grad/lap
+#                      split) because both halves share the same fp32
+#                      risk profile and Jastrow grad/lap functions
+#                      compute the two together
+#                      (``compute_grads_and_laplacian_*``).
 #   jastrow_ratio    - J(R')-J(R) log-ratio; smooth and well-behaved.
-#                      Diagnostics show bias < 2e-06 Ha (margin ×44).
 #
-# All other zones stay fp64 because numerical experiments (see
-# bug/fp32 diagnostics) show fp32 in those zones produces
-# unacceptable bias on E_L for ~32-electron systems, OR the
-# kernel is cheap enough that fp32 is not worth the bias:
+# All other zones stay fp64 because fp32 in those zones produces
+# unacceptable bias on E_L, OR the kernel is cheap enough that fp32
+# is not worth the bias:
 #
 #   ao_grad_lap   - analytic gradient + Laplacian kernel for spherical/
 #                   Cartesian AOs.  Lap arithmetic contains catastrophic
-#                   cancellation (``4 Z² r² − 6 Z`` and
-#                   ``(safe_div − 2 Z·base)² − safe_div² − 2 Z``).
-#                   diag_07 showed lap=fp32 alone yields max|dF| ≈ 1.9
-#                   Ha/bohr on N₂ (scale=0.3), reproducing the entire
-#                   bias of grad+lap=fp32. fp64 mandatory.  This zone
-#                   merges the historical ``ao_grad`` (which was safe at
-#                   fp32 in isolation) with ``ao_lap`` because the fused
-#                   ``compute_AOs_value_grad_lap`` kernel evaluates
-#                   ``exp / pow / phi / S_l_m`` once and reuses it across
-#                   grad and lap; running the shared path at fp32 would
-#                   break the lap output.
+#                   cancellation (``4 Z^2 r^2 - 6 Z`` and
+#                   ``(safe_div - 2 Z*base)^2 - safe_div^2 - 2 Z``).
+#                   fp64 mandatory.  This zone merges grad and lap
+#                   because the fused ``compute_AOs_value_grad_lap``
+#                   kernel evaluates ``exp / pow / phi / S_l_m`` once
+#                   and reuses it across grad and lap; running the
+#                   shared path at fp32 would break the lap output.
 #   coulomb       - sum of 1/r + ECP spherical quadrature.  Cheap
 #                   (O(N_e^2) el-el + O(N_e * N_nuc) el-ion, vs
-#                   O(N_e * N_ao) AO eval) but contributes the
-#                   largest individual bias among fp32 candidates
-#                   (~6e-5 Ha at 64e/512 AO).  Cost/benefit favors fp64.
+#                   O(N_e * N_ao) AO eval); cost/benefit favors fp64.
 #
 #   mo_eval       - mo_coef @ AO matmul feeds the determinant matrix;
 #                   fp32 here amplifies into log|det| errors of O(1).
 #   det_eval      - geminal matrix + log(det) + SVD; cancellation in
-#                   log(det), SVD 1/s near-singular, ε≈1e-7 entries
-#                   produce O(1) log|det| error.
+#                   log(det), SVD 1/s near-singular entries produce
+#                   O(1) log|det| error.
 #   mo_grad / mo_lap / det_grad_lap
 #                 - second derivatives of ln|Psi|; cancellation-sensitive
 #                   on the determinant side (the AO-side fp32 is absorbed
@@ -383,23 +369,23 @@ _FULL_PRECISION: dict[str, str] = {
 _MIXED_PRECISION: dict[str, str] = {
     # atomic_orbital.py
     "ao_eval": "float32",  # low risk (heavy kernel)
-    "ao_grad_lap": "float64",  # high risk (catastrophic cancellation in 4Z²r²-6Z terms;
-    # unified zone — historical ao_grad was safe at fp32 but is merged with ao_lap so
-    # the fused compute_AOs_value_grad_lap kernel can share one heavy kernel at fp64)
+    "ao_grad_lap": "float64",  # high risk (catastrophic cancellation in 4Z^2r^2-6Z terms;
+    # unified zone -- grad and lap share the fused compute_AOs_value_grad_lap kernel,
+    # which must run at fp64 to protect the lap path)
     # molecular_orbital.py
     "mo_eval": "float64",  # high risk (feeds det_eval)
     "mo_grad": "float64",  # high risk
     "mo_lap": "float64",  # high risk
     # jastrow_factor.py
     "jastrow_eval": "float32",  # low risk
-    "jastrow_grad_lap": "float32",  # low risk (smooth J; bias < 8e-06 Ha at 32e)
-    "jastrow_ratio": "float32",  # low risk (smooth J ratio; bias < 2e-06 Ha at 32e)
+    "jastrow_grad_lap": "float32",  # low risk (smooth J, no severe cancellation)
+    "jastrow_ratio": "float32",  # low risk (smooth J ratio, no severe cancellation)
     # determinant.py
     "det_eval": "float64",  # high risk (LU/det / SVD)
     "det_grad_lap": "float64",  # high risk (kept unsplit for symmetry with jastrow)
     "det_ratio": "float64",  # high risk (SM update error + ECP non-local ratio)
     # coulomb_potential.py
-    "coulomb": "float64",  # cheap kernel + largest single fp32 bias (~6e-5 Ha)
+    "coulomb": "float64",  # cheap kernel; cost/benefit favors fp64
     # wavefunction.py
     "wf_eval": "float64",  # high risk
     "wf_kinetic": "float64",  # high risk
@@ -421,7 +407,7 @@ ALL_ZONES = frozenset(_FULL_PRECISION.keys())
 # state within a Python process: ``configure(mode)`` clears and refills it,
 # and ``get_dtype_jnp`` / ``get_dtype_np`` read from it.  No other variable
 # (class attribute, environment variable, etc.) holds the active dtype
-# mapping — this dict is the only place to consult or mutate.
+# mapping -- this dict is the only place to consult or mutate.
 _zone_dtypes: dict[str, str] = {}
 
 
@@ -469,7 +455,7 @@ def _set_zone(zone: str, dtype_str: str) -> None:
     """Override a single zone's dtype at runtime (developer use only).
 
     Must be called **after** :func:`configure`.  This is intentionally
-    private — normal users select ``"full"`` or ``"mixed"`` mode and the
+    private -- normal users select ``"full"`` or ``"mixed"`` mode and the
     per-zone mapping is determined by ``_FULL_PRECISION`` /
     ``_MIXED_PRECISION``.
 
@@ -532,7 +518,7 @@ def get_tolerance(zone: str, level: str = "strict") -> tuple[float, float]:
 
     Args:
         zone: Precision Zone name.
-        level: ``"strict"`` or ``"loose"``.
+        level: ``"strict"`` or ``"medium"``.
 
     Returns:
         ``(atol, rtol)`` tuple appropriate for the zone's current dtype.
@@ -551,7 +537,7 @@ def get_tolerance_min(zones, level: str = "strict") -> tuple[float, float]:
 
     Args:
         zones: Iterable of Precision Zone names.
-        level: ``"strict"`` or ``"loose"``.
+        level: ``"strict"`` or ``"medium"``.
 
     Returns:
         ``(atol, rtol)`` tuple using the maximum of each component.

@@ -31,28 +31,28 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import configure, get_dtype_jnp  # noqa: E402
-from jqmc.atomic_orbital import (  # noqa: E402
+from jqmc._precision import configure, get_dtype_jnp
+from jqmc.atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
 )
-from jqmc.coulomb_potential import (  # noqa: E402
+from jqmc.coulomb_potential import (
     compute_bare_coulomb_potential,
     compute_bare_coulomb_potential_el_el,
     compute_bare_coulomb_potential_el_ion_element_wise,
     compute_ecp_local_parts_all_pairs,
     compute_ecp_non_local_part_all_pairs_jax_weights_grid_points,
 )
-from jqmc.determinant import (  # noqa: E402
+from jqmc.determinant import (
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
     compute_grads_and_laplacian_ln_Det,
     compute_ln_det_geminal_all_elements,
 )
-from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
@@ -62,13 +62,13 @@ from jqmc.jastrow_factor import (  # noqa: E402
     compute_Jastrow_three_body,
     compute_Jastrow_two_body,
 )
-from jqmc.molecular_orbital import (  # noqa: E402
+from jqmc.molecular_orbital import (
     compute_MOs,
     compute_MOs_grad,
     compute_MOs_laplacian,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import (  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import (
     Wavefunction_data,
     compute_kinetic_energy,
     evaluate_ln_wavefunction,
@@ -171,7 +171,7 @@ def _assert_eval_shape_dtype(fn, expected, label, *args, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# A. AO zone (orb_eval → float32 in mixed)
+# A. AO zone (orb_eval -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -202,7 +202,7 @@ class TestAODtype:
 
 
 # ---------------------------------------------------------------------------
-# B. MO zone (orb_eval → float32 in mixed)
+# B. MO zone (orb_eval -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -228,7 +228,7 @@ class TestMODtype:
 
 
 # ---------------------------------------------------------------------------
-# C. Jastrow zone (jastrow → float32 in mixed)
+# C. Jastrow zone (jastrow -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -280,7 +280,7 @@ class TestJastrowDtype:
 
 
 # ---------------------------------------------------------------------------
-# D. Geminal zone (geminal → float32 in mixed)
+# D. Geminal zone (geminal -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -298,7 +298,7 @@ class TestGeminalDtype:
 
 
 # ---------------------------------------------------------------------------
-# E. Determinant zone (determinant → float64 in mixed)
+# E. Determinant zone (determinant -> float64 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -329,7 +329,7 @@ class TestDeterminantDtype:
 
 
 # ---------------------------------------------------------------------------
-# F. Coulomb zone (coulomb → float32 in mixed)
+# F. Coulomb zone (coulomb -> float32 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -368,7 +368,7 @@ class TestCoulombDtype:
 
 
 # ---------------------------------------------------------------------------
-# G. Kinetic zone (kinetic → float64 in mixed)
+# G. Kinetic zone (kinetic -> float64 in mixed)
 # ---------------------------------------------------------------------------
 
 
@@ -471,12 +471,12 @@ class TestGeminalFastUpdateDtype:
         return _load_trexio("water_ccecp_ccpvqz.h5")
 
     def test_geminal_up_one_row_output_dtype(self, water_data):
-        # Use [0:1] to get shape (1, 3) — compute_orb_api requires (N, 3), not (3,)
+        # Use [0:1] to get shape (1, 3) -- compute_orb_api requires (N, 3), not (3,)
         row = compute_geminal_up_one_row_elements(water_data["geminal_data"], water_data["r_up"][0:1], water_data["r_dn"])
         _assert_dtype(row, get_dtype_jnp("det_ratio"), "compute_geminal_up_one_row_elements")
 
     def test_geminal_dn_one_column_output_dtype(self, water_data):
-        # Use [0:1] to get shape (1, 3) — compute_orb_api requires (N, 3), not (3,)
+        # Use [0:1] to get shape (1, 3) -- compute_orb_api requires (N, 3), not (3,)
         col = compute_geminal_dn_one_column_elements(water_data["geminal_data"], water_data["r_up"], water_data["r_dn"][0:1])
         _assert_dtype(col, get_dtype_jnp("det_ratio"), "compute_geminal_dn_one_column_elements")
 

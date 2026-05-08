@@ -1,4 +1,4 @@
-"""Tests for jqmc.checkpoint — Phase 0 infrastructure."""
+"""Tests for jqmc.checkpoint -- Phase 0 infrastructure."""
 
 import os
 import sys
@@ -20,7 +20,6 @@ from jqmc._checkpoint import (
     load_observables_from_checkpoint,
     load_optax_state,
     load_rank_checkpoint,
-    merge_rank_checkpoints,
     save_optax_state,
     save_rank_checkpoint,
 )
@@ -158,7 +157,7 @@ class TestRankCheckpoint:
         )
 
     def test_save_load_roundtrip(self, tmp_path):
-        """Data survives save → merge → load."""
+        """Data survives save -> merge -> load."""
         data = self._make_sample_data()
         rank_file = str(tmp_path / "._restart_rank0.h5")
         save_rank_checkpoint(rank_file, **data)
@@ -167,9 +166,8 @@ class TestRankCheckpoint:
         assert os.path.exists(rank_file)
 
         # Now merge into a single checkpoint (simulate rank 0)
-        from jqmc._checkpoint import merge_rank_checkpoints
 
-        # We need a Hamiltonian_data for merging — use a minimal mock
+        # We need a Hamiltonian_data for merging -- use a minimal mock
         merged = str(tmp_path / "restart.h5")
         _merge_single_rank(rank_file, merged, tmp_path)
 
@@ -357,7 +355,7 @@ class TestConvertAttr:
 
 
 # ---------------------------------------------------------------------------
-# Test utilities — minimal merge helpers that don't require Hamiltonian_data
+# Test utilities -- minimal merge helpers that don't require Hamiltonian_data
 # ---------------------------------------------------------------------------
 
 

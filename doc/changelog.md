@@ -61,10 +61,10 @@ This release focuses on a major update of the VMC optimizer (Linear Method), ext
 *   **GFMC_t projection averaging**: Fixed incorrect averaging of the number of projections across MPI ranks in GFMC_t.
 *   **SR with `num_params >= num_samples`**: Fixed MPI bug when the number of optimizable parameters exceeds the number of samples.
 *   **MPI `Allreduce` for scalars**: Replaced `Allreduce` with `allreduce` for scalar `int` and `float` values in `jqmc_mcmc.py` and `jqmc_gfmc.py`, as `Allreduce` for scalars exhibits implementation-dependent behavior.
-*   **Optimizer step estimation**: Fixed `estimate_required_steps` — removed incorrect `ceil` rounding and `max` clamp that ignored `walker_ratio`; added `min_steps` parameter.
+*   **Optimizer step estimation**: Fixed `estimate_required_steps` -- removed incorrect `ceil` rounding and `max` clamp that ignored `walker_ratio`; added `min_steps` parameter.
 *   **SR stability near convergence**: Improved stability of SR with adaptive learning rate in the vicinity of convergence.
 *   **Pytree inconsistency**: Fixed a JAX pytree structural mismatch.
-*   **S/N ratio diagnostics**: Fixed averaging (last S/N ratio → averaged S/N ratios) and trivial output bugs.
+*   **S/N ratio diagnostics**: Fixed averaging (last S/N ratio -> averaged S/N ratios) and trivial output bugs.
 
 
 ### Workflow (`jqmc_workflow`)
@@ -111,10 +111,10 @@ This is a major update with drastic performance improvements, new features, and 
 
 ### New features
 
-*   **LRDMC force calculations**: Implemented LRDMC atomic forces with the Pathak–Wagner regularization.
+*   **LRDMC force calculations**: Implemented LRDMC atomic forces with the Pathak-Wagner regularization.
 *   **Jastrow functions**: Added `jastrow_1b_type` (`'exp'` / `'pade'`) and `jastrow_2b_type` (`'pade'` / `'exp'`) fields to `Jastrow_one_body_data` and `Jastrow_two_body_data`, enabling runtime selection of the one-body and two-body Jastrow functional forms.
     *   Exponential form: $u(r) = \frac{1}{2b}(1 - e^{-br})$
-    *   Padé form: $u(r) = \frac{r}{2(1 + br)}$
+    *   Pade form: $u(r) = \frac{r}{2(1 + br)}$
 
 ### Bug fixes
 
@@ -126,10 +126,10 @@ This is a major update with drastic performance improvements, new features, and 
 ### Infrastructure
 
 *   **Restart file format change**: Switched restart files from pickle-based `*.chk` to HDF5-based `*.h5`. **Note:** backward compatibility with old `*.chk` files is *not* maintained.
-*   **`jqmc_workflow` package**: Introduced the `jqmc_workflow` automation package for orchestrating multi-stage QMC pipelines (WF conversion → VMC optimization → MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.
+*   **`jqmc_workflow` package**: Introduced the `jqmc_workflow` automation package for orchestrating multi-stage QMC pipelines (WF conversion -> VMC optimization -> MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.
 *   **Removed `SWCT_data`**: Cleaned up legacy `SWCT_data` class as part of codebase refactoring.
 *   **More comprehensive tests**: Substantially expanded the test suite to cover the new features and improve overall reliability.
-*   **Expanded examples**: Reorganized and enriched the `examples/` directory with 11 end-to-end tutorials (`jqmc-example01`–`jqmc-example08`, `jqmc-workflow-example01`–`jqmc-workflow-example03`) covering single-point VMC/LRDMC, force calculations, GPU walker-scaling benchmarks, interaction-energy workflows, and PES scans with automated `jqmc_workflow` pipelines.
+*   **Expanded examples**: Reorganized and enriched the `examples/` directory with 11 end-to-end tutorials (`jqmc-example01`-`jqmc-example08`, `jqmc-workflow-example01`-`jqmc-workflow-example03`) covering single-point VMC/LRDMC, force calculations, GPU walker-scaling benchmarks, interaction-energy workflows, and PES scans with automated `jqmc_workflow` pipelines.
 
 
 ## Feb-5-2026: v0.1.0

@@ -1,8 +1,8 @@
-"""MCMC_Workflow — MCMC production run (sampling) via ``jqmc`` (job_type=mcmc).
+"""MCMC_Workflow -- MCMC production run (sampling) via ``jqmc`` (job_type=mcmc).
 
 Generates an MCMC input TOML, submits ``jqmc`` on a remote/local machine,
 monitors until completion, fetches results, and post-processes the checkpoint
-with ``jqmc-tool mcmc compute-energy`` to extract the VMC energy ± error.
+with ``jqmc-tool mcmc compute-energy`` to extract the VMC energy +/- error.
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -43,7 +43,6 @@ import re
 import subprocess
 import time
 from logging import getLogger
-from typing import Optional
 
 from ._error_estimator import (
     _format_duration,
@@ -73,17 +72,17 @@ class MCMC_Workflow(Workflow):
     Generates a ``job_type=mcmc`` input TOML, submits ``jqmc`` on a
     remote or local machine, monitors until completion, fetches results,
     and post-processes the checkpoint with
-    ``jqmc-tool mcmc compute-energy`` to obtain the VMC energy ± error.
+    ``jqmc-tool mcmc compute-energy`` to obtain the VMC energy +/- error.
 
     The workflow supports two modes:
 
     **Automatic mode** (default, ``num_mcmc_steps=None``):
 
-    1. **Pilot run** (``_0``) — A short MCMC run with ``pilot_steps``
+    1. **Pilot run** (``_0``) -- A short MCMC run with ``pilot_steps``
        measurement steps.  The resulting statistical error is used to
        estimate the total steps required for ``target_error`` via the
        CLT scaling $\\sigma \\propto 1/\\sqrt{N}$.
-    2. **Production runs** (``_1``, ``_2``, …) — Continuation runs
+    2. **Production runs** (``_1``, ``_2``, ...) -- Continuation runs
        with the estimated step count.  After each run, the checkpoint
        is post-processed; if the error is at or below ``target_error``
        the loop terminates.  At most ``max_continuation`` production
@@ -154,7 +153,7 @@ class MCMC_Workflow(Workflow):
         are always removed; remote files are removed only when the
         workflow targets a remote machine.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     Standalone launch (automatic mode)::
 
@@ -206,14 +205,14 @@ class MCMC_Workflow(Workflow):
         Estimated total measurement steps (automatic mode).
         In fixed-step mode this key is ``estimated_steps``.
 
-    Notes
+    Notes:
     -----
     * The pilot run is skipped on re-entrance if an estimation already
       exists in ``workflow_state.toml``.
     * Continuation runs restart from the most recent ``.h5``
       checkpoint file.
 
-    See Also
+    See Also:
     --------
     VMC_Workflow : Wavefunction optimisation (job_type=vmc).
     LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
@@ -230,23 +229,23 @@ class MCMC_Workflow(Workflow):
         num_mcmc_bin_blocks: int = 5,
         num_mcmc_warmup_steps: int = 0,
         # -- [mcmc] section parameters --
-        Dt: Optional[float] = None,
-        epsilon_AS: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
-        atomic_force: Optional[bool] = None,
-        use_swct: Optional[bool] = None,
-        parameter_derivatives: Optional[bool] = None,
+        Dt: float | None = None,
+        epsilon_AS: float | None = None,
+        num_mcmc_per_measurement: int | None = None,
+        atomic_force: bool | None = None,
+        use_swct: bool | None = None,
+        parameter_derivatives: bool | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
-        num_mcmc_steps: Optional[int] = None,
+        num_mcmc_steps: int | None = None,
         pilot_steps: int = 100,
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         max_continuation: int = 1,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -279,7 +278,7 @@ class MCMC_Workflow(Workflow):
         # [precision] section
         self.precision_mode = precision_mode
 
-    # ── Input generation ──────────────────────────────────────────
+    # -- Input generation ------------------------------------------
 
     def _generate_input(
         self,
@@ -328,10 +327,10 @@ class MCMC_Workflow(Workflow):
             filename=input_file,
         )
 
-    # ── Submit / poll / fetch ─────────────────────────────────────
+    # -- Submit / poll / fetch -------------------------------------
     # _submit_and_wait() and _make_job() are inherited from Workflow.
 
-    # ── configure / run ──────────────────────────────────────────
+    # -- configure / run ------------------------------------------
 
     def configure(self) -> dict:
         """Validate parameters and return configuration summary."""
@@ -368,11 +367,11 @@ class MCMC_Workflow(Workflow):
         self._ensure_project_dir()
         _wd = self.project_dir
 
-        # ── Fixed-step mode ───────────────────────────────────────
+        # -- Fixed-step mode ---------------------------------------
         if self.num_mcmc_steps is not None:
             return await self._launch_fixed_steps(_wd)
 
-        # ── Automatic mode (pilot + target_error) ─────────────────
+        # -- Automatic mode (pilot + target_error) -----------------
         return await self._launch_auto(_wd)
 
     async def _launch_fixed_steps(self, _wd):
@@ -392,7 +391,7 @@ class MCMC_Workflow(Workflow):
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 last_run = i
                 continue
-            elif status in ("submitted", "completed"):
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
@@ -454,7 +453,7 @@ class MCMC_Workflow(Workflow):
                         last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                     )
 
-            # ── Abnormal-termination guard (single source of truth) ──
+            # -- Abnormal-termination guard (single source of truth) --
             # Fixed-step mode has no convergence criterion, so only the
             # Program-ends / non-finite-energy checks are active here.
             vstatus, vmsg = validate_completion(_wd, self.output_values)
@@ -464,7 +463,7 @@ class MCMC_Workflow(Workflow):
                 self.status = WorkflowStatus.FAILED
                 break
 
-        # ── Final energy computation ─────────────────────────────
+        # -- Final energy computation -----------------------------
         last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
@@ -485,7 +484,7 @@ class MCMC_Workflow(Workflow):
                     last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                 )
 
-        # ── Collect outputs ───────────────────────────────────────
+        # -- Collect outputs ---------------------------------------
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = chk_files + output_logs
@@ -504,7 +503,7 @@ class MCMC_Workflow(Workflow):
             estimated_steps = int(estimation["estimated_steps"])
             logger.info(f"Estimation already done (continuation): estimated_steps={estimated_steps}. Skipping pilot.")
         else:
-            # ── Run pilot in a subdirectory ───────────────────────
+            # -- Run pilot in a subdirectory -----------------------
             pilot_dir = os.path.join(_wd, "_pilot")
             os.makedirs(pilot_dir, exist_ok=True)
 
@@ -604,7 +603,7 @@ class MCMC_Workflow(Workflow):
                 net_pilot_sec=net_pilot_sec or 0,
             )
 
-        # ── Re-compute energy if post-processing parameters changed ──
+        # -- Re-compute energy if post-processing parameters changed --
         _postproc_changed = (
             estimation.get("last_num_mcmc_bin_blocks") != self.num_mcmc_bin_blocks
             or estimation.get("last_num_mcmc_warmup_steps") != self.num_mcmc_warmup_steps
@@ -631,7 +630,7 @@ class MCMC_Workflow(Workflow):
                     )
                     estimation = get_estimation(_wd)
 
-        # ── Early exit if target already met ──────────────────────
+        # -- Early exit if target already met ----------------------
         cached_energy = estimation.get("last_energy")
         cached_error = estimation.get("last_energy_error")
         if cached_energy is not None and cached_error is not None:
@@ -654,9 +653,9 @@ class MCMC_Workflow(Workflow):
                 self.status = WorkflowStatus.COMPLETED
                 return self.status, self.output_files, self.output_values
 
-        # ── Production runs (phase 1..N) ──────────────────────────
+        # -- Production runs (phase 1..N) --------------------------
         # Three phases:
-        #   A. Scan existing runs → find resume point
+        #   A. Scan existing runs -> find resume point
         #   B. Re-estimate from accumulated data (if resuming)
         #   C. Production loop for remaining runs
         #
@@ -670,7 +669,7 @@ class MCMC_Workflow(Workflow):
         last_run = 0
         first_new_run = self.max_continuation + 1  # assume all done
 
-        # ── Phase A: scan existing runs ──
+        # -- Phase A: scan existing runs --
         for i in range(1, self.max_continuation + 1):
             recorded = get_job_by_step(_wd, i)
             status = recorded.get("status")
@@ -682,7 +681,7 @@ class MCMC_Workflow(Workflow):
                 first_new_run = i
                 break
 
-        # ── Phase B: re-estimate from accumulated data ──
+        # -- Phase B: re-estimate from accumulated data --
         accumulated_measurement = 0  # measurement steps only (excl. warmup)
         if first_new_run > 1:
             cached_accum = estimation.get("accumulated_measurement_steps")
@@ -725,7 +724,7 @@ class MCMC_Workflow(Workflow):
                             f"accumulated measurement: {accumulated_measurement})"
                         )
 
-        # ── Phase C: production loop ──
+        # -- Phase C: production loop --
         _prev_run_steps = None
         for i in range(first_new_run, self.max_continuation + 1):
             recorded = get_job_by_step(_wd, i)
@@ -797,7 +796,7 @@ class MCMC_Workflow(Workflow):
             _prev_run_steps = estimated_steps
             last_run = i
 
-            # ── Side-effects: compute energy from checkpoint (if any) ──
+            # -- Side-effects: compute energy from checkpoint (if any) --
             restart_chk = self._find_restart_chk(_wd)
             energy = error = None
             if restart_chk:
@@ -821,7 +820,7 @@ class MCMC_Workflow(Workflow):
                         last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                     )
 
-            # ── Termination decision — single source of truth ──
+            # -- Termination decision -- single source of truth --
             vstatus, vmsg = validate_completion(
                 _wd,
                 self.output_values,
@@ -836,7 +835,7 @@ class MCMC_Workflow(Workflow):
             if vstatus == CompletionStatus.OK:
                 logger.info(f"  Target error achieved: {vmsg} (run {i}/{self.max_continuation})")
                 break
-            # INCOMPLETE — prepare next iteration if we have an error estimate
+            # INCOMPLETE -- prepare next iteration if we have an error estimate
             if energy is not None:
                 if i < self.max_continuation:
                     old_steps = estimated_steps
@@ -858,7 +857,7 @@ class MCMC_Workflow(Workflow):
                         f"max_continuation ({self.max_continuation}) reached"
                     )
 
-        # ── Final energy computation (safety net) ─────────────────
+        # -- Final energy computation (safety net) -----------------
         last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
@@ -880,7 +879,7 @@ class MCMC_Workflow(Workflow):
                     last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                 )
 
-        # ── Collect outputs ───────────────────────────────────────
+        # -- Collect outputs ---------------------------------------
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = chk_files + output_logs
@@ -890,9 +889,9 @@ class MCMC_Workflow(Workflow):
             self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
-    # ── Utility methods ───────────────────────────────────────────
+    # -- Utility methods -------------------------------------------
 
-    def _find_restart_chk(self, work_dir: str) -> Optional[str]:
+    def _find_restart_chk(self, work_dir: str) -> str | None:
         """Locate the MCMC restart checkpoint file in *work_dir*."""
         for pattern in ["restart.h5", "mcmc.h5", "*.h5"]:
             matches = sorted(glob.glob(os.path.join(work_dir, pattern)))
@@ -900,11 +899,11 @@ class MCMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: str | None = None):
         """Parse energy from *output_file* or run ``jqmc-tool mcmc compute-energy``.
 
         When *output_file* is given the energy is read directly from
-        the ``jqmc`` stdout (``Total Energy: E = … +- … Ha.``).
+        the ``jqmc`` stdout (``Total Energy: E = ... +- ... Ha.``).
         Falls back to ``jqmc-tool`` when *output_file* is *None* or
         when stdout parsing fails.
 
@@ -917,7 +916,7 @@ class MCMC_Workflow(Workflow):
         output_file : str, optional
             Stdout filename (basename) of the ``jqmc`` run.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
@@ -962,7 +961,7 @@ class MCMC_Workflow(Workflow):
             return float(match.group(1)), float(match.group(2))
         return None, None
 
-    def _compute_force(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+    def _compute_force(self, restart_chk: str, work_dir: str, output_file: str | None = None):
         """Parse forces from *output_file* or run ``jqmc-tool mcmc compute-force``.
 
         When *output_file* is given, forces are read directly from
@@ -978,7 +977,7 @@ class MCMC_Workflow(Workflow):
         output_file : str, optional
             Stdout filename (basename) of the ``jqmc`` run.
 
-        Returns
+        Returns:
         -------
         list of dict or None
             Each dict has keys ``label``, ``Fx``, ``Fx_err``,

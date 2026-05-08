@@ -128,17 +128,17 @@ After running the pipeline, each bond length has the following structure:
 
 ```
 R_0.74/
-├── 00_pyscf/          # pySCF DFT calculation
-│   ├── run_pyscf.py
-│   ├── H2_R_0.74.h5   # TREXIO file
-│   └── H2_R_0.74.out  # pySCF output
-├── 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_20.h5
-├── 03_mcmc/           # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
+--- 00_pyscf/          # pySCF DFT calculation
+-   --- run_pyscf.py
+-   --- H2_R_0.74.h5   # TREXIO file
+-   --- H2_R_0.74.out  # pySCF output
+--- 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
+-   --- hamiltonian_data_opt_step_1.h5
+-   --- ...
+-   --- hamiltonian_data_opt_step_20.h5
+--- 03_mcmc/           # MCMC_Workflow: production sampling + forces
+--- 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
 ```
 
 ## Workflow DAG
@@ -146,8 +146,8 @@ R_0.74/
 For each R, the dependency graph is:
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC
-                   └─--> LRDMC (a=0.2)
+pySCF --> WF --> VMC -----> MCMC
+                   ----> LRDMC (a=0.2)
 ```
 
 All 20 R values are independent and execute in parallel via `Launcher`.
@@ -194,7 +194,7 @@ The script prints a summary table after all calculations complete:
 
 ## Results
 
-![H2 PES — MCMC and LRDMC](H2_PES_mcmc_lrdmc.png)
+![H2 PES -- MCMC and LRDMC](H2_PES_mcmc_lrdmc.png)
 
 ## References
 

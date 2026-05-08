@@ -1,4 +1,4 @@
-"""WF_Workflow — TREXIO to hamiltonian_data.h5 conversion.
+"""WF_Workflow -- TREXIO to hamiltonian_data.h5 conversion.
 
 Wraps ``jqmc-tool trexio convert-to`` which converts a TREXIO file (.h5)
 into the internal ``hamiltonian_data.h5`` format, optionally attaching
@@ -43,7 +43,6 @@ import os
 import shlex
 import subprocess
 from logging import getLogger
-from typing import List, Optional
 
 from ._state import WorkflowStatus
 from .workflow import Workflow
@@ -82,11 +81,11 @@ class WF_Workflow(Workflow):
         Extra NN Jastrow parameters (``-jp key=value``).
     ao_conv_to : str, optional
         Convert AOs after building the Hamiltonian (``--ao-conv-to``).
-        ``"cart"``  → convert to Cartesian AOs,
-        ``"sphe"`` → convert to spherical-harmonic AOs,
-        ``None``    → keep the original representation.
+        ``"cart"``  -> convert to Cartesian AOs,
+        ``"sphe"`` -> convert to spherical-harmonic AOs,
+        ``None``    -> keep the original representation.
 
-    Example
+    Example:
     -------
     >>> wf = WF_Workflow(
     ...     trexio_file="molecular.h5",
@@ -98,13 +97,13 @@ class WF_Workflow(Workflow):
     ... )
     >>> status, out_files, out_values = wf.launch()
 
-    Notes
+    Notes:
     -----
-    This workflow runs **locally** — no remote job submission is
+    This workflow runs **locally** -- no remote job submission is
     involved.  It calls ``jqmc-tool trexio convert-to`` via
     :func:`subprocess.run`.
 
-    See Also
+    See Also:
     --------
     VMC_Workflow : Optimise the wavefunction produced by this step.
     """
@@ -113,14 +112,14 @@ class WF_Workflow(Workflow):
         self,
         trexio_file: str = "trexio.h5",
         hamiltonian_file: str = "hamiltonian_data.h5",
-        j1_parameter: Optional[float] = None,
-        j1_type: Optional[str] = None,
-        j2_parameter: Optional[float] = None,
-        j2_type: Optional[str] = None,
-        j3_basis_type: Optional[str] = None,
-        j_nn_type: Optional[str] = None,
-        j_nn_params: Optional[List[str]] = None,
-        ao_conv_to: Optional[str] = None,
+        j1_parameter: float | None = None,
+        j1_type: str | None = None,
+        j2_parameter: float | None = None,
+        j2_type: str | None = None,
+        j3_basis_type: str | None = None,
+        j_nn_type: str | None = None,
+        j_nn_params: list[str] | None = None,
+        ao_conv_to: str | None = None,
     ):
         super().__init__()
         self.trexio_file = trexio_file
@@ -174,9 +173,9 @@ class WF_Workflow(Workflow):
         }
 
     async def run(self) -> tuple:
-        """Run the TREXIO→hamiltonian conversion (locally).
+        """Run the TREXIO->hamiltonian conversion (locally).
 
-        Returns
+        Returns:
         -------
         tuple
             ``(status, output_files, output_values)``

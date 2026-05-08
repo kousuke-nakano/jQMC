@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-"""LRDMC_Ext_Workflow — LRDMC extrapolation to the a²→0 limit.
+"""LRDMC_Ext_Workflow -- LRDMC extrapolation to the a^2->0 limit.
 
 Orchestrates multiple :class:`LRDMC_Workflow` runs at different lattice
 spacings (``alat`` values), then post-processes with
@@ -47,7 +46,6 @@ import os
 import re
 import subprocess
 from logging import getLogger
-from typing import Dict, List, Optional, Union
 
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
@@ -62,7 +60,7 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
 class LRDMC_Ext_Workflow(Workflow):
-    """LRDMC a²→0 continuum-limit extrapolation workflow.
+    """LRDMC a^2->0 continuum-limit extrapolation workflow.
 
     Orchestrates multiple :class:`LRDMC_Workflow` runs at different
     lattice spacings (``alat`` values), then post-processes with
@@ -78,8 +76,8 @@ class LRDMC_Ext_Workflow(Workflow):
     **Mode selection** follows the same rules as
     :class:`LRDMC_Workflow`:
 
-    * **GFMC_t** (default) — set *time_projection_tau* (default 0.10).
-    * **GFMC_n** — set *target_survived_walkers_ratio* or
+    * **GFMC_t** (default) -- set *time_projection_tau* (default 0.10).
+    * **GFMC_n** -- set *target_survived_walkers_ratio* or
       *num_projection_per_measurement*.
 
     Parameters
@@ -104,7 +102,7 @@ class LRDMC_Ext_Workflow(Workflow):
     max_time : int
         Wall-time limit per sub-run (seconds).
     polynomial_order : int
-        Polynomial order for the a²→0 extrapolation (default: 2).
+        Polynomial order for the a^2->0 extrapolation (default: 2).
     num_gfmc_bin_blocks : int
         Binning blocks for post-processing.
     num_gfmc_warmup_steps : int
@@ -136,7 +134,7 @@ class LRDMC_Ext_Workflow(Workflow):
         Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
         Default is False for LRDMC.
     epsilon_PW : float, optional
-        Pathak–Wagner regularization parameter (Bohr). When > 0,
+        Pathak-Wagner regularization parameter (Bohr). When > 0,
         the force estimator is regularized near the nodal surface.
         Default from ``jqmc_miscs``.
     mcmc_seed : int, optional
@@ -165,7 +163,7 @@ class LRDMC_Ext_Workflow(Workflow):
         workflow targets a remote machine.  Passed through to each
         child :class:`LRDMC_Workflow`.  Default *None* (no cleanup).
 
-    Examples
+    Examples:
     --------
     GFMC_t mode (default)::
 
@@ -207,7 +205,7 @@ class LRDMC_Ext_Workflow(Workflow):
     After ``launch()`` completes, ``output_values`` may contain:
 
     extrapolated_energy : float
-        Continuum-limit (a²→0) extrapolated energy (Ha).
+        Continuum-limit (a^2->0) extrapolated energy (Ha).
     extrapolated_energy_error : float
         Statistical error on ``extrapolated_energy`` (Ha).
     per_alat_results : dict
@@ -217,14 +215,14 @@ class LRDMC_Ext_Workflow(Workflow):
     error : str
         Top-level error message (only on failure).
 
-    Notes
+    Notes:
     -----
     * At least two ``alat`` values are required for extrapolation.
       With a single value, per-alat results are returned but no
       extrapolation is performed.
     * Each sub-run directory is named ``lrdmc_alat_<value>/``.
 
-    See Also
+    See Also:
     --------
     LRDMC_Workflow : Single-alat LRDMC run.
     """
@@ -232,10 +230,10 @@ class LRDMC_Ext_Workflow(Workflow):
     def __init__(
         self,
         server_machine_name: str = "localhost",
-        alat_list: Optional[List[float]] = None,
+        alat_list: list[float] | None = None,
         hamiltonian_file: str = "hamiltonian_data.h5",
         queue_label: str = "default",
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         jobname_prefix: str = "jqmc-lrdmc",
         number_of_walkers: int = 4,
         max_time: int = 86400,
@@ -244,24 +242,24 @@ class LRDMC_Ext_Workflow(Workflow):
         num_gfmc_warmup_steps: int = 0,
         num_gfmc_collect_steps: int = 5,
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
-        time_projection_tau: Optional[float] = 0.10,
-        target_survived_walkers_ratio: Optional[float] = None,
-        num_projection_per_measurement: Optional[Union[int, Dict[float, int]]] = None,
-        non_local_move: Optional[str] = None,
-        E_scf: Optional[float] = None,
-        atomic_force: Optional[bool] = None,
-        use_swct: Optional[bool] = None,
-        epsilon_PW: Optional[float] = None,
+        time_projection_tau: float | None = 0.10,
+        target_survived_walkers_ratio: float | None = None,
+        num_projection_per_measurement: int | dict[float, int] | None = None,
+        non_local_move: str | None = None,
+        E_scf: float | None = None,
+        atomic_force: bool | None = None,
+        use_swct: bool | None = None,
+        epsilon_PW: float | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
         pilot_steps: int = 100,
-        num_gfmc_projections: Optional[int] = None,
+        num_gfmc_projections: int | None = None,
         max_continuation: int = 5,
-        cleanup_patterns: Optional[list] = None,
+        cleanup_patterns: list | None = None,
         # -- [precision] section --
         precision_mode: str = "full",
     ):
@@ -293,9 +291,9 @@ class LRDMC_Ext_Workflow(Workflow):
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
         # num_projection_per_measurement may be:
-        #   None    — GFMC_t mode (uses time_projection_tau)
-        #   int     — same value for every alat
-        #   dict    — per-alat values; keys must cover every alat in alat_list
+        #   None    -- GFMC_t mode (uses time_projection_tau)
+        #   int     -- same value for every alat
+        #   dict    -- per-alat values; keys must cover every alat in alat_list
         if isinstance(num_projection_per_measurement, dict):
             missing = [a for a in self.alat_list if a not in num_projection_per_measurement]
             if missing:
@@ -330,7 +328,7 @@ class LRDMC_Ext_Workflow(Workflow):
         alat : float
             Lattice spacing.
 
-        Returns
+        Returns:
         -------
         Container
         """
@@ -395,14 +393,14 @@ class LRDMC_Ext_Workflow(Workflow):
         }
 
     async def run(self) -> tuple:
-        """Run LRDMC at each alat, then extrapolate to a²→0.
+        """Run LRDMC at each alat, then extrapolate to a^2->0.
 
         Every ``alat`` value is launched in parallel.  Each child
         :class:`LRDMC_Workflow` independently handles its own
         calibration (``_pilot_a``), error-bar pilot (``_pilot_b``),
         and production phase.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(status, output_files, output_values)``
@@ -470,7 +468,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
         logger.info(f"All {len(self.alat_list)} LRDMC runs completed.")
 
-        # ── Extrapolation ─────────────────────────────────────────
+        # -- Extrapolation -----------------------------------------
         if len(restart_chks) >= 2:
             ext_energy, ext_error = self._extrapolate_energy(restart_chks)
             if ext_energy is not None:
@@ -489,10 +487,10 @@ class LRDMC_Ext_Workflow(Workflow):
         self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
-    def _extrapolate_energy(self, restart_chks: List[str]):
+    def _extrapolate_energy(self, restart_chks: list[str]):
         """Run ``jqmc-tool lrdmc extrapolate-energy``.
 
-        Returns
+        Returns:
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.

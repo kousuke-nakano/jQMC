@@ -14,17 +14,16 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap  # noqa: E402
-from jqmc.determinant import Geminal_data, compute_det_geminal_all_elements  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc.atomic_orbital import ShellPrimMap
+from jqmc.determinant import Geminal_data, compute_det_geminal_all_elements
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_three_body_data,
     compute_Jastrow_three_body,
 )
-from jqmc._precision import get_tolerance  # noqa: E402
-from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import (  # noqa: E402
+from jqmc._precision import get_tolerance
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import (
     VariationalParameterBlock,
     Wavefunction_data,
     evaluate_ln_wavefunction,
@@ -248,7 +247,8 @@ def test_j3_exponent_gradient_finite_diff(trexio_file):
         f_minus = j3_value(jnp.array(exp_minus))
         grad_fd[i] = (float(f_plus) - float(f_minus)) / (2 * eps)
 
-    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=1e-5, rtol=1e-4)
+    atol, rtol = get_tolerance("jastrow_eval", "strict")
+    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=atol, rtol=rtol)
 
 
 # ============================================================
@@ -285,7 +285,8 @@ def test_j3_coefficient_gradient_finite_diff(trexio_file):
         f_minus = j3_value(jnp.array(c_minus))
         grad_fd[i] = (float(f_plus) - float(f_minus)) / (2 * eps)
 
-    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=1e-5, rtol=1e-4)
+    atol, rtol = get_tolerance("jastrow_eval", "strict")
+    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=atol, rtol=rtol)
 
 
 # ============================================================
@@ -320,7 +321,8 @@ def test_geminal_exponent_gradient_finite_diff():
         f_minus = det_value(jnp.array(e_minus))
         grad_fd[i] = (float(f_plus) - float(f_minus)) / (2 * eps)
 
-    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=1e-4, rtol=1e-3)
+    atol, rtol = get_tolerance("det_eval", "strict")
+    npt.assert_allclose(np.array(grad_jax), grad_fd, atol=atol, rtol=rtol)
 
 
 # ============================================================
@@ -724,7 +726,6 @@ def test_shell_symmetrize_selection_mask():
 
 def test_opt_with_projected_MOs_lambda_basis_conflict():
     """opt_with_projected_MOs should raise ValueError when combined with lambda basis optimization."""
-    from jqmc.jqmc_mcmc import MCMC
 
     # Only opt_lambda_basis_exp/coeff conflict with opt_with_projected_MOs.
     # opt_J3_basis_exp/coeff are allowed because J3 basis does not affect
@@ -755,6 +756,6 @@ def test_opt_with_projected_MOs_lambda_basis_conflict():
 
     # J3_basis_exp=True should NOT conflict with opt_with_projected_MOs
     flags_j3 = [True, False, False, False]  # opt_J3_basis_exp=True
-    # This should not raise — J3 basis does not affect MO projection overlap
+    # This should not raise -- J3 basis does not affect MO projection overlap
     if opt_with_projected_MOs and any(flags_j3[2:]):
         raise ValueError("Should not reach here")

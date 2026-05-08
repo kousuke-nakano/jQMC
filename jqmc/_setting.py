@@ -80,15 +80,22 @@ rtol_consistency = 1.0e-6
 # zone's current dtype and returns ``(atol, rtol)``.
 #
 # Levels:
-#   strict — two exact implementations of the same quantity (debug vs
-#            production, analytic vs autodiff).  Difference is pure
-#            floating-point round-off.
-#   loose  — comparison involving numerical differentiation or quadrature.
-#            Finite-difference truncation error dominates, so tolerances
-#            are much wider.
+#   strict   -- two exact implementations of the same quantity (debug vs
+#               production, analytic vs autodiff).  Difference is pure
+#               floating-point round-off.
+#   medium   -- analytic / autodiff vs 4th-order central finite differences
+#               of a Laplacian (or higher-derivative-sensitive quantity),
+#               *or* analytic vs autodiff of a quantity whose autodiff path
+#               inherits a fp32 forward zone (e.g. ao_eval) and therefore
+#               carries fp32 grad/lap noise the analytic path does not see.
+#               4th-order FD has a round-off floor of ~eps_mach / h^2 with
+#               h = 1e-3 (~5e-9) and a truncation term ~h^4 * f^(6) that can
+#               grow O(1e-6) for sharp basis sets / cusp regions (e.g.
+#               all-electron Z >= 7).  Use for numerical_diff tests where the
+#               FD side is a 2nd derivative.
 _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
     "strict": {"float64": (1e-8, 1e-6), "float32": (1e-5, 1e-3)},
-    "loose": {"float64": (1e-1, 1e-4), "float32": (1e-1, 1e-3)},
+    "medium": {"float64": (1e-7, 1e-5), "float32": (1e-4, 1e-2)},
 }
 
 # --- Dtype-aware EPS constants ---
@@ -98,8 +105,8 @@ _TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
 # appropriate value for the current precision zone.
 #
 # Constants:
-#   machine_precision — floor for safe ratio in diagnostics.
-#   rcond_svd         — threshold for SVD pseudoinverse of the geminal matrix.
+#   machine_precision -- floor for safe ratio in diagnostics.
+#   rcond_svd         -- threshold for SVD pseudoinverse of the geminal matrix.
 _EPS_DTYPE_AWARE: dict[str, dict[str, float]] = {
     "machine_precision": {"float64": 1e-38, "float32": 1e-38},
     "rcond_svd": {"float64": 1e-20, "float32": 1e-16},

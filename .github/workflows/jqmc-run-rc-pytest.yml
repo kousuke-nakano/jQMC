@@ -3,17 +3,6 @@
 name: jqmc rc test
 
 on:
-  push:
-    branches: [ "rc" ]
-    paths-ignore:
-      - '.gitignore'
-      - '.github/**'
-      - 'doc/**'
-      - 'examples/**'
-      - 'benchmarks/**'
-      - 'README.md'
-      - '.pre-commit-config.yaml'
-      - 'jqmc_workflow/**'
   pull_request:
     branches: [ "rc" ]
     paths-ignore:

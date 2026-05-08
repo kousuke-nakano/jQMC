@@ -9,8 +9,8 @@ For a water molecule (ccECP, cc-pVTZ, Cartesian), this script:
 
 Patterns
 --------
-  A) J3 + MCMC   — SR use_lm=True, delta=0.35
-  B) J3 + LRDMC  — same VMC; LRDMC a=0.30
+  A) J3 + MCMC   -- SR use_lm=True, delta=0.35
+  B) J3 + LRDMC  -- same VMC; LRDMC a=0.30
 """
 
 import math
@@ -31,7 +31,7 @@ from jqmc_workflow import (
     parse_mcmc_output,
 )
 
-# ── Configuration ─────────────────────────────────────────────────
+# -- Configuration -------------------------------------------------
 SERVER = "cluster"
 QUEUE_LABEL = "cores-120-mpi-120-omp-1-24h"
 PILOT_QUEUE_LABEL = "cores-120-mpi-120-omp-1-3h"
@@ -88,7 +88,7 @@ trexio.to_trexio(mf, filename)
 '''
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------
 def extract_hf_energy(pyscf_output: str) -> float | None:
     """Parse the converged SCF energy from pySCF output."""
     if not os.path.isfile(pyscf_output):
@@ -113,7 +113,7 @@ def format_val(val: float | None, err: float | None) -> str:
     return f"{val:.{n_dec}f}({err_in_last})"
 
 
-# ── Step 0: Run pySCF locally ────────────────────────────────────
+# -- Step 0: Run pySCF locally ------------------------------------
 def run_pyscf(base_dir: str) -> float | None:
     """Run pySCF for water and return HF energy."""
     print("=" * 60)
@@ -125,7 +125,7 @@ def run_pyscf(base_dir: str) -> float | None:
     if os.path.isfile(trexio_path):
         print(f"  [skip] {TREXIO_FILE} already exists.")
     else:
-        print(f"  [run]  pySCF for water ...")
+        print("  [run]  pySCF for water ...")
         script_path = os.path.join(base_dir, "_local_pyscf.py")
         with open(script_path, "w") as f:
             f.write(
@@ -153,14 +153,14 @@ def run_pyscf(base_dir: str) -> float | None:
     return hf_energy
 
 
-# ── Step 1: Build pipelines for J3 + MCMC / LRDMC ────────────────
+# -- Step 1: Build pipelines for J3 + MCMC / LRDMC ----------------
 def build_pipeline() -> tuple[
     list[Container],
     dict[str, Container],
 ]:
     """Build Container list for J3 + MCMC / LRDMC.
 
-    Returns
+    Returns:
     -------
     all_workflows : list[Container]
         Flat list of all containers (for Launcher).
@@ -171,10 +171,10 @@ def build_pipeline() -> tuple[
     result_containers: dict[str, Container] = {}
 
     # ==================================================================
-    # J2=exp + J3=ao-small  →  MCMC + LRDMC
+    # J2=exp + J3=ao-small  ->  MCMC + LRDMC
     # ==================================================================
 
-    # WF: TREXIO → hamiltonian_data.h5  (J1=None, J2=exp, J3=ao-small)
+    # WF: TREXIO -> hamiltonian_data.h5  (J1=None, J2=exp, J3=ao-small)
     wf = Container(
         label="wf",
         dirname="01_wf",
@@ -281,7 +281,7 @@ def build_pipeline() -> tuple[
     return workflows, result_containers
 
 
-# ── Step 2: Print summary table ──────────────────────────────────
+# -- Step 2: Print summary table ----------------------------------
 def print_summary_table(
     hf_energy: float | None,
     result_containers: dict[str, Container],
@@ -321,7 +321,7 @@ def print_summary_table(
 
         e_str = format_val(e, e_err)
 
-        # Max |F| = max over atoms of sqrt(Fx² + Fy² + Fz²)
+        # Max |F| = max over atoms of sqrt(Fx^2 + Fy^2 + Fz^2)
         f_val, f_err = None, None
         if forces:
             max_norm = -1.0
@@ -349,7 +349,7 @@ def print_summary_table(
     print()
 
 
-# ── Main ──────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(base_dir)
@@ -357,10 +357,10 @@ if __name__ == "__main__":
     # 0) pySCF (local)
     hf_energy = run_pyscf(base_dir)
 
-    # 1) WF → VMC → {MCMC, LRDMC}
+    # 1) WF -> VMC -> {MCMC, LRDMC}
     print()
     print("=" * 60)
-    print("  Step 1: WF → VMC → MCMC + LRDMC  (J3)")
+    print("  Step 1: WF -> VMC -> MCMC + LRDMC  (J3)")
     print("=" * 60)
 
     workflows, result_containers = build_pipeline()

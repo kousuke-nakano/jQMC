@@ -1,7 +1,7 @@
 """Launcher: DAG-based parallel workflow executor for jqmc-workflow.
 
 True DAG execution: as soon as ALL predecessors of a node complete,
-that node starts immediately — no waiting for the entire "layer".
+that node starts immediately -- no waiting for the entire "layer".
 Supports FileFrom / ValueFrom dependencies.
 """
 
@@ -40,14 +40,12 @@ Supports FileFrom / ValueFrom dependencies.
 import asyncio
 import os
 import pathlib
-from datetime import datetime
 from logging import (
     FileHandler,
     Formatter,
     StreamHandler,
     getLogger,
 )
-from typing import List, Optional
 
 from .workflow import (
     Container,
@@ -68,7 +66,7 @@ class Launcher:
     infers the dependency graph from :class:`FileFrom` / :class:`ValueFrom`
     references, and executes workflows with *true DAG parallelism*: as soon
     as **all** predecessors of a node complete, that node starts immediately
-    — there is no layer-based grouping.
+    -- there is no layer-based grouping.
 
     Parameters
     ----------
@@ -82,13 +80,13 @@ class Launcher:
         If ``True``, render the dependency graph to ``dependency_graph.png``
         (requires the ``graphviz`` Python package).
 
-    Raises
+    Raises:
     ------
     ValueError
         If workflow labels are duplicated or a dependency references an
         undefined workflow label.
 
-    Examples
+    Examples:
     --------
     Typical three-stage QMC pipeline::
 
@@ -134,14 +132,14 @@ class Launcher:
         )
         launcher.launch()
 
-    Notes
+    Notes:
     -----
     * The launcher changes the working directory during execution and
       restores it afterwards.
     * If a workflow fails, all downstream dependents are automatically
       skipped.
 
-    See Also
+    See Also:
     --------
     Container : Wraps a workflow in a project directory.
     FileFrom : File dependency placeholder.
@@ -150,27 +148,27 @@ class Launcher:
 
     def __init__(
         self,
-        workflows: Optional[List[Container]] = None,
+        workflows: list[Container] | None = None,
         log_level: str = "INFO",
         log_name: str = "jqmc_workflow.log",
         draw_graph: bool = False,
     ):
         workflows = workflows or []
 
-        # ── Logger setup ──────────────────────────────────────────
+        # -- Logger setup ------------------------------------------
         self._setup_logger(log_level, log_name)
 
         from ._header_footer import _print_header
 
         _print_header()
 
-        # ── Resolve config dir early (CWD is still the user dir) ──
+        # -- Resolve config dir early (CWD is still the user dir) --
         from ._config import get_config_dir
 
         _cfg = get_config_dir()
         logger.debug(f"Config dir resolved to: {_cfg}")
 
-        # ── Attributes ────────────────────────────────────────────
+        # -- Attributes --------------------------------------------
         self.root_dir = os.getcwd()
 
         self.workflows = workflows
@@ -201,7 +199,7 @@ class Launcher:
         logger.info("-" * 50)
         logger.info("")
 
-    # ── Logger setup ──────────────────────────────────────────────
+    # -- Logger setup ----------------------------------------------
 
     def _setup_logger(self, log_level: str, log_name: str):
         global _loggers_initialized
@@ -229,7 +227,7 @@ class Launcher:
 
         _loggers_initialized[name] = True
 
-    # ── Dependency graph ──────────────────────────────────────────
+    # -- Dependency graph ------------------------------------------
 
     def _build_dependency_graph(self) -> dict:
         """Walk all workflow attributes to find dependency placeholders."""
@@ -240,7 +238,7 @@ class Launcher:
             self._collect_deps(cw, dep_labels)
             dep_dict[cw.label] = tuple(dep_labels)
 
-        # Validate — all dependency labels must exist
+        # Validate -- all dependency labels must exist
         all_labels = set(self.workflows_by_label.keys())
         for label, deps in dep_dict.items():
             missing = set(deps) - all_labels
@@ -293,7 +291,7 @@ class Launcher:
         G.render("dependency_graph", cleanup=True)
         logger.info("Dependency graph saved to dependency_graph.png")
 
-    # ── Session / job queries (MCP adapter layer) ───────────────
+    # -- Session / job queries (MCP adapter layer) ---------------
 
     def get_session_state(self) -> dict:
         """Aggregate the status of all workflows, dependency graph, and progress.
@@ -359,7 +357,7 @@ class Launcher:
         history.sort(key=lambda j: j.get("submitted_at", ""))
         return history
 
-    # ── Variable resolution ───────────────────────────────────────
+    # -- Variable resolution ---------------------------------------
 
     def _get_value(self, dep_obj):
         """Resolve a FileFrom / ValueFrom to its actual value."""
@@ -380,11 +378,10 @@ class Launcher:
             p = pathlib.Path(filepath)
             return p.resolve().relative_to(pathlib.Path(self.root_dir).resolve())
 
-        elif isinstance(dep_obj, ValueFrom):
+        if isinstance(dep_obj, ValueFrom):
             return cw.output_values.get(dep_obj.key)
 
-        else:
-            raise ValueError(f"Unknown dependency type: {dep_obj}")
+        raise ValueError(f"Unknown dependency type: {dep_obj}")
 
     def _resolve_variables(self, cw: Container):
         """Replace all dependency placeholders in cw with resolved values."""
@@ -412,7 +409,7 @@ class Launcher:
             elif isinstance(value, Workflow):
                 self._resolve_obj(value)
 
-    # ── Execution: true DAG parallelism ───────────────────────────
+    # -- Execution: true DAG parallelism ---------------------------
 
     def launch(self):
         asyncio.run(self.async_launch())
@@ -421,7 +418,7 @@ class Launcher:
         """Execute all workflows respecting DAG dependencies.
 
         As soon as ALL predecessors of a node complete, that node
-        starts immediately — no layer-based grouping.
+        starts immediately -- no layer-based grouping.
         """
         completed = set()
         failed = set()
@@ -465,8 +462,7 @@ class Launcher:
                 if pending:
                     logger.error(f"Deadlock! Remaining: {pending}")
                     break
-                else:
-                    break
+                break
 
             # Wait for at least one task to complete
             done_tasks, _ = await asyncio.wait(running.values(), return_when=asyncio.FIRST_COMPLETED)

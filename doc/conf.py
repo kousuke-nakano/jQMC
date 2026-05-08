@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 def _generate_examples_page():
     """Scan ``examples/jqmc-*/README.md`` and emit ``doc/examples.md``.
 
-    * Heading levels are bumped by one (``#`` → ``##``).
+    * Heading levels are bumped by one (``#`` -> ``##``).
     * Image paths are rewritten to be relative to ``doc/``.
     * Runs at import time so the file is ready before Sphinx reads sources.
     """
@@ -62,7 +62,7 @@ def _generate_examples_page():
 
         content = readme.read_text("utf-8")
 
-        # Bump heading levels: # → ##, ## → ###, etc.
+        # Bump heading levels: # -> ##, ## -> ###, etc.
         content = _re.sub(r"^(#+)", r"#\1", content, flags=_re.MULTILINE)
 
         # Fix image paths (skip absolute URLs)
@@ -84,7 +84,7 @@ def _generate_examples_page():
 
         content = _re.sub(r"^\[\^([^\]]+)\]:.*$", _dedup_footnote, content, flags=_re.MULTILINE)
 
-        # Strip ":filename" from fenced code block language (e.g. ```toml:vmc.toml → ```toml)
+        # Strip ":filename" from fenced code block language (e.g. ```toml:vmc.toml -> ```toml)
         content = _re.sub(r"^(```\w+):[^\s`]+", r"\1", content, flags=_re.MULTILINE)
 
         sections.append(content.rstrip())
@@ -276,7 +276,7 @@ html_theme = "sphinx_book_theme"
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-html_title = "jQMC v%s" % release
+html_title = f"jQMC v{release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None

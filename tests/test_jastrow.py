@@ -43,9 +43,9 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.atomic_orbital import AOs_sphe_data  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc.atomic_orbital import AOs_sphe_data
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
@@ -72,9 +72,9 @@ from jqmc.jastrow_factor import (  # noqa: E402
     compute_Jastrow_three_body,
     compute_Jastrow_two_body,
 )
-from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.structure import Structure_data  # noqa: E402
-from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
+from jqmc.molecular_orbital import MOs_data
+from jqmc.structure import Structure_data
+from jqmc.wavefunction import VariationalParameterBlock
 
 
 @pytest.mark.parametrize("j1b_type", ["exp", "pade"])
@@ -127,9 +127,10 @@ def test_Jastrow_onebody_part(j1b_type):
 
 @pytest.mark.numerical_diff
 @pytest.mark.parametrize("j1b_type", ["exp", "pade"])
-def test_numerical_and_auto_grads_Jastrow_onebody_part(j1b_type):
-    """Test numerical and JAX grads of the one-body Jastrow factor."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "loose")
+def test_numerical_and_auto_grads_and_laplacian_Jastrow_onebody_part(j1b_type):
+    """Test numerical and JAX grads / laplacian of the one-body Jastrow factor."""
+    atol_g, rtol_g = get_tolerance("jastrow_grad_lap", "strict")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "medium")
     num_r_up_cart_samples = 6
     num_r_dn_cart_samples = 3
     num_R_cart_samples = 5
@@ -166,32 +167,32 @@ def test_numerical_and_auto_grads_Jastrow_onebody_part(j1b_type):
 
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(grad_up_num), np.asarray(grad_up_auto), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(grad_up_num), np.asarray(grad_up_auto), atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_up_num),
         np.asarray(lap_up_auto),
-        rtol=rtol,
-        atol=atol,
+        rtol=rtol_l,
+        atol=atol_l,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_dn_num),
         np.asarray(lap_dn_auto),
-        rtol=rtol,
-        atol=atol,
+        rtol=rtol_l,
+        atol=atol_l,
     )
 
     jax.clear_caches()
 
 
 @pytest.mark.parametrize("j1b_type", ["exp", "pade"])
-def test_analytical_and_auto_grads_Jastrow_onebody_part(j1b_type):
+def test_analytical_and_auto_grads_and_laplacian_Jastrow_onebody_part(j1b_type):
     """Analytic vs auto-diff gradients/laplacian for one-body Jastrow."""
     atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
     num_r_up_cart_samples = 5
@@ -277,10 +278,11 @@ def test_Jastrow_twobody_part(j2b_type):
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.numerical_diff
 @pytest.mark.parametrize("j2b_type", ["pade", "exp"])
-def test_numerical_and_auto_grads_Jastrow_twobody_part(j2b_type):
-    """Test numerical and JAX grads of the two-body Jastrow factor, comparing the debug and JAX implementations."""
+def test_numerical_and_auto_grads_and_laplacian_Jastrow_twobody_part(j2b_type):
+    """Test numerical and JAX grads / laplacian of the two-body Jastrow factor, comparing the debug and JAX implementations."""
     atol_s, rtol_s = get_tolerance("jastrow_eval", "strict")
-    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "loose")
+    atol_g, rtol_g = get_tolerance("jastrow_grad_lap", "strict")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "medium")
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2
 
@@ -331,10 +333,10 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part(j2b_type):
 
     assert not np.any(np.isnan(np.asarray(grad_J2_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_J2_up_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_J2_up_debug, grad_J2_up_auto, atol=atol_l, rtol=rtol_l)
+    np.testing.assert_allclose(grad_J2_up_debug, grad_J2_up_auto, atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(grad_J2_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_J2_dn_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_J2_dn_debug, grad_J2_dn_auto, atol=atol_l, rtol=rtol_l)
+    np.testing.assert_allclose(grad_J2_dn_debug, grad_J2_dn_auto, atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_up_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -357,7 +359,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part(j2b_type):
 
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("j2b_type", ["pade", "exp"])
-def test_analytic_and_auto_grads_Jastrow_twobody_part(j2b_type):
+def test_analytic_and_auto_grads_and_laplacian_Jastrow_twobody_part(j2b_type):
     """Analytic vs auto-diff gradients/laplacian for two-body Jastrow."""
     atol, rtol = get_tolerance("jastrow_grad_lap", "strict")
     num_r_up_cart_samples = 5
@@ -574,7 +576,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_sphe_to_cart_AOs_data():
-    """Round-trip AOs l<=6: spherical→Cartesian keeps J3 values/grads."""
+    """Round-trip AOs l<=6: spherical->Cartesian keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(321)
 
@@ -644,7 +646,7 @@ def test_Jastrow_threebody_part_sphe_to_cart_AOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_cart_to_sphe_AOs_data():
-    """Round-trip AOs l<=6: Cartesian→spherical keeps J3 values/grads."""
+    """Round-trip AOs l<=6: Cartesian->spherical keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(654)
 
@@ -714,7 +716,7 @@ def test_Jastrow_threebody_part_cart_to_sphe_AOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_sphe_to_cart_MOs_data():
-    """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps J3 values/grads."""
+    """Round-trip MOs built on l<=6 AOs: spherical->Cartesian keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(777)
 
@@ -791,7 +793,7 @@ def test_Jastrow_threebody_part_sphe_to_cart_MOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
-    """Round-trip MOs l<=6: Cartesian→spherical keeps J3 values/grads."""
+    """Round-trip MOs l<=6: Cartesian->spherical keeps J3 values/grads."""
     atol, rtol = get_tolerance("jastrow_eval", "strict")
     rng = np.random.default_rng(888)
 
@@ -868,10 +870,11 @@ def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.numerical_diff
-def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
-    """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
+def test_numerical_and_auto_grads_and_laplacian_Jastrow_threebody_part_with_AOs_data():
+    """Test numerical and JAX grads / laplacian of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
     atol_s, rtol_s = get_tolerance("jastrow_eval", "strict")
-    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "loose")
+    atol_g, rtol_g = get_tolerance("jastrow_grad_lap", "strict")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "medium")
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
     num_R_cart_samples = 6
@@ -957,10 +960,10 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_auto, atol=atol_l, rtol=rtol_l)
+    np.testing.assert_allclose(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_auto, atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_auto, atol=atol_l, rtol=rtol_l)
+    np.testing.assert_allclose(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_auto, atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
@@ -983,10 +986,11 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.numerical_diff
-def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
-    """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
+def test_numerical_and_auto_grads_and_laplacian_Jastrow_threebody_part_with_MOs_data():
+    """Test numerical and JAX grads / laplacian of the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
     atol_s, rtol_s = get_tolerance("jastrow_eval", "strict")
-    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "loose")
+    atol_g, rtol_g = get_tolerance("jastrow_grad_lap", "strict")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "medium")
     num_el = 10
     num_mo = 5
     num_ao = 3
@@ -1076,10 +1080,10 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, atol=atol_l, rtol=rtol_l)
+    np.testing.assert_allclose(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, atol=atol_l, rtol=rtol_l)
+    np.testing.assert_allclose(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, atol=atol_g, rtol=rtol_g)
 
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_jax)))), "NaN detected in second argument"
@@ -1102,10 +1106,10 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
 
 @pytest.mark.activate_if_skip_heavy
-def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
+def test_analytic_and_auto_grads_and_laplacian_Jastrow_threebody_part_with_AOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (AOs)."""
     # J3 grad/lap crosses two zones: jastrow_grad_lap (fp32 mixed) + ao_grad_lap (fp64).
-    # Use the looser of the two — under mixed precision, jastrow_grad_lap dominates.
+    # Use the looser of the two -- under mixed precision, jastrow_grad_lap dominates.
     atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap"], "strict")
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
@@ -1176,7 +1180,7 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
 
 @pytest.mark.activate_if_skip_heavy
-def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
+def test_analytic_and_auto_grads_and_laplacian_Jastrow_threebody_part_with_MOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (MOs)."""
     # J3-with-MOs crosses jastrow_grad_lap (fp32 mixed) + ao_grad_lap + mo_grad + mo_lap.
     # All non-jastrow zones are fp64; jastrow_grad_lap dominates as the loosest.
@@ -1253,7 +1257,7 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
 
 # ---------------------------------------------------------------------------
-# Jastrow combination matrix for "part" tests (J1+J2+J3±NN)
+# Jastrow combination matrix for "part" tests (J1+J2+J3+/-NN)
 # Each tuple is (j1b_type, j2b_type, include_nn).
 # ---------------------------------------------------------------------------
 _JASTROW_COMBOS = [
@@ -1338,9 +1342,10 @@ def _build_jastrow_data_for_part_tests(j1b_type: str = "exp", j2b_type: str = "p
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.numerical_diff
 @pytest.mark.parametrize("j1b_type,j2b_type,include_nn", _JASTROW_COMBOS)
-def test_numerical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
+def test_numerical_and_auto_grads_and_laplacian_Jastrow_part(j1b_type, j2b_type, include_nn):
     """Numerical vs auto-diff gradients/laplacian for J1+J2+J3(+NN)."""
-    atol, rtol = get_tolerance("jastrow_grad_lap", "loose")
+    atol_g, rtol_g = get_tolerance("jastrow_grad_lap", "strict")
+    atol_l, rtol_l = get_tolerance("jastrow_grad_lap", "medium")
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(j1b_type, j2b_type, include_nn)
 
     grad_up_num, grad_dn_num, lap_up_num, lap_dn_num = _compute_grads_and_laplacian_Jastrow_part_debug(
@@ -1357,26 +1362,26 @@ def test_numerical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
 
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(grad_up_num), np.asarray(grad_up_auto), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(grad_up_num), np.asarray(grad_up_auto), atol=atol_g, rtol=rtol_g)
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), atol=atol, rtol=rtol)
+    np.testing.assert_allclose(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), atol=atol_g, rtol=rtol_g)
 
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_up_num),
         np.asarray(lap_up_auto),
-        rtol=rtol,
-        atol=atol,
+        rtol=rtol_l,
+        atol=atol_l,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_num)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_dn_num),
         np.asarray(lap_dn_auto),
-        rtol=rtol,
-        atol=atol,
+        rtol=rtol_l,
+        atol=atol_l,
     )
 
     jax.clear_caches()
@@ -1384,7 +1389,7 @@ def test_numerical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
 
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("j1b_type,j2b_type,include_nn", _JASTROW_COMBOS)
-def test_analytical_and_auto_grads_Jastrow_part(j1b_type, j2b_type, include_nn):
+def test_analytical_and_auto_grads_and_laplacian_Jastrow_part(j1b_type, j2b_type, include_nn):
     """Analytic vs auto-diff gradients/laplacian for J1+J2+J3(+NN)."""
     # Combined J1+J2+J3(+NN) grad/lap crosses jastrow_grad_lap (fp32 mixed) and the
     # AO/MO grad/lap zones via the J3 path. jastrow_grad_lap is the loosest under mixed.
@@ -1491,7 +1496,7 @@ def _make_jastrow_with_j3(j_matrix):
 
 
 def test_symmetrize_j3_symmetric_subblock():
-    """L1-7: [:, :-1] symmetric → 0.5*(A+A.T) on sub-block, last col unchanged."""
+    """L1-7: [:, :-1] symmetric -> 0.5*(A+A.T) on sub-block, last col unchanged."""
     rng = np.random.RandomState(10)
     n = 4
     sq_sym = rng.randn(n, n)
@@ -1507,7 +1512,7 @@ def test_symmetrize_j3_symmetric_subblock():
 
 
 def test_symmetrize_j3_nonsymmetric_subblock():
-    """L1-8: [:, :-1] non-symmetric → no-op."""
+    """L1-8: [:, :-1] non-symmetric -> no-op."""
     rng = np.random.RandomState(11)
     n = 4
     sq_nonsym = rng.randn(n, n)
@@ -1522,7 +1527,7 @@ def test_symmetrize_j3_nonsymmetric_subblock():
 
 
 def test_symmetrize_j3_none():
-    """L1-9: jastrow_three_body_data=None → no-op."""
+    """L1-9: jastrow_three_body_data=None -> no-op."""
     jd = Jastrow_data()  # all components are None
     mat = np.random.RandomState(12).randn(3, 4)
     result = jd.symmetrize_j3(mat)
@@ -1530,7 +1535,7 @@ def test_symmetrize_j3_none():
 
 
 def test_symmetrize_j3_too_few_columns():
-    """L1-10: j_matrix with shape[1] < 2 → no-op."""
+    """L1-10: j_matrix with shape[1] < 2 -> no-op."""
     j_matrix = np.array([[1.0], [2.0], [3.0]])  # (3, 1)
     jd = _make_jastrow_with_j3(j_matrix)
     mat = np.random.RandomState(13).randn(3, 1)
@@ -1678,9 +1683,9 @@ def test_streaming_J2_state_against_full(j2b_type, n_up, n_dn):
     full computation) within strict tolerance.
 
     J2 is electron-pair coupled, so the advance updates the moved electron's
-    same-spin row (i ≠ k) and the cross-spin partners. Sign asymmetry between
-    σ=up and σ=dn cross branches makes this the most error-prone of the
-    streaming kernels — exercise both branches with K=32 alternating moves.
+    same-spin row (i != k) and the cross-spin partners. Sign asymmetry between
+    sigma=up and sigma=dn cross branches makes this the most error-prone of the
+    streaming kernels -- exercise both branches with K=32 alternating moves.
     """
     from jqmc.jastrow_factor import (
         _advance_grads_laplacian_Jastrow_two_body_streaming_state,
@@ -1752,7 +1757,8 @@ def test_streaming_J2_state_against_full(j2b_type, n_up, n_dn):
 def test_streaming_J3_state_against_full(trexio_file):
     """K random single-electron moves advanced via the J3 streaming state must
     match a fresh init at the resulting configuration (and the existing analytic
-    full computation) within strict tolerance."""
+    full computation) within strict tolerance.
+    """
     import os
 
     from jqmc.jastrow_factor import (
@@ -1781,7 +1787,7 @@ def test_streaming_J3_state_against_full(trexio_file):
     K = 32
     # J3 streaming crosses two zones: jastrow_grad_lap (J3 grad/lap arithmetic)
     # and ao_grad_lap (AO grad/lap consumed inside J3). Use the looser of the
-    # two — under mixed precision, jastrow_grad_lap (fp32) dominates.
+    # two -- under mixed precision, jastrow_grad_lap (fp32) dominates.
     atol, rtol = get_tolerance_min(["jastrow_grad_lap", "ao_grad_lap"], "strict")
     for _ in range(K):
         # pick a random single-electron move (alternating spins when available)

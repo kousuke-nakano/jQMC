@@ -1,11 +1,11 @@
 from pyscf import gto, scf
 from pyscf.tools import trexio
 
-filename = f"water_monomer_2.h5"
+filename = "water_monomer_2.h5"
 
 mol = gto.Mole()
 mol.verbose = 5
-mol.atom = f"""
+mol.atom = """
 	    O   1.350625   0.111469   0.000000
 	    H   1.680398  -0.373741  -0.758561
 	    H   1.680398  -0.373741   0.758561
@@ -17,7 +17,7 @@ mol.charge = 0
 mol.spin = 0
 mol.symmetry = False
 mol.cart = True
-mol.output = f"water_monomer_2.out"
+mol.output = "water_monomer_2.out"
 mol.build()
 
 mf = scf.KS(mol).density_fit()

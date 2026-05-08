@@ -1,7 +1,7 @@
 """Scientific phase definitions and transition rules.
 
 Each QMC workflow session progresses through a sequence of scientific phases
-(SCF → wavefunction build → VMC → MCMC → LRDMC → fit).  This module defines
+(SCF -> wavefunction build -> VMC -> MCMC -> LRDMC -> fit).  This module defines
 the allowed phase transitions and the actions permitted in each phase/status
 combination.
 
@@ -241,7 +241,7 @@ def require_action(
 ) -> None:
     """Raise :class:`ValueError` if *action* is not allowed in *phase*/*status*.
 
-    Call this at the entry of every MCP-tool → workflow-method boundary to
+    Call this at the entry of every MCP-tool -> workflow-method boundary to
     enforce the guard-rail.
     """
     allowed = allowed_actions(phase, status)

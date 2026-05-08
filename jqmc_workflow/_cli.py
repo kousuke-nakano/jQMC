@@ -49,7 +49,6 @@ from logging import Formatter, StreamHandler, getLogger
 
 import toml
 import typer
-import yaml
 
 from ._config import get_config_dir, template_dir
 
@@ -242,7 +241,7 @@ class Monitor:
             logger.info("")
             logger.info("  workflow_state.toml:")
             logger.info("  " + "-" * 40)
-            with open(state_file, "r") as f:
+            with open(state_file) as f:
                 for line in f:
                     logger.info(f"    {line.rstrip()}")
             logger.info("  " + "-" * 40)
@@ -284,7 +283,7 @@ class Monitor:
                     logger.info(f"  Job {stored_job_id} is RUNNING on {server}.")
                 else:
                     logger.info(f"  Job {stored_job_id} is NOT in the queue on {server}.")
-                    logger.info(f"  (it may have finished or been cancelled)")
+                    logger.info("  (it may have finished or been cancelled)")
             finally:
                 machine.ssh_close()
         except Exception as ex:

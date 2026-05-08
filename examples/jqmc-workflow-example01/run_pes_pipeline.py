@@ -1,4 +1,4 @@
-"""H2 PES pipeline: pySCF → WF → VMC (JSD, MO opt) → MCMC + LRDMC (a=0.2).
+"""H2 PES pipeline: pySCF -> WF -> VMC (JSD, MO opt) -> MCMC + LRDMC (a=0.2).
 
 For each bond length R, this script:
   1. Runs pySCF locally to produce a TREXIO HDF5 file.
@@ -7,7 +7,7 @@ For each bond length R, this script:
   4. Launches MCMC and LRDMC (a=0.2) production runs (in parallel).
   5. Prints a summary table with energies and atomic forces.
 
-All R values are independent; their WF → VMC → {MCMC, LRDMC} chains
+All R values are independent; their WF -> VMC -> {MCMC, LRDMC} chains
 run in parallel once the DAG is submitted to the Launcher.
 """
 
@@ -37,7 +37,7 @@ from jqmc_workflow import (
     parse_mcmc_output,
 )
 
-# ── Configuration ─────────────────────────────────────────────────
+# -- Configuration -------------------------------------------------
 SERVER = "cluster"
 QUEUE_LABEL = "cores-120-mpi-120-omp-1-1h"
 
@@ -77,7 +77,7 @@ R_VALUES = [
     1.40,
 ]
 
-# ── pySCF script template ────────────────────────────────────────
+# -- pySCF script template ----------------------------------------
 PYSCF_TEMPLATE = '''\
 from pyscf import gto, scf
 from pyscf.tools import trexio
@@ -109,7 +109,7 @@ trexio.to_trexio(mf, filename)
 '''
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------
 def r_dir(R: float) -> str:
     """Return the directory name for a given bond length."""
     return f"R_{R:.2f}"
@@ -158,7 +158,7 @@ def format_force(force: float | None, error: float | None) -> str:
 def extract_max_force_norm(
     forces: list[dict] | None,
 ) -> tuple[float | None, float | None]:
-    """Return (|F|_max, err) — max force norm over atoms.
+    """Return (|F|_max, err) -- max force norm over atoms.
 
     *forces* is ``[{"Fx": .., "Fx_err": .., "Fy": .., ...}, ...]``.
     """
@@ -182,7 +182,7 @@ def extract_max_force_norm(
     return best_norm, best_err
 
 
-# ── Step 1: Run pySCF locally ────────────────────────────────────
+# -- Step 1: Run pySCF locally ------------------------------------
 def run_pyscf_calculations(base_dir: str) -> dict[float, float | None]:
     """Run pySCF for each R value and return HF energies."""
     print("=" * 60)
@@ -229,7 +229,7 @@ def run_pyscf_calculations(base_dir: str) -> dict[float, float | None]:
     return hf_energies
 
 
-# ── Step 2: Build WF → VMC → {MCMC, LRDMC} pipeline ─────────────
+# -- Step 2: Build WF -> VMC -> {MCMC, LRDMC} pipeline -------------
 def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[float, Container]]:
     """Build Container list for all R values.
 
@@ -246,7 +246,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
         label_lrdmc = f"lrdmc-{R:.2f}"
         trexio_file = trexio_filename(R)
 
-        # WF: TREXIO → hamiltonian_data.h5 (JSD: J1 + J2 + J3-MO)
+        # WF: TREXIO -> hamiltonian_data.h5 (JSD: J1 + J2 + J3-MO)
         wf = Container(
             label=label_wf,
             dirname=os.path.join(r_dir(R), "01_wf"),
@@ -347,7 +347,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
     return workflows, mcmc_containers, lrdmc_containers
 
 
-# ── Step 3: Print summary table ──────────────────────────────────
+# -- Step 3: Print summary table ----------------------------------
 def print_summary_table(
     hf_energies: dict[float, float | None],
     mcmc_containers: dict[float, Container],
@@ -362,13 +362,13 @@ def print_summary_table(
     print()
 
     header = (
-        f"| {'R (Å)':>6} "
+        f"| {'R (A)':>6} "
         f"| {'E_HF (Ha)':>13} "
         f"| {'E_MCMC (Ha)':>15} "
-        f"| {'F_MCMC (Ha/Å)':>15} "
+        f"| {'F_MCMC (Ha/A)':>15} "
         f"| {'MCMC t_net':>10} "
         f"| {'E_LRDMC (Ha)':>15} "
-        f"| {'F_LRDMC (Ha/Å)':>16} "
+        f"| {'F_LRDMC (Ha/A)':>16} "
         f"| {'LRDMC t_net':>11} |"
     )
     separator = f"|{'-' * 8}|{'-' * 15}|{'-' * 17}|{'-' * 17}|{'-' * 12}|{'-' * 17}|{'-' * 18}|{'-' * 13}|"
@@ -420,8 +420,8 @@ def print_summary_table(
     print()
 
 
-# ── Step 4: Plot PES ──────────────────────────────────────────────
-BOHR_PER_ANG = 1.8897259886  # 1 Å = 1.8897 bohr
+# -- Step 4: Plot PES ----------------------------------------------
+BOHR_PER_ANG = 1.8897259886  # 1 A = 1.8897 bohr
 
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["xtick.direction"] = "in"
@@ -553,7 +553,7 @@ def plot_pes(base_dir: str) -> str:
     return out_pdf
 
 
-# ── Main ──────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(base_dir)
@@ -561,10 +561,10 @@ if __name__ == "__main__":
     # 1) pySCF (local)
     hf_energies = run_pyscf_calculations(base_dir)
 
-    # 2) WF → VMC → {MCMC, LRDMC} (via jqmc-workflow)
+    # 2) WF -> VMC -> {MCMC, LRDMC} (via jqmc-workflow)
     print()
     print("=" * 60)
-    print("  Step 2: WF → VMC → MCMC + LRDMC (via jqmc-workflow)")
+    print("  Step 2: WF -> VMC -> MCMC + LRDMC (via jqmc-workflow)")
     print("=" * 60)
 
     workflows, mcmc_containers, lrdmc_containers = build_pipeline()

@@ -46,20 +46,22 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance, get_tolerance_min  # noqa: E402
-from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
-from jqmc.determinant import (  # noqa: E402
+from jqmc._precision import get_tolerance, get_tolerance_min
+from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix
+from jqmc.determinant import (
     Geminal_data,
+    _advance_det_ratio_streaming_state,
     _advance_grads_laplacian_ln_Det_streaming_state,
     _compute_AS_regularization_factor_debug,
     _compute_det_geminal_all_elements_debug,
     _compute_geminal_all_elements,
     _compute_geminal_all_elements_debug,
     _compute_grads_and_laplacian_ln_Det_auto,
-    _compute_grads_and_laplacian_ln_Det_debug,
     _compute_grads_and_laplacian_ln_Det_fast_debug,
     _compute_ratio_determinant_part_debug,
     _compute_ratio_determinant_part_rank1_update,
+    _compute_ratio_determinant_part_split_spin,
+    _init_det_ratio_streaming_state,
     _init_grads_laplacian_ln_Det_streaming_state,
     compute_AS_regularization_factor,
     compute_det_geminal_all_elements,
@@ -71,10 +73,10 @@ from jqmc.determinant import (  # noqa: E402
     compute_ln_det_geminal_all_elements,
     compute_ln_det_geminal_all_elements_fast,
 )
-from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.structure import Structure_data  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
+from jqmc.molecular_orbital import MOs_data
+from jqmc.structure import Structure_data
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import VariationalParameterBlock
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -310,7 +312,7 @@ def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
 
 
 def test_geminal_sphe_to_cart_AOs_data():
-    """Round-trip AOs l<=6: spherical→Cartesian keeps geminal values/grads."""
+    """Round-trip AOs l<=6: spherical->Cartesian keeps geminal values/grads."""
     # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
@@ -350,7 +352,7 @@ def test_geminal_sphe_to_cart_AOs_data():
 
 
 def test_geminal_cart_to_sphe_AOs_data():
-    """Round-trip AOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    """Round-trip AOs l<=6: Cartesian->spherical keeps geminal values/grads."""
     # Comparison crosses ao_eval/det_eval (values) and ao_grad_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(("ao_eval", "det_eval", "ao_grad_lap", "det_grad_lap"), "strict")
@@ -392,7 +394,7 @@ def test_geminal_cart_to_sphe_AOs_data():
 
 
 def test_geminal_sphe_to_cart_MOs_data():
-    """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps geminal values/grads."""
+    """Round-trip MOs built on l<=6 AOs: spherical->Cartesian keeps geminal values/grads."""
     # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad/mo_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(
@@ -439,7 +441,7 @@ def test_geminal_sphe_to_cart_MOs_data():
 
 
 def test_geminal_cart_to_sphe_MOs_data():
-    """Round-trip MOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    """Round-trip MOs l<=6: Cartesian->spherical keeps geminal values/grads."""
     # Comparison crosses ao_eval/mo_eval/det_eval (values) and ao_grad_lap/mo_grad/mo_lap/det_grad_lap (grads);
     # achievable agreement is bounded by the loosest zone on the path.
     atol_c, rtol_c = get_tolerance_min(
@@ -822,7 +824,7 @@ def test_grads_and_laplacian_fast_update(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    # Debug helper above is autodiff through compute_ln_det → bottlenecked by
+    # Debug helper above is autodiff through compute_ln_det -> bottlenecked by
     # ao_eval (fp32 in mixed mode); fast path is fp64 (ao_grad_lap), so the
     # achievable agreement is bounded by ao_eval, not det_grad_lap.
     atol, rtol = get_tolerance_min(["ao_eval", "det_grad_lap"], "strict")
@@ -1056,158 +1058,6 @@ def test_one_row_or_one_column_update(trexio_file: str):
     )
 
 
-@pytest.mark.numerical_diff
-@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
-def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
-    """Test the numerical and automatic gradients of the logarithm of the determinant of the geminal wave function."""
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
-        store_tuple=True,
-    )
-
-    geminal_mo_data.sanity_check()
-
-    num_electron_up = geminal_mo_data.num_electron_up
-    num_electron_dn = geminal_mo_data.num_electron_dn
-
-    # Initialization
-    r_up_carts = []
-    r_dn_carts = []
-
-    total_electrons = 0
-
-    if coulomb_potential_data.ecp_flag:
-        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
-    else:
-        charges = np.array(structure_data.atomic_numbers)
-
-    coords = structure_data._positions_cart_np
-
-    # Place electrons around each nucleus
-    for i in range(len(coords)):
-        charge = charges[i]
-        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
-
-        # Retrieve the position coordinates
-        x, y, z = coords[i]
-
-        # Place electrons
-        for _ in range(num_electrons):
-            # Calculate distance range
-            distance = np.random.uniform(0.5 / charge, 1.5 / charge)
-            theta = np.random.uniform(0, np.pi)
-            phi = np.random.uniform(0, 2 * np.pi)
-
-            # Convert spherical to Cartesian coordinates
-            dx = distance * np.sin(theta) * np.cos(phi)
-            dy = distance * np.sin(theta) * np.sin(phi)
-            dz = distance * np.cos(theta)
-
-            # Position of the electron
-            electron_position = np.array([x + dx, y + dy, z + dz])
-
-            # Assign spin
-            if len(r_up_carts) < num_electron_up:
-                r_up_carts.append(electron_position)
-            else:
-                r_dn_carts.append(electron_position)
-
-        total_electrons += num_electrons
-
-    # Handle surplus electrons
-    remaining_up = num_electron_up - len(r_up_carts)
-    remaining_dn = num_electron_dn - len(r_dn_carts)
-
-    # Randomly place any remaining electrons
-    for _ in range(remaining_up):
-        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-    for _ in range(remaining_dn):
-        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-
-    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
-    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
-
-    """
-    mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn])
-
-    # generate matrices for the test
-    ao_lambda_matrix_paired = np.dot(
-        mos_data_up.mo_coefficients.T,
-        np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
-    )
-    ao_lambda_matrix_unpaired = np.dot(mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired)
-    ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
-
-    geminal_ao_data = Geminal_data(
-        num_electron_up=num_electron_up,
-        num_electron_dn=num_electron_dn,
-        orb_data_up_spin=aos_data,
-        orb_data_dn_spin=aos_data,
-        lambda_matrix=ao_lambda_matrix,
-    )
-    """
-
-    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
-    geminal_ao_data.sanity_check()
-
-    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, lap_ln_D_up_numerical, lap_ln_D_dn_numerical = (
-        _compute_grads_and_laplacian_ln_Det_debug(
-            geminal_data=geminal_ao_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-    )
-
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, lap_ln_D_up_auto, lap_ln_D_dn_auto = _compute_grads_and_laplacian_ln_Det_auto(
-        geminal_data=geminal_ao_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    atol, rtol = get_tolerance("det_grad_lap", "loose")
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(grad_ln_D_up_numerical),
-        np.asarray(grad_ln_D_up_auto),
-        atol=atol,
-        rtol=rtol,
-    )
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(grad_ln_D_dn_numerical),
-        np.asarray(grad_ln_D_dn_auto),
-        atol=atol,
-        rtol=rtol,
-    )
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(lap_ln_D_up_numerical),
-        np.asarray(lap_ln_D_up_auto),
-        rtol=rtol,
-        atol=atol,
-    )
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_numerical)))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        np.asarray(lap_ln_D_dn_numerical),
-        np.asarray(lap_ln_D_dn_auto),
-        rtol=rtol,
-        atol=atol,
-    )
-
-    jax.clear_caches()
-
-
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
@@ -1228,6 +1078,9 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
 
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Seed RNG for determinism (CI must not depend on previous tests' draws).
+    np.random.seed(42)
 
     # Initialization
     r_up_carts = []
@@ -1303,7 +1156,7 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    # Auto path is autodiff through compute_ln_det → bottlenecked by ao_eval
+    # Auto path is autodiff through compute_ln_det -> bottlenecked by ao_eval
     # (fp32 in mixed mode); analytic path is fp64 (ao_grad_lap), so achievable
     # agreement is bounded by ao_eval, not det_grad_lap.
     atol, rtol = get_tolerance_min(["ao_eval", "det_grad_lap"], "strict")
@@ -1537,7 +1390,7 @@ def _make_geminal_with_lambda(lam, num_up=1, num_dn=1):
 
 
 def test_symmetrize_lambda_square_symmetric():
-    """L1-1: square symmetric lambda → 0.5*(mat+mat.T)."""
+    """L1-1: square symmetric lambda -> 0.5*(mat+mat.T)."""
     rng = np.random.RandomState(0)
     n = 5
     lam_sym = rng.randn(n, n)
@@ -1552,7 +1405,7 @@ def test_symmetrize_lambda_square_symmetric():
 
 
 def test_symmetrize_lambda_square_nonsymmetric():
-    """L1-2: square non-symmetric lambda → no-op."""
+    """L1-2: square non-symmetric lambda -> no-op."""
     rng = np.random.RandomState(1)
     n = 5
     lam_nonsym = rng.randn(n, n)
@@ -1565,7 +1418,7 @@ def test_symmetrize_lambda_square_nonsymmetric():
 
 
 def test_symmetrize_lambda_rect_paired_symmetric():
-    """L1-3: rectangular lambda, paired sub-block symmetric → only paired part symmetrized."""
+    """L1-3: rectangular lambda, paired sub-block symmetric -> only paired part symmetrized."""
     rng = np.random.RandomState(2)
     n_up = 3
     n_extra = 2
@@ -1585,7 +1438,7 @@ def test_symmetrize_lambda_rect_paired_symmetric():
 
 
 def test_symmetrize_lambda_rect_paired_nonsymmetric():
-    """L1-4: rectangular lambda, paired sub-block non-symmetric → no-op."""
+    """L1-4: rectangular lambda, paired sub-block non-symmetric -> no-op."""
     rng = np.random.RandomState(3)
     n_up = 3
     n_extra = 2
@@ -1601,7 +1454,7 @@ def test_symmetrize_lambda_rect_paired_nonsymmetric():
 
 
 def test_symmetrize_lambda_none():
-    """L1-5: lambda_matrix=None → no-op."""
+    """L1-5: lambda_matrix=None -> no-op."""
     gd_none = Geminal_data(lambda_matrix=None)
     mat = np.random.RandomState(4).randn(3, 3)
     result = gd_none.symmetrize_lambda(mat)
@@ -1609,7 +1462,7 @@ def test_symmetrize_lambda_none():
 
 
 def test_symmetrize_lambda_1d():
-    """L1-6: 1-D lambda (ndim!=2) → no-op."""
+    """L1-6: 1-D lambda (ndim!=2) -> no-op."""
     gd = _make_geminal_with_lambda(np.array([1.0, 2.0, 3.0]))
     mat = np.random.RandomState(5).randn(3, 3)
     result = gd.symmetrize_lambda(mat)
@@ -1768,7 +1621,8 @@ def _build_geminal_inverse(geminal_data, r_up_carts, r_dn_carts):
 def test_streaming_det_state_against_full(trexio_file: str):
     """Det streaming state, after K random single-electron moves, must
     reproduce ``compute_grads_and_laplacian_ln_Det_fast`` at the resulting
-    configuration."""
+    configuration.
+    """
     (
         _,
         _,
@@ -1838,6 +1692,186 @@ def test_streaming_det_state_against_full(trexio_file: str):
     np.testing.assert_allclose(state.grad_ln_D_dn, grad_dn_ref, atol=atol, rtol=rtol)
     np.testing.assert_allclose(state.lap_ln_D_up, lap_up_ref, atol=atol, rtol=rtol)
     np.testing.assert_allclose(state.lap_ln_D_dn, lap_dn_ref, atol=atol, rtol=rtol)
+
+    # paired_up_lambda invariant (= ao_up.T @ lambda_paired).
+    state_ratio_ref = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+    np.testing.assert_allclose(state.paired_up_lambda, state_ratio_ref.paired_up_lambda, atol=atol, rtol=rtol)
+
+
+# ---------------------------------------------------------------------------
+# Det_ratio_streaming_state: slim ratio streaming state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"],
+)
+def test_det_ratio_streaming_state_against_full(trexio_file: str):
+    """``Det_ratio_streaming_state`` after K random single-electron advances
+    must match a fresh ``_init_det_ratio_streaming_state`` at the resulting
+    configuration.
+
+    Verifies the rank-1 advance invariants:
+        ao_up           == compute_orb_api(orb_data_up_spin, r_up_carts)
+        ao_dn           == compute_orb_api(orb_data_dn_spin, r_dn_carts)
+        paired_dn       == lambda_paired @ ao_dn
+        paired_up_lambda == ao_up.T @ lambda_paired
+    """
+    (
+        _,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    n_up = geminal_mo_data.num_electron_up
+    n_dn = geminal_mo_data.num_electron_dn
+
+    rng = np.random.RandomState(13)
+    r_up = jnp.asarray(4.0 * rng.rand(n_up, 3) - 2.0)
+    r_dn = jnp.asarray(4.0 * rng.rand(n_dn, 3) - 2.0)
+
+    state = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    K = 32
+    for _ in range(K):
+        # alternate spin choices, but skip the spin if it has 0 electrons
+        if n_dn == 0:
+            spin_is_up = True
+        elif n_up == 0:
+            spin_is_up = False
+        else:
+            spin_is_up = bool(rng.randint(0, 2))
+
+        if spin_is_up:
+            idx = int(rng.randint(0, n_up))
+            r_up = r_up.at[idx].set(jnp.asarray(rng.normal(size=(3,)) * 0.4 + np.asarray(r_up[idx])))
+        else:
+            idx = int(rng.randint(0, n_dn))
+            r_dn = r_dn.at[idx].set(jnp.asarray(rng.normal(size=(3,)) * 0.4 + np.asarray(r_dn[idx])))
+
+        state = _advance_det_ratio_streaming_state(
+            geminal_data=geminal_mo_data,
+            state=state,
+            moved_spin_is_up=jnp.bool_(spin_is_up),
+            moved_index=jnp.int32(idx),
+            r_up_carts_new=r_up,
+            r_dn_carts_new=r_dn,
+        )
+
+    # Reference: fresh init at the final configuration.
+    state_ref = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    atol, rtol = get_tolerance("det_grad_lap", "strict")
+    np.testing.assert_allclose(state.ao_up, state_ref.ao_up, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.ao_dn, state_ref.ao_dn, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.paired_dn, state_ref.paired_dn, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(state.paired_up_lambda, state_ref.paired_up_lambda, atol=atol, rtol=rtol)
+
+
+# ---------------------------------------------------------------------------
+# _compute_ratio_determinant_part_split_spin with det_ratio_state plumb
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"],
+)
+def test_split_spin_with_det_ratio_state_against_fresh(trexio_file: str):
+    """``_compute_ratio_determinant_part_split_spin`` must produce identical
+    determinant ratios when called with a consistent ``det_ratio_state`` vs
+    when called with ``det_ratio_state=None`` (legacy path).
+
+    Builds a small block-structured mesh (one shifted up-config + one
+    shifted dn-config per direction) at a random reference configuration
+    and checks both ratio paths agree at strict tolerance.
+    """
+    (
+        _,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    n_up = geminal_mo_data.num_electron_up
+    n_dn = geminal_mo_data.num_electron_dn
+    if n_up == 0 or n_dn == 0:
+        pytest.skip("split-spin only meaningful when both spin sectors are non-empty")
+
+    rng = np.random.RandomState(7)
+    r_up = jnp.asarray(4.0 * rng.rand(n_up, 3) - 2.0)
+    r_dn = jnp.asarray(4.0 * rng.rand(n_dn, 3) - 2.0)
+    A_old_inv = _build_geminal_inverse(geminal_mo_data, r_up, r_dn)
+
+    # Build a small block mesh: shift each up-electron by +0.1 in x;
+    # likewise for dn.  (G_up = n_up, G_dn = n_dn.)
+    new_r_up_shifted = []
+    for k in range(n_up):
+        shifted = np.array(r_up)
+        shifted[k] = shifted[k] + np.array([0.1, 0.0, 0.0])
+        new_r_up_shifted.append(shifted)
+    new_r_up_shifted = jnp.asarray(np.stack(new_r_up_shifted, axis=0))  # (n_up, n_up, 3)
+
+    new_r_dn_shifted = []
+    for k in range(n_dn):
+        shifted = np.array(r_dn)
+        shifted[k] = shifted[k] + np.array([0.1, 0.0, 0.0])
+        new_r_dn_shifted.append(shifted)
+    new_r_dn_shifted = jnp.asarray(np.stack(new_r_dn_shifted, axis=0))  # (n_dn, n_dn, 3)
+
+    # Reference: legacy path.
+    ratios_ref = _compute_ratio_determinant_part_split_spin(
+        geminal_data=geminal_mo_data,
+        A_old_inv=A_old_inv,
+        old_r_up_carts=r_up,
+        old_r_dn_carts=r_dn,
+        new_r_up_shifted=new_r_up_shifted,
+        new_r_dn_shifted=new_r_dn_shifted,
+        det_ratio_state=None,
+    )
+
+    # Streaming path: build a fresh slim state at the reference config.
+    state = _init_det_ratio_streaming_state(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+    ratios_streaming = _compute_ratio_determinant_part_split_spin(
+        geminal_data=geminal_mo_data,
+        A_old_inv=A_old_inv,
+        old_r_up_carts=r_up,
+        old_r_dn_carts=r_dn,
+        new_r_up_shifted=new_r_up_shifted,
+        new_r_dn_shifted=new_r_dn_shifted,
+        det_ratio_state=state,
+    )
+
+    atol, rtol = get_tolerance("det_ratio", "strict")
+    np.testing.assert_allclose(ratios_streaming, ratios_ref, atol=atol, rtol=rtol)
 
 
 if __name__ == "__main__":

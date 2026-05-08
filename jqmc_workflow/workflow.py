@@ -42,7 +42,6 @@ import os
 import shutil
 import uuid
 from logging import getLogger
-from typing import List, Optional
 
 from ._job import JobSubmission
 from ._phase import ScientificPhase, require_action
@@ -68,9 +67,9 @@ from ._state import (
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 #  Dependency specification helpers
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 class FileFrom:
@@ -91,7 +90,7 @@ class FileFrom:
         that are only determined at runtime (e.g. the optimised
         Hamiltonian whose step number depends on convergence).
 
-    Examples
+    Examples:
     --------
     Static filename (step number known in advance)::
 
@@ -116,7 +115,7 @@ class FileFrom:
             workflow=MCMC_Workflow(...),
         )
 
-    See Also
+    See Also:
     --------
     ValueFrom : Declare a scalar-value dependency.
     Launcher  : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
@@ -146,16 +145,16 @@ class ValueFrom:
         See the *Output Values* section of each workflow class for
         available keys:
 
-        * :class:`VMC_Workflow` — ``optimized_hamiltonian``,
-          ``energy``, ``energy_error``, ``checkpoint``, …
-        * :class:`MCMC_Workflow` — ``energy``, ``energy_error``,
-          ``restart_chk``, ``forces``, …
-        * :class:`LRDMC_Workflow` — ``energy``, ``energy_error``,
-          ``alat``, ``restart_chk``, ``forces``, …
-        * :class:`LRDMC_Ext_Workflow` — ``extrapolated_energy``,
-          ``extrapolated_energy_error``, ``per_alat_results``, …
+        * :class:`VMC_Workflow` -- ``optimized_hamiltonian``,
+          ``energy``, ``energy_error``, ``checkpoint``, ...
+        * :class:`MCMC_Workflow` -- ``energy``, ``energy_error``,
+          ``restart_chk``, ``forces``, ...
+        * :class:`LRDMC_Workflow` -- ``energy``, ``energy_error``,
+          ``alat``, ``restart_chk``, ``forces``, ...
+        * :class:`LRDMC_Ext_Workflow` -- ``extrapolated_energy``,
+          ``extrapolated_energy_error``, ``per_alat_results``, ...
 
-    Examples
+    Examples:
     --------
     Feed the MCMC energy into an LRDMC workflow as ``trial_energy``::
 
@@ -168,7 +167,7 @@ class ValueFrom:
 
         FileFrom("vmc-opt", ValueFrom("vmc-opt", "optimized_hamiltonian"))
 
-    See Also
+    See Also:
     --------
     FileFrom : Declare a file dependency.
     Launcher : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
@@ -187,15 +186,15 @@ def _is_dependency(obj) -> bool:
     return isinstance(obj, (FileFrom, ValueFrom))
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 #  Base Workflow
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 class Workflow:
     """Abstract base class for all jQMC computation workflows.
 
-    Every concrete workflow (VMC, MCMC, LRDMC, WF, …) inherits from
+    Every concrete workflow (VMC, MCMC, LRDMC, WF, ...) inherits from
     this class and overrides :meth:`configure` and :meth:`run`.
 
     Parameters
@@ -211,9 +210,9 @@ class Workflow:
         successfully (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).
         Local files matching the patterns are always removed.  Remote
         files are removed only when the workflow targets a remote
-        machine.  Default is *None* (empty list — no cleanup).
+        machine.  Default is *None* (empty list -- no cleanup).
 
-    Attributes
+    Attributes:
     ----------
     status : WorkflowStatus
         Current lifecycle status.
@@ -222,13 +221,13 @@ class Workflow:
     output_files : list[str]
         Filenames produced by the workflow (populated after run).
     output_values : dict
-        Scalar results (energy, error, …) produced by the workflow.
+        Scalar results (energy, error, ...) produced by the workflow.
     project_dir : str or None
         Working directory for file I/O.  Resolved to an absolute path.
     cleanup_patterns : list[str]
         Glob patterns for post-completion file cleanup.
 
-    Notes
+    Notes:
     -----
     **Subclass contract:**
 
@@ -236,7 +235,7 @@ class Workflow:
       ``(status, output_files, output_values)`` from ``run()``.
     * Call ``super().__init__()`` in your constructor.
 
-    Examples
+    Examples:
     --------
     Minimal custom workflow::
 
@@ -250,16 +249,16 @@ class Workflow:
                 return self.status, ["result.h5"], {"energy": -1.23}
     """
 
-    def __init__(self, project_dir: Optional[str] = None, cleanup_patterns: Optional[List[str]] = None):
+    def __init__(self, project_dir: str | None = None, cleanup_patterns: list[str] | None = None):
         self.status: WorkflowStatus = WorkflowStatus.PENDING
         self.phase: ScientificPhase = ScientificPhase.INIT
-        self.output_files: List[str] = []
+        self.output_files: list[str] = []
         self.output_values: dict = {}
-        self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
-        self._bg_task: Optional[asyncio.Task] = None
-        self.cleanup_patterns: List[str] = cleanup_patterns or []
+        self.project_dir: str | None = os.path.abspath(project_dir) if project_dir else None
+        self._bg_task: asyncio.Task | None = None
+        self.cleanup_patterns: list[str] = cleanup_patterns or []
 
-    # ── Filename generation (per-job run_id) ──────────────────────
+    # -- Filename generation (per-job run_id) ----------------------
 
     @staticmethod
     def _new_run_id() -> str:
@@ -298,7 +297,7 @@ class Workflow:
 
         server_machine_name = getattr(self, "server_machine_name", None)
         if server_machine_name is None:
-            # No remote machine — local-only cleanup
+            # No remote machine -- local-only cleanup
             import glob as _glob
 
             for pattern in self.cleanup_patterns:
@@ -318,7 +317,7 @@ class Workflow:
             raise
         dt.ssh_close()
 
-    # ── configure / run (new primary interface) ─────────────────────
+    # -- configure / run (new primary interface) ---------------------
 
     def configure(self) -> dict:
         """Validate parameters and generate inputs (no execution).
@@ -328,7 +327,7 @@ class Workflow:
         return {}
 
     async def run(self) -> tuple:
-        """Execute the workflow (submit → poll → fetch → convergence loop).
+        """Execute the workflow (submit -> poll -> fetch -> convergence loop).
 
         Override in subclass.  Must return
         ``(status, output_files, output_values)``.
@@ -339,7 +338,7 @@ class Workflow:
         self._ensure_project_dir()
         return self.status, self.output_files, self.output_values
 
-    # ── Full lifecycle (backward-compatible) ──────────────────────
+    # -- Full lifecycle (backward-compatible) ----------------------
 
     async def async_launch(self):
         """Run configure() + run().  Backward-compatible entry point."""
@@ -350,9 +349,9 @@ class Workflow:
     def launch(self):
         return asyncio.run(self.async_launch())
 
-    # ── Phased execution (MCP interactive mode) ───────────────────
+    # -- Phased execution (MCP interactive mode) -------------------
     #
-    # Used by MCP tools: submit(action) → poll() → collect().
+    # Used by MCP tools: submit(action) -> poll() -> collect().
     # submit() starts run() as a background asyncio.Task.
     #
     # Usage pattern::
@@ -371,12 +370,12 @@ class Workflow:
             MCP tool name (e.g. ``"run_vmc"``).  Checked against
             :func:`allowed_actions` for the current phase and status.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": "submitted", "project_dir": ...}``.
 
-        Raises
+        Raises:
         ------
         ValueError
             If *action* is not allowed in the current phase/status.
@@ -394,7 +393,7 @@ class Workflow:
     async def async_poll(self) -> dict:
         """Check whether the submitted workflow has completed.
 
-        Returns
+        Returns:
         -------
         dict
             Status dict.  Includes ``get_workflow_summary()`` when
@@ -412,12 +411,12 @@ class Workflow:
     async def async_collect(self) -> dict:
         """Collect results from the completed workflow.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": ..., "output_files": [...], **output_values}``.
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If the workflow was not submitted or is still running.
@@ -438,7 +437,7 @@ class Workflow:
             **output_values,
         }
 
-    # ── Common job helpers (used by VMC / MCMC / LRDMC) ───────────
+    # -- Common job helpers (used by VMC / MCMC / LRDMC) -----------
     #
     # These methods require the following attributes on *self*:
     #   server_machine_name, hamiltonian_file, queue_label,
@@ -475,15 +474,15 @@ class Workflow:
     ):
         """Submit a job, poll until done, fetch results.
 
-        This method is CWD-safe — it never calls ``os.chdir()``.
+        This method is CWD-safe -- it never calls ``os.chdir()``.
         All path context is passed explicitly via *work_dir*.
 
         Restart behaviour is driven by ``workflow_state.toml``:
 
-        * ``fetched``   — skip entirely (already done)
-        * ``completed`` — fetch results only
-        * ``submitted`` — resume waiting, then fetch
-        * no record     — submit a new job
+        * ``fetched``   -- skip entirely (already done)
+        * ``completed`` -- fetch results only
+        * ``submitted`` -- resume waiting, then fetch
+        * no record     -- submit a new job
 
         Parameters
         ----------
@@ -523,7 +522,7 @@ class Workflow:
         finally:
             job_tmp._close_ssh()
 
-        # ── Restart detection via job history ─────────────────────
+        # -- Restart detection via job history ---------------------
         if step is not None:
             recorded = get_job_by_step(work_dir, step)
         else:
@@ -565,7 +564,7 @@ class Workflow:
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
 
-        # ── New submission ────────────────────────────────────────
+        # -- New submission ----------------------------------------
         job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
         try:
             submit_sh = self._submit_script_name(run_id)
@@ -624,9 +623,9 @@ class Workflow:
         )
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 #  Container
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 class Container:
@@ -635,13 +634,13 @@ class Container:
     ``Container`` is the standard wrapper used with the
     :class:`Launcher`.  It manages:
 
-    * **Directory creation** — a self-contained project directory is
+    * **Directory creation** -- a self-contained project directory is
       created under the current working directory.
-    * **Input file copying** — source files (or resolved
+    * **Input file copying** -- source files (or resolved
       :class:`FileFrom` references) are copied into the project dir.
-    * **State tracking** — a ``workflow_state.toml`` file records
-      lifecycle status (``pending`` → ``running`` → ``completed``).
-    * **Re-entrance** — if the directory already exists with status
+    * **State tracking** -- a ``workflow_state.toml`` file records
+      lifecycle status (``pending`` -> ``running`` -> ``completed``).
+    * **Re-entrance** -- if the directory already exists with status
       ``completed``, the workflow is *not* re-run; outputs are read
       from the state file instead.
 
@@ -661,7 +660,7 @@ class Container:
     workflow : Workflow
         The inner :class:`Workflow` instance to execute.
 
-    Attributes
+    Attributes:
     ----------
     output_files : list[str]
         Output filenames (populated after launch).
@@ -672,7 +671,7 @@ class Container:
     project_dir : str
         Absolute path to the project directory.
 
-    Examples
+    Examples:
     --------
     Wrap a VMC optimization in its own directory::
 
@@ -688,7 +687,7 @@ class Container:
         )
         status, files, values = enc.launch()
 
-    See Also
+    See Also:
     --------
     Launcher : Execute multiple ``Container`` objects as a DAG.
     FileFrom : Reference an output file from another workflow.
@@ -696,11 +695,11 @@ class Container:
 
     def __init__(
         self,
-        label: Optional[str] = "workflow",
-        dirname: Optional[str] = "workflow",
-        input_files: Optional[list] = None,
-        rename_input_files: Optional[list] = None,
-        workflow: Optional[Workflow] = None,
+        label: str | None = "workflow",
+        dirname: str | None = "workflow",
+        input_files: list | None = None,
+        rename_input_files: list | None = None,
+        workflow: Workflow | None = None,
     ):
         self.label = label
         self.dirname = dirname
@@ -709,20 +708,19 @@ class Container:
         self.workflow = workflow or Workflow()
 
         # Output placeholders (populated after launch)
-        self.output_files: List[str] = []
+        self.output_files: list[str] = []
         self.output_values: dict = {}
         self.status = "init"
-        self._bg_task: Optional[asyncio.Task] = None
+        self._bg_task: asyncio.Task | None = None
 
         # Directories
         self.root_dir = os.getcwd()
         self.project_dir = os.path.join(self.root_dir, self.dirname)
 
-    # ── Preparation ───────────────────────────────────────────────
+    # -- Preparation -----------------------------------------------
 
     def _prepare(self):
         """Create project dir, copy input files, write initial state."""
-
         state = read_state(self.project_dir)
         existing_status = state.get("workflow", {}).get("status", "")
 
@@ -761,7 +759,7 @@ class Container:
     def _copy_input_files(self):
         """Copy input files into the project directory.
 
-        Raises
+        Raises:
         ------
         FileNotFoundError
             If a required input file or directory does not exist.
@@ -788,7 +786,7 @@ class Container:
         """Copy any missing input files into an existing project directory.
 
         Unlike :meth:`_copy_input_files`, this does *not* overwrite files
-        that already exist in the project directory — it only fills in
+        that already exist in the project directory -- it only fills in
         the gaps (e.g. after a failed first run that created the
         directory but never completed the copy).
         """
@@ -819,7 +817,7 @@ class Container:
         are **not** validated here because some workflows (e.g.
         ``WF_Workflow``) *produce* them rather than consume them.
 
-        Raises
+        Raises:
         ------
         FileNotFoundError
             With a clear message listing all missing files, raised
@@ -864,22 +862,22 @@ class Container:
         """
         recorded = get_input_fingerprints(proj)
         if not recorded:
-            return False  # no fingerprints recorded — cannot check
+            return False  # no fingerprints recorded -- cannot check
         current = self._compute_input_fingerprints()
         for name, cur_fp in current.items():
             rec_fp = recorded.get(name)
             if rec_fp is None:
-                # New input file not in original — treat as stale
+                # New input file not in original -- treat as stale
                 return True
             if cur_fp.get("sha256") != rec_fp.get("sha256"):
                 logger.warning(
                     f"[{self.label}] Input '{name}' has changed since last run "
-                    f"(sha256: {rec_fp.get('sha256', '?')[:12]}… → {cur_fp.get('sha256', '?')[:12]}…)."
+                    f"(sha256: {rec_fp.get('sha256', '?')[:12]}... -> {cur_fp.get('sha256', '?')[:12]}...)."
                 )
                 return True
         return False
 
-    # ── Launch ────────────────────────────────────────────────────
+    # -- Launch ----------------------------------------------------
 
     async def async_launch(self):
         proj = os.path.abspath(self.project_dir)
@@ -911,7 +909,7 @@ class Container:
         # Validate required files before running.
         self._validate_input_files(proj)
 
-        # Run the workflow — pass project_dir explicitly instead of
+        # Run the workflow -- pass project_dir explicitly instead of
         # relying on os.chdir().
         update_status(proj, WorkflowStatus.RUNNING)
         self.workflow.project_dir = proj
@@ -923,7 +921,7 @@ class Container:
             update_status(proj, WorkflowStatus.FAILED)
             raise
 
-        # Write completion — but only if the workflow did not fail.
+        # Write completion -- but only if the workflow did not fail.
         if self.status != WorkflowStatus.FAILED:
             # Run all post-completion validation checks in one place.
             # Post-hoc mode (target_error=None): only OK / FAILED are possible.
@@ -933,7 +931,7 @@ class Container:
                 for k, v in self.output_values.items():
                     result_fields[f"result_{k}"] = v
                 update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
-                # ── Post-completion cleanup ──
+                # -- Post-completion cleanup --
                 try:
                     self.workflow._cleanup_files()
                 except Exception as e:
@@ -966,7 +964,7 @@ class Container:
     def launch(self):
         return asyncio.run(self.async_launch())
 
-    # ── Phased execution (delegates to inner Workflow) ────────────
+    # -- Phased execution (delegates to inner Workflow) ------------
 
     async def async_submit(self, action: str = "run") -> dict:
         """Start the container's workflow in the background.
@@ -981,7 +979,7 @@ class Container:
         action : str
             MCP tool name for action validation.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": "submitted", "label": ..., "project_dir": ...}``.
@@ -998,7 +996,7 @@ class Container:
     async def async_poll(self) -> dict:
         """Check whether the container's workflow has completed.
 
-        Returns
+        Returns:
         -------
         dict
             Status dict with ``get_workflow_summary()`` when running.
@@ -1015,13 +1013,13 @@ class Container:
     async def async_collect(self) -> dict:
         """Collect results from the completed container workflow.
 
-        Returns
+        Returns:
         -------
         dict
             ``{"status": ..., "label": ..., "output_files": [...],
             **output_values}``.
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If not submitted or still running.

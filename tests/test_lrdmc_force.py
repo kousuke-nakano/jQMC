@@ -44,9 +44,9 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._precision import get_tolerance_min  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc._precision import get_tolerance_min
+from jqmc.hamiltonians import Hamiltonian_data
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
@@ -54,11 +54,11 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_gfmc import (
-    GFMC_n,  # noqa: E402
-    GFMC_t,  # noqa: E402
+    GFMC_n,
+    GFMC_t,
 )
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import Wavefunction_data  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import Wavefunction_data
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
