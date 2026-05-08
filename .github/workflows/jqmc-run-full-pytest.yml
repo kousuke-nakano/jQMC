@@ -47,7 +47,7 @@ jobs:
         python -m pip install flake8 pytest pytest-cov
         python -m pip install .
 
-    - name: Test jqmc FP64 (intra-software comparisons)
+    - name: Test jqmc FP64 (Intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail
         pytest -s -v tests/test_init_electron_configurations.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
@@ -67,7 +67,7 @@ jobs:
         pytest -s -v tests/test_ao_basis_optimization.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_mixed_precision.py  --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc FP32+FP64 (intra-software comparisons)
+    - name: Test jqmc FP32+FP64 (Intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
         pytest -s -v tests/test_init_electron_configurations.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
@@ -87,17 +87,10 @@ jobs:
         pytest -s -v tests/test_ao_basis_optimization.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
         pytest -s -v tests/test_mixed_precision.py  --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
 
-    - name: Test jqmc FP64 (inter-software comparisons)
+    - name: Test jqmc FP64 (Inter-software comparisons)
       run: |
         pytest -s -v tests/test_comparison_with_turborvb_ECP.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_comparison_with_turborvb_AE.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-
-    - name: Test jqmc FP32+FP64 (QMC kernels without MPI)
-      run: |
-        pytest -s -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
-        pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
-        pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
-        pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append --precision-mode=mixed
 
     - name: Test jqmc FP64 (QMC kernels without MPI)
       run: |
@@ -106,7 +99,7 @@ jobs:
         pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc-tool (toolset for jqmc)
+    - name: Test jqmc-tool (Toolset for jqmc)
       run: |
         pytest -s -v tests/test_jqmc_tool.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 

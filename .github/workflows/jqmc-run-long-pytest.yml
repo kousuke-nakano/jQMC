@@ -47,7 +47,7 @@ jobs:
         python -m pip install flake8 pytest pytest-cov
         python -m pip install .
 
-    - name: Test jqmc FP64/FP32+FP64 (intra-software comparisons)
+    - name: Test jqmc FP64/FP32+FP64 (Intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py
         pytest -s -v tests/test_init_electron_configurations.py
@@ -71,7 +71,7 @@ jobs:
         pytest -s -v tests/test_ao_basis_optimization.py
         pytest -s -v tests/test_mixed_precision.py --precision-mode=mixed
 
-    - name: Test jqmc FP64 (inter-software comparisons)
+    - name: Test jqmc FP64 (Inter-software comparisons)
       run: |
         pytest -s -v tests/test_comparison_with_turborvb_ECP.py
         pytest -s -v tests/test_comparison_with_turborvb_AE.py
