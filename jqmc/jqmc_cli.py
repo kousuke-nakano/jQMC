@@ -496,6 +496,10 @@ def _cli():
         logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         mcmc.hamiltonian_data._logger_info()
+        # Pick the SR backend per JAX device: GPU favours the on-device
+        # (jax.shard_map + NCCL) path, CPU favours the legacy mpi4py + SciPy
+        # path. Anything else falls back to the CPU path.
+        use_device_collectives = jax.default_backend() == "gpu"
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -514,6 +518,7 @@ def _cli():
             opt_lambda_basis_coeff=opt_lambda_basis_coeff,
             max_time=max_time,
             optimizer_kwargs=optimizer_kwargs,
+            use_device_collectives=use_device_collectives,
         )
         logger.info("")
 
