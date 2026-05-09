@@ -51,6 +51,11 @@ jobs:
       run: |
         pytest -s -v tests/test_jqmc_command_lines.py
 
+    - name: Test jqmc FP64 (Inter-software comparisons)
+      run: |
+        pytest -s -v tests/test_comparison_with_turborvb_ECP.py
+        pytest -s -v tests/test_comparison_with_turborvb_AE.py
+
     - name: Test jqmc FP64 (QMC kernels without MPI, FP64)
       run: |
         pytest -s -v tests/test_jqmc_mcmc.py

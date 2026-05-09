@@ -41,14 +41,51 @@ See :mod:`jqmc._precision` for details.
 from functools import cache
 from logging import getLogger
 
+import jax
 import numpy as np
 import numpy.typing as npt
+from mpi4py import MPI
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
 # separator
 num_sep_line = 66
+
+
+def check_mpi4py_jax_distribution_consistency() -> None:
+    """Raise ``RuntimeError`` if ``jax.process_count()`` differs from MPI world size.
+
+    Required precondition for any production code path that relies on
+    ``jax.shard_map`` + ``psum`` / ``all_gather`` to aggregate across MPI
+    ranks (currently the device branch of ``MCMC.run_optimize``; future
+    GFMC device migrations will share this requirement). Without
+    ``jax.distributed.initialize(cluster_detection_method="mpi4py")``, each
+    rank's JAX sees only its own local devices and the cross-rank
+    collectives silently degenerate to per-rank-local computation, producing
+    wrong results that don't match the global solution.
+
+    Called at the entry point of every public driver loop (``MCMC.run``,
+    ``MCMC.run_optimize``, ``GFMC_t.run``, ``GFMC_n.run``) so the failure
+    surfaces immediately rather than after substantial work has been done
+    on stale per-rank state.
+
+    The CLI (``jqmc_cli.py``) initializes JAX distributed automatically.
+    User scripts that import ``MCMC`` / ``GFMC`` directly must call
+    ``jax.distributed.initialize(cluster_detection_method="mpi4py")``
+    themselves before invoking these driver loops (see ``jqmc_cli.py``
+    for the standard recipe, including the proxy-strip workaround).
+    """
+    mpi_size = MPI.COMM_WORLD.Get_size()
+    if mpi_size != jax.process_count():
+        raise RuntimeError(
+            f"MPI/JAX rank-count mismatch: mpi_size={mpi_size} vs "
+            f"jax.process_count()={jax.process_count()}. JAX cross-rank "
+            "collectives (psum / all_gather) require ``jax.distributed.initialize("
+            "cluster_detection_method='mpi4py')`` to be called before any "
+            "production driver loop. The CLI does this automatically; user "
+            "scripts importing MCMC / GFMC must call it themselves."
+        )
 
 
 def _generate_init_electron_configurations(

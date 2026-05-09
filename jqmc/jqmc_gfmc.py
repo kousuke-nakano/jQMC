@@ -55,7 +55,7 @@ from jax import typing as jnpt
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
-from ._jqmc_utility import _generate_init_electron_configurations
+from ._jqmc_utility import _generate_init_electron_configurations, check_mpi4py_jax_distribution_consistency
 from ._precision import get_tolerance_min
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
@@ -651,6 +651,8 @@ class GFMC_t:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
+        check_mpi4py_jax_distribution_consistency()
+
         # set timer
         timer_projection_init = 0.0
         timer_projection_total = 0.0
@@ -4690,6 +4692,8 @@ class GFMC_n:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
+        check_mpi4py_jax_distribution_consistency()
+
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
