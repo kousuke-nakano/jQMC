@@ -1460,7 +1460,7 @@ def test_sr_device_matches_cpu_multirank(trexio_file, regime, cg_flag, monkeypat
         (2, True, 200, 4),
     ],
 )
-def test_sr_lm_device_matches_cpu(lm_subspace_dim, cg_flag, num_mcmc, num_walkers):
+def test_sr_lm_device_matches_cpu(lm_subspace_dim, cg_flag, num_mcmc, num_walkers, monkeypatch):
     """LM / aSR end-to-end optimization with ``use_device_collectives``
     toggled.
 
@@ -1472,16 +1472,29 @@ def test_sr_lm_device_matches_cpu(lm_subspace_dim, cg_flag, num_mcmc, num_walker
         - ``lm_subspace_dim = 0``: aSR (gamma from H_0/H_1/H_2/S_2)
         - ``lm_subspace_dim = N`` (positive small): subspace LM (top-N + SR collective)
 
-    Both modes are well-conditioned at the chosen sample sizes:
-    ``solve_linear_method``'s eigenvalue / argmax operations have
-    unique well-separated winners, so the chain SR theta -> LM matrices ->
-    eigvec selection is Lipschitz. Strict consistency tolerance applies.
-
-    ``lm_subspace_dim = -1`` (full-space LM) is intentionally not tested:
-    the augmented H_bar matrix always has many near-degenerate eigenvalues
-    (from gauge freedoms / redundant parameters) so the LM solver is
-    non-Lipschitz to round-off in the SR theta. Full-space LM is rarely
-    used in practice; subspace LM and aSR cover the supported workflows.
+    What is compared, and why:
+        - aSR (``lm_subspace_dim = 0``): gamma scaling is a smooth function
+          of the SR direction, so the final wf parameters depend
+          continuously on ``theta_SR`` and can be compared at strict
+          tolerance.
+        - Subspace LM (``lm_subspace_dim != 0``): ``solve_linear_method``
+          contains two argmax operations (dgelscut parameter elimination
+          and ``argmax(|v_0|^2)`` eigenvector selection) that are
+          discontinuous in their inputs -- a round-off-level perturbation
+          can flip the selected mode and produce O(1e-3) jumps in the
+          downstream output (final wf parameters, ``E_lm``, etc.) even
+          though both branches run deterministically. Note in particular
+          that ``E_lm = eigvals_lm[argmax(|v_0|^2)]`` is *not* a
+          continuous function of ``H_bar``: the ranking by ``|v_0|^2``
+          is unrelated to the eigenvalue ordering, so an argmax flip can
+          jump ``E_lm`` by the gap between two arbitrary eigenvalues.
+          Instead, compare the inputs to ``solve_linear_method``
+          (``H_0, f_vec, S, K, B``) -- these depend continuously on
+          ``theta_SR``, so they are the right boundary at which to
+          verify that the device-branch SR solve agrees with the CPU
+          branch. Whatever ``solve_linear_method`` does downstream
+          (including any argmax flips) is shared CPU code and not part
+          of what this test is meant to cover.
 
     Single optimization step only: ``num_opt_steps > 1`` would diverge the
     MCMC trajectories once round-off-level wf differences accumulate.
@@ -1531,7 +1544,27 @@ def test_sr_lm_device_matches_cpu(lm_subspace_dim, cg_flag, num_mcmc, num_walker
             comput_e_L_param_deriv=True,  # required by use_lm=True
         )
 
+    # Pristine reference, captured before any monkeypatching so chained
+    # spies (one per ``run_once`` call) all delegate to the real solver.
+    orig_solve_linear_method = MCMC.solve_linear_method
+
     def run_once(use_device_collectives: bool):
+        lm_inputs: list[dict] = []
+
+        def spy(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon):
+            lm_inputs.append(
+                {
+                    "H_0": float(H_0),
+                    "f_vec": np.asarray(f_vec).copy(),
+                    "S": np.asarray(S_matrix).copy(),
+                    "K": np.asarray(K_matrix).copy(),
+                    "B": np.asarray(B_matrix).copy(),
+                }
+            )
+            return orig_solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon)
+
+        monkeypatch.setattr(MCMC, "solve_linear_method", staticmethod(spy))
+
         mcmc = build_mcmc()
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc,
@@ -1561,28 +1594,54 @@ def test_sr_lm_device_matches_cpu(lm_subspace_dim, cg_flag, num_mcmc, num_walker
             use_device_collectives=use_device_collectives,
         )
         wf = mcmc.hamiltonian_data.wavefunction_data
-        captured: dict[str, np.ndarray] = {}
+        wf_params: dict[str, np.ndarray] = {}
         if wf.jastrow_data.jastrow_one_body_data is not None:
-            captured["j1_param"] = np.asarray(wf.jastrow_data.jastrow_one_body_data.jastrow_1b_param)
+            wf_params["j1_param"] = np.asarray(wf.jastrow_data.jastrow_one_body_data.jastrow_1b_param)
         if wf.jastrow_data.jastrow_two_body_data is not None:
-            captured["j2_param"] = np.asarray(wf.jastrow_data.jastrow_two_body_data.jastrow_2b_param)
+            wf_params["j2_param"] = np.asarray(wf.jastrow_data.jastrow_two_body_data.jastrow_2b_param)
         if wf.jastrow_data.jastrow_three_body_data is not None:
-            captured["j3_matrix"] = np.asarray(wf.jastrow_data.jastrow_three_body_data.j_matrix)
+            wf_params["j3_matrix"] = np.asarray(wf.jastrow_data.jastrow_three_body_data.j_matrix)
         if wf.geminal_data is not None:
-            captured["lambda_matrix"] = np.asarray(wf.geminal_data.lambda_matrix)
-        return captured
+            wf_params["lambda_matrix"] = np.asarray(wf.geminal_data.lambda_matrix)
+        return wf_params, lm_inputs
 
-    cpu_params = run_once(use_device_collectives=False)
-    dev_params = run_once(use_device_collectives=True)
+    cpu_params, cpu_lm_inputs = run_once(use_device_collectives=False)
+    dev_params, dev_lm_inputs = run_once(use_device_collectives=True)
 
-    for key in cpu_params:
-        np.testing.assert_allclose(
-            dev_params[key],
-            cpu_params[key],
-            atol=atol_consistency,
-            rtol=rtol_consistency,
-            err_msg=(f"device vs CPU LM mismatch for {key} (lm_subspace_dim={lm_subspace_dim}, cg_flag={cg_flag})"),
+    if lm_subspace_dim == 0:
+        # aSR path: solve_linear_method is not invoked; final wf params are
+        # Lipschitz in theta_SR via gamma scaling.
+        assert cpu_lm_inputs == [] and dev_lm_inputs == []
+        for key in cpu_params:
+            np.testing.assert_allclose(
+                dev_params[key],
+                cpu_params[key],
+                atol=atol_consistency,
+                rtol=rtol_consistency,
+                err_msg=(f"device vs CPU aSR mismatch for {key} (lm_subspace_dim={lm_subspace_dim}, cg_flag={cg_flag})"),
+            )
+    else:
+        # Subspace LM: compare only the inputs to solve_linear_method.
+        # These depend continuously on theta_SR, so they are the natural
+        # boundary at which the device-branch SR solve can be verified
+        # against the CPU branch. Anything past this point (E_lm, c_vec,
+        # final wf params) goes through argmax operations inside
+        # solve_linear_method and is not safe to compare strictly.
+        assert len(cpu_lm_inputs) == len(dev_lm_inputs) > 0, (
+            f"solve_linear_method was not invoked (cpu={len(cpu_lm_inputs)}, dev={len(dev_lm_inputs)})"
         )
+        for step, (c_in, d_in) in enumerate(zip(cpu_lm_inputs, dev_lm_inputs)):
+            for key in ("H_0", "f_vec", "S", "K", "B"):
+                np.testing.assert_allclose(
+                    d_in[key],
+                    c_in[key],
+                    atol=atol_consistency,
+                    rtol=rtol_consistency,
+                    err_msg=(
+                        f"device vs CPU LM-input mismatch for {key} at step {step} "
+                        f"(lm_subspace_dim={lm_subspace_dim}, cg_flag={cg_flag})"
+                    ),
+                )
 
     jax.clear_caches()
 
