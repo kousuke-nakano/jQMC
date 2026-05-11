@@ -32,7 +32,6 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- On CPUs, **`jQMC` is slower than other QMC packages written in compiled languages (e.g., C++ or Fortran). On GPUs, however, `jQMC` achieves performance comparable to (or even faster than) compiled-language QMC codes**, thanks to `JAX`'s just-in-time compilation and hardware-level optimizations. Please use **GPUs** with a large number of walkers to fully exploit the performance.
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
 
@@ -182,7 +181,7 @@ If you used `jQMC` in your reseach project, please cite the following articles. 
     %volume  = {},
     %number  = {},
     %pages   = {},
-    year    = {2025},
+    year    = {2026},
     %doi     = {}
   }
   ```

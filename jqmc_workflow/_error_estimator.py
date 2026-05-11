@@ -70,27 +70,25 @@ def estimate_required_steps(
             \\times (\\sigma_{\\text{pilot}} / \\sigma_{\\text{target}})^2
             \\times W_{\\text{pilot}} / W_{\\text{prod}}
 
-    Parameters
-    ----------
-    pilot_steps : int
-        Number of measurement steps used in the pilot run.
-    pilot_error : float
-        Statistical error (standard error) obtained from the pilot run.
-    target_error : float
-        Desired statistical error for the production run.
-    walker_ratio : float
-        Ratio of effective walker counts: ``pilot_walkers / prod_walkers``.
-        When walkers-per-MPI is constant this equals
-        ``pilot_num_mpi / prod_num_mpi``.
-        Default 1.0 (same queue for pilot and production).
-    min_steps : int
-        Minimum number of steps to return (e.g. warmup + bin_blocks).
-        Default 0 (no minimum).
+    Args:
+        pilot_steps (int):
+            Number of measurement steps used in the pilot run.
+        pilot_error (float):
+            Statistical error (standard error) obtained from the pilot run.
+        target_error (float):
+            Desired statistical error for the production run.
+        walker_ratio (float):
+            Ratio of effective walker counts: ``pilot_walkers / prod_walkers``.
+            When walkers-per-MPI is constant this equals
+            ``pilot_num_mpi / prod_num_mpi``.
+            Default 1.0 (same queue for pilot and production).
+        min_steps (int):
+            Minimum number of steps to return (e.g. warmup + bin_blocks).
+            Default 0 (no minimum).
 
     Returns:
-    -------
-    int
-        Estimated number of steps for the production run.
+        int:
+            Estimated number of steps for the production run.
     """
     if target_error <= 0:
         raise ValueError(f"target_error must be positive, got {target_error}")
@@ -132,21 +130,19 @@ def estimate_additional_steps(
         N_total = ceil( accumulated_steps x (current_error / target_error)^2 )
         additional = N_total - accumulated_steps
 
-    Parameters
-    ----------
-    accumulated_steps : int
-        Total measurement steps already in the checkpoint.
-    current_error : float
-        Statistical error after *accumulated_steps*.
-    target_error : float
-        Desired statistical error.
-    min_additional : int
-        Floor on additional steps to avoid trivially short runs.
+    Args:
+        accumulated_steps (int):
+            Total measurement steps already in the checkpoint.
+        current_error (float):
+            Statistical error after *accumulated_steps*.
+        target_error (float):
+            Desired statistical error.
+        min_additional (int):
+            Floor on additional steps to avoid trivially short runs.
 
     Returns:
-    -------
-    int
-        Number of *additional* steps to run.
+        int:
+            Number of *additional* steps to run.
     """
     if target_error <= 0:
         raise ValueError(f"target_error must be positive, got {target_error}")
@@ -172,11 +168,10 @@ def suffixed_name(filename: str, index: int) -> str:
     """Insert an integer suffix before the file extension.
 
     Examples:
-    --------
-    >>> suffixed_name("input.toml", 0)
-    'input_0.toml'
-    >>> suffixed_name("out.o", 2)
-    'out_2.o'
+        >>> suffixed_name("input.toml", 0)
+        'input_0.toml'
+        >>> suffixed_name("out.o", 2)
+        'out_2.o'
     """
     base, ext = os.path.splitext(filename)
     return f"{base}_{index}{ext}"
@@ -186,13 +181,12 @@ def _format_duration(seconds: float) -> str:
     """Format a duration in seconds as a human-readable string.
 
     Examples:
-    --------
-    >>> _format_duration(90)
-    '1m 30s'
-    >>> _format_duration(3661)
-    '1h 1m 1s'
-    >>> _format_duration(86400)
-    '1d 0h 0m'
+        >>> _format_duration(90)
+        '1m 30s'
+        >>> _format_duration(3661)
+        '1h 1m 1s'
+        >>> _format_duration(86400)
+        '1d 0h 0m'
     """
     seconds = max(0, seconds)
     if seconds < 60:
@@ -236,15 +230,13 @@ def parse_net_time(output_file: str) -> float | None:
         Net GFMC time without pre-compilations = <value> sec.   (LRDMC)
         Net total time for MCMC = <value> sec.                  (MCMC/VMC)
 
-    Parameters
-    ----------
-    output_file : str
-        Path to the jQMC stdout/stderr output file.
+    Args:
+        output_file (str):
+            Path to the jQMC stdout/stderr output file.
 
     Returns:
-    -------
-    float or None
-        Net time in seconds, or *None* if the pattern is not found.
+        float or None:
+            Net time in seconds, or *None* if the pattern is not found.
     """
     if not os.path.isfile(output_file):
         logger.debug(f"parse_net_time: file not found: {output_file}")

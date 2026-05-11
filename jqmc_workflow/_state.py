@@ -227,28 +227,26 @@ def validate_completion(
     4. (target_error mode) ``energy_error > target_error * target_tol``
        -> ``INCOMPLETE``; otherwise -> ``OK``.
 
-    Parameters
-    ----------
-    directory : str
-        Working directory containing ``workflow_state.toml`` and fetched
-        output files.
-    output_values : dict, optional
-        Scalar results from the workflow (``energy``, ``energy_error``,
-        ...).
-    target_error : float, optional
-        Target statistical error in Ha.  ``None`` disables the
-        convergence check (post-hoc mode).
-    target_tol : float, default 1.0
-        Tolerance factor applied to ``target_error``.  Callers that
-        previously accepted ``error <= target * 1.05`` (MCMC) or
-        ``error <= target * 1.20`` (LRDMC) pass the matching factor.
+    Args:
+        directory (str):
+            Working directory containing ``workflow_state.toml`` and fetched
+            output files.
+        output_values (dict, optional):
+            Scalar results from the workflow (``energy``, ``energy_error``,
+            ...).
+        target_error (float, optional):
+            Target statistical error in Ha.  ``None`` disables the
+            convergence check (post-hoc mode).
+        target_tol (float, default 1.0):
+            Tolerance factor applied to ``target_error``.  Callers that
+            previously accepted ``error <= target * 1.05`` (MCMC) or
+            ``error <= target * 1.20`` (LRDMC) pass the matching factor.
 
     Returns:
-    -------
-    status : CompletionStatus
-        ``OK`` / ``FAILED`` / ``INCOMPLETE``.
-    message : str
-        Human-readable description; empty string when ``status == OK``.
+        status (CompletionStatus):
+            ``OK`` / ``FAILED`` / ``INCOMPLETE``.
+        message (str):
+            Human-readable description; empty string when ``status == OK``.
     """
     output_values = output_values or {}
     state = read_state(directory)
@@ -301,18 +299,17 @@ def update_status(
 ):
     """Update the status field (and optional extra fields) in workflow_state.toml.
 
-    Parameters
-    ----------
-    directory : str
-        Working directory containing workflow_state.toml.
-    status : str or WorkflowStatus
-        New workflow status.
-    phase : str or None
-        Scientific phase to record.  If given, written to
-        ``[workflow] phase``.
-    **extra_fields
-        Additional fields.  Keys starting with ``result_`` go into
-        ``[result]``; everything else goes into ``[workflow]``.
+    Args:
+        directory (str):
+            Working directory containing workflow_state.toml.
+        status (str or WorkflowStatus):
+            New workflow status.
+        phase (str or None):
+            Scientific phase to record.  If given, written to
+            ``[workflow] phase``.
+        **extra_fields:
+            Additional fields.  Keys starting with ``result_`` go into
+            ``[result]``; everything else goes into ``[workflow]``.
     """
     # Ensure we work with raw string for VALID_STATUSES check
     status_str = status.value if isinstance(status, WorkflowStatus) else status
@@ -568,12 +565,11 @@ def get_workflow_summary(directory: str) -> dict:
 def set_error(directory: str, message: str, **context) -> None:
     """Write error information to the ``[error]`` section.
 
-    Parameters
-    ----------
-    message : str
-        Human-readable error description (exception message, etc.).
-    **context
-        Arbitrary extra fields (``traceback``, ``exception_type``, ...).
+    Args:
+        message (str):
+            Human-readable error description (exception message, etc.).
+        **context:
+            Arbitrary extra fields (``traceback``, ``exception_type``, ...).
     """
     state = read_state(directory)
     state["error"] = {"message": message, **context}
@@ -652,10 +648,9 @@ def get_artifact_registry(directory: str) -> list[dict]:
 def set_input_fingerprints(directory: str, fingerprints: dict[str, dict]) -> None:
     """Record input-file fingerprints in ``[input_fingerprints]``.
 
-    Parameters
-    ----------
-    fingerprints : dict[str, dict]
-        Mapping ``{basename: {"size": int, "mtime": float}}``.
+    Args:
+        fingerprints (dict[str, dict]):
+            Mapping ``{basename: {"size": int, "mtime": float}}``.
     """
     state = read_state(directory)
     state["input_fingerprints"] = fingerprints

@@ -56,17 +56,15 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 def load_queue_data(server_machine_name: str, queue_label: str) -> dict:
     """Load a single queue section from ``queue_data.toml``.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Machine name (directory under ``~/.jqmc_setting/``).
-    queue_label : str
-        Section key in ``queue_data.toml``.
+    Args:
+        server_machine_name (str):
+            Machine name (directory under ``~/.jqmc_setting/``).
+        queue_label (str):
+            Section key in ``queue_data.toml``.
 
     Returns:
-    -------
-    dict
-        The TOML table for *queue_label*.
+        dict:
+            The TOML table for *queue_label*.
     """
     machine = Machine(server_machine_name)
     cfg = get_config_dir()
@@ -164,13 +162,12 @@ class JobSubmission:
     def generate_script(self, submission_script: str = "submit.sh", *, work_dir=None):
         """Generate job submission script from template + queue_data.toml vars.
 
-        Parameters
-        ----------
-        submission_script : str
-            Filename of the generated script (basename).
-        work_dir : str, optional
-            Directory where the script is written.  When *None*,
-            falls back to the current working directory.
+        Args:
+            submission_script (str):
+                Filename of the generated script (basename).
+            work_dir (str, optional):
+                Directory where the script is written.  When *None*,
+                falls back to the current working directory.
         """
         cfg = get_config_dir()
         template_path = os.path.join(
@@ -211,15 +208,14 @@ class JobSubmission:
     def job_submit(self, submission_script: str = "submit.sh", from_objects=None, *, work_dir=None):
         """Submit the job.
 
-        Parameters
-        ----------
-        submission_script : str
-            Basename of the submit script in *work_dir*.
-        from_objects : list[str], optional
-            Basenames of extra files to upload.
-        work_dir : str, optional
-            Absolute path to the local job directory.  When *None*,
-            falls back to ``os.getcwd()`` for backward compatibility.
+        Args:
+            submission_script (str):
+                Basename of the submit script in *work_dir*.
+            from_objects (list[str], optional):
+                Basenames of extra files to upload.
+            work_dir (str, optional):
+                Absolute path to the local job directory.  When *None*,
+                falls back to ``os.getcwd()`` for backward compatibility.
         """
         from_objects = from_objects or []
 
@@ -347,19 +343,18 @@ class JobSubmission:
     def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Fetch job results from the remote machine.
 
-        Parameters
-        ----------
-        from_objects : list[str], optional
-            Basenames or glob patterns of files to download.
-        exclude_patterns : list[str], optional
-            Glob patterns to exclude.
-        work_dir : str, optional
-            Absolute path to the local job directory.  When *None*,
-            falls back to ``os.getcwd()`` for backward compatibility.
-        optional_patterns : list[str], optional
-            Basenames or glob patterns of non-essential files.
-            Missing files matching these patterns produce a warning
-            instead of an error.
+        Args:
+            from_objects (list[str], optional):
+                Basenames or glob patterns of files to download.
+            exclude_patterns (list[str], optional):
+                Glob patterns to exclude.
+            work_dir (str, optional):
+                Absolute path to the local job directory.  When *None*,
+                falls back to ``os.getcwd()`` for backward compatibility.
+            optional_patterns (list[str], optional):
+                Basenames or glob patterns of non-essential files.
+                Missing files matching these patterns produce a warning
+                instead of an error.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
@@ -394,11 +389,10 @@ class JobSubmission:
         flags in the config.
 
         Returns:
-        -------
-        tuple[str, str, str] | None
-            ``(command, stdout, stderr)`` on success.
-            ``None`` if ``jobacct`` is not configured, the machine does
-            not use a queuing system, or the command fails.
+            tuple[str, str, str] | None:
+                ``(command, stdout, stderr)`` on success.
+                ``None`` if ``jobacct`` is not configured, the machine does
+                not use a queuing system, or the command fails.
         """
         if not self.server_machine.queuing:
             return None
