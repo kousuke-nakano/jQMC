@@ -2449,10 +2449,6 @@ def _compute_ratio_Jastrow_part_rank1_update(
         j2_param = jastrow_data.jastrow_two_body_data.jastrow_2b_param
         _j2_type = jastrow_data.jastrow_two_body_data.jastrow_2b_type
 
-        def _safe_norm(diff):
-            sq = jnp.sum(diff**2, axis=-1)
-            return jnp.where(sq > 0, jnp.sqrt(jnp.where(sq > 0, sq, jnp.ones_like(sq))), jnp.zeros_like(sq))
-
         if _j2_type == "pade":
 
             def _j2_from_dist(dist, param):
@@ -2462,19 +2458,13 @@ def _compute_ratio_Jastrow_part_rank1_update(
             def _j2_from_dist(dist, param):
                 return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * dist))
 
-        def compute_pairwise_sums(pos1, pos2):
-            if pos1.shape[0] == 0 or pos2.shape[0] == 0:
-                return jnp.zeros(pos1.shape[0], dtype=dtype_jnp)
-            # Reconstruct diff in caller-supplied precision then downcast (Principle 3b).
-            diff = (pos1[:, None, :] - pos2[None, :, :]).astype(dtype_jnp)
-            dists = _safe_norm(diff)
-            vals = _j2_from_dist(dists, j2_param)
-            return jnp.sum(vals, axis=1)
-
-        J2_sum_up_up = compute_pairwise_sums(old_r_up_carts, old_r_up_carts)
-        J2_sum_up_dn = compute_pairwise_sums(old_r_up_carts, old_r_dn_carts)
-        J2_sum_dn_dn = compute_pairwise_sums(old_r_dn_carts, old_r_dn_carts)
-        J2_sum_dn_up = compute_pairwise_sums(old_r_dn_carts, old_r_up_carts)
+        # The OLD-side per-electron pair-sum baseline previously computed via
+        # ``compute_pairwise_sums(old, old)`` was O(N^2), but only the moved-
+        # electron row is consumed per grid. We now compute the OLD-side per-
+        # grid sum on demand via the same ``_batch_pairwise_sum`` used for the
+        # NEW side -- total work O(N * N_grid). The self-pair (j == k_g) on
+        # the OLD side contributes ``J2(0) = 0`` for both Pade and exp forms,
+        # so no explicit self-correction is needed for the OLD side.
 
         delta_up_all = new_r_up_carts_arr - old_r_up_carts
         delta_dn_all = new_r_dn_carts_arr - old_r_dn_carts
@@ -2509,10 +2499,10 @@ def _compute_ratio_Jastrow_part_rank1_update(
         # Reconstruct diff in caller-supplied precision then downcast (Principle 3b).
         up_up_self = _j2_from_dist(jnp.linalg.norm((r_up_new - r_up_old).astype(dtype_jnp), axis=1), j2_param)
         up_up_new = up_up_new_raw - up_up_self
-        up_up_old = jnp.take(J2_sum_up_up, idx_up, axis=0)
+        up_up_old = _batch_pairwise_sum(r_up_old, old_r_up_carts, j2_param)
 
         up_dn_new = _batch_pairwise_sum(r_up_new, old_r_dn_carts, j2_param)
-        up_dn_old = jnp.take(J2_sum_up_dn, idx_up, axis=0)
+        up_dn_old = _batch_pairwise_sum(r_up_old, old_r_dn_carts, j2_param)
         J2_ratio_up = jnp.exp((up_up_new - up_up_old) + (up_dn_new - up_dn_old))
 
         # Down-move branch contributions (all grids in batch)
@@ -2520,10 +2510,10 @@ def _compute_ratio_Jastrow_part_rank1_update(
         # Reconstruct diff in caller-supplied precision then downcast (Principle 3b).
         dn_dn_self = _j2_from_dist(jnp.linalg.norm((r_dn_new - r_dn_old).astype(dtype_jnp), axis=1), j2_param)
         dn_dn_new = dn_dn_new_raw - dn_dn_self
-        dn_dn_old = jnp.take(J2_sum_dn_dn, idx_dn, axis=0)
+        dn_dn_old = _batch_pairwise_sum(r_dn_old, old_r_dn_carts, j2_param)
 
         dn_up_new = _batch_pairwise_sum(r_dn_new, old_r_up_carts, j2_param)
-        dn_up_old = jnp.take(J2_sum_dn_up, idx_dn, axis=0)
+        dn_up_old = _batch_pairwise_sum(r_dn_old, old_r_up_carts, j2_param)
         J2_ratio_dn = jnp.exp((dn_dn_new - dn_dn_old) + (dn_up_new - dn_up_old))
 
         J2_ratio = jnp.where(moved_up_exists, J2_ratio_up, J2_ratio_dn)
