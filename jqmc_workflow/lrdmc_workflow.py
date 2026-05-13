@@ -129,166 +129,159 @@ class LRDMC_Workflow(Workflow):
     measurement steps, and ``max_continuation`` runs are executed
     unconditionally.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Target machine name.
-    alat : float
-        Lattice discretization parameter (bohr).
-    hamiltonian_file : str
-        Input ``hamiltonian_data.h5``.
-    queue_label : str
-        Queue/partition label.
-    jobname : str
-        Scheduler job name.
-    number_of_walkers : int
-        Walkers per MPI process.
-    max_time : int
-        Wall-time limit (seconds).
-    num_gfmc_bin_blocks : int
-        Binning blocks for post-processing.
-    num_gfmc_warmup_steps : int
-        Warmup steps to discard in post-processing.
-    num_gfmc_collect_steps : int
-        Weight-collection steps for energy post-processing.
-    time_projection_tau : float, optional
-        Imaginary time step between projections (bohr) for GFMC_t
-        mode.  Default ``0.10``.  Ignored when
-        *target_survived_walkers_ratio* or *num_projection_per_measurement*
-        is set.
-    target_survived_walkers_ratio : float, optional
-        Target survived-walkers ratio for automatic
-        ``num_projection_per_measurement`` calibration.  Setting this
-        activates GFMC_n mode.  The pilot phase runs three short
-        calculations at ``Ne*k*(0.3/alat)^2`` projections (k=2,4,6),
-        fits a linear model to the observed survived-walkers ratio,
-        and picks the value that achieves this target.
-    num_projection_per_measurement : int, optional
-        GFMC projections per measurement (GFMC_n mode).  When given
-        explicitly, the automatic calibration is skipped.
-    non_local_move : str, optional
-        Non-local move treatment (``"tmove"`` or ``"dltmove"``).  Default from ``jqmc_miscs``.
-    E_scf : float, optional
-        Initial energy guess for the GFMC shift (GFMC_n only).
-        Default from ``jqmc_miscs``.
-    atomic_force : bool, optional
-        Compute atomic forces.  Default from ``jqmc_miscs``.
-    use_swct : bool, optional
-        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
-        Default is False for LRDMC.
-    epsilon_PW : float, optional
-        Pathak-Wagner regularization parameter (Bohr). When > 0,
-        the force estimator is regularized near the nodal surface.
-        Default from ``jqmc_miscs``.
-    mcmc_seed : int, optional
-        Random seed for MCMC.  Default from ``jqmc_miscs``.
-    verbosity : str, optional
-        Verbosity level.  Default from ``jqmc_miscs``.
-    poll_interval : int
-        Seconds between job-status polls.
-    target_error : float
-        Target statistical error (Ha).
-    pilot_steps : int
-        Measurement steps for the pilot estimation run.
-    num_gfmc_projections : int, optional
-        Fixed number of measurement steps per production run.
-        When set, the error-bar pilot (``_pilot_b``) is skipped,
-        ``target_error`` is ignored, and all ``max_continuation``
-        production runs are executed unconditionally.  Calibration
-        (``_pilot_a``) still runs when needed (GFMC_n mode with
-        ``target_survived_walkers_ratio``).  Default *None*
-        (automatic mode).
-    pilot_queue_label : str, optional
-        Queue label for the pilot run.  Defaults to *queue_label*.
-        Use a shorter/smaller queue for the pilot to save resources.
-    max_continuation : int
-        Maximum number of production runs after the pilot.
-    cleanup_patterns : list[str], optional
-        Glob patterns for files to delete after successful completion
-        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
-        are always removed; remote files are removed only when the
-        workflow targets a remote machine.  Default *None* (no cleanup).
+    Args:
+        server_machine_name (str):
+            Target machine name.
+        alat (float):
+            Lattice discretization parameter (bohr).
+        hamiltonian_file (str):
+            Input ``hamiltonian_data.h5``.
+        queue_label (str):
+            Queue/partition label.
+        jobname (str):
+            Scheduler job name.
+        number_of_walkers (int):
+            Walkers per MPI process.
+        max_time (int):
+            Wall-time limit (seconds).
+        num_gfmc_bin_blocks (int):
+            Binning blocks for post-processing.
+        num_gfmc_warmup_steps (int):
+            Warmup steps to discard in post-processing.
+        num_gfmc_collect_steps (int):
+            Weight-collection steps for energy post-processing.
+        time_projection_tau (float, optional):
+            Imaginary time step between projections (bohr) for GFMC_t
+            mode.  Default ``0.10``.  Ignored when
+            *target_survived_walkers_ratio* or *num_projection_per_measurement*
+            is set.
+        target_survived_walkers_ratio (float, optional):
+            Target survived-walkers ratio for automatic
+            ``num_projection_per_measurement`` calibration.  Setting this
+            activates GFMC_n mode.  The pilot phase runs three short
+            calculations at ``Ne*k*(0.3/alat)^2`` projections (k=2,4,6),
+            fits a linear model to the observed survived-walkers ratio,
+            and picks the value that achieves this target.
+        num_projection_per_measurement (int, optional):
+            GFMC projections per measurement (GFMC_n mode).  When given
+            explicitly, the automatic calibration is skipped.
+        non_local_move (str, optional):
+            Non-local move treatment (``"tmove"`` or ``"dltmove"``).  Default from ``jqmc_miscs``.
+        E_scf (float, optional):
+            Initial energy guess for the GFMC shift (GFMC_n only).
+            Default from ``jqmc_miscs``.
+        atomic_force (bool, optional):
+            Compute atomic forces.  Default from ``jqmc_miscs``.
+        use_swct (bool, optional):
+            Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is False for LRDMC.
+        epsilon_PW (float, optional):
+            Pathak-Wagner regularization parameter (Bohr). When > 0,
+            the force estimator is regularized near the nodal surface.
+            Default from ``jqmc_miscs``.
+        mcmc_seed (int, optional):
+            Random seed for MCMC.  Default from ``jqmc_miscs``.
+        verbosity (str, optional):
+            Verbosity level.  Default from ``jqmc_miscs``.
+        poll_interval (int):
+            Seconds between job-status polls.
+        target_error (float):
+            Target statistical error (Ha).
+        pilot_steps (int):
+            Measurement steps for the pilot estimation run.
+        num_gfmc_projections (int, optional):
+            Fixed number of measurement steps per production run.
+            When set, the error-bar pilot (``_pilot_b``) is skipped,
+            ``target_error`` is ignored, and all ``max_continuation``
+            production runs are executed unconditionally.  Calibration
+            (``_pilot_a``) still runs when needed (GFMC_n mode with
+            ``target_survived_walkers_ratio``).  Default *None*
+            (automatic mode).
+        pilot_queue_label (str, optional):
+            Queue label for the pilot run.  Defaults to *queue_label*.
+            Use a shorter/smaller queue for the pilot to save resources.
+        max_continuation (int):
+            Maximum number of production runs after the pilot.
+        cleanup_patterns (list[str], optional):
+            Glob patterns for files to delete after successful completion
+            (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+            are always removed; remote files are removed only when the
+            workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples:
-    --------
-    GFMC_t mode (default)::
+        GFMC_t mode (default)::
 
-        wf = LRDMC_Workflow(
-            server_machine_name="cluster",
-            alat=0.3,
-            target_error=0.0005,
-            number_of_walkers=8,
-        )
-        status, files, values = wf.launch()
-        print(values["energy"], values["energy_error"])
-
-    GFMC_n mode with calibration::
-
-        wf = LRDMC_Workflow(
-            server_machine_name="cluster",
-            alat=0.3,
-            target_error=0.0005,
-            target_survived_walkers_ratio=0.97,
-            number_of_walkers=8,
-        )
-
-    Fixed-step mode (skip error-bar pilot)::
-
-        wf = LRDMC_Workflow(
-            server_machine_name="cluster",
-            alat=0.3,
-            num_gfmc_projections=500,
-            max_continuation=3,
-            number_of_walkers=8,
-        )
-
-    As part of a :class:`Launcher` pipeline::
-
-        enc = Container(
-            label="lrdmc-a0.30",
-            dirname="03_lrdmc",
-            input_files=[FileFrom("mcmc-run", "hamiltonian_data.h5")],
-            workflow=LRDMC_Workflow(
+            wf = LRDMC_Workflow(
                 server_machine_name="cluster",
                 alat=0.3,
-                target_error=0.001,
-            ),
-        )
+                target_error=0.0005,
+                number_of_walkers=8,
+            )
+            status, files, values = wf.launch()
+            print(values["energy"], values["energy_error"])
 
-    Output Values
-    -------------
-    After ``launch()`` completes, ``output_values`` may contain:
+        GFMC_n mode with calibration::
 
-    energy : float
-        DMC energy (Ha).
-    energy_error : float
-        Statistical error on ``energy`` (Ha).
-    alat : float
-        Lattice spacing used for this run.
-    restart_chk : str
-        Basename of the restart checkpoint file.
-    forces : object
-        Atomic forces (only when ``atomic_force=True``).
-    estimated_steps : int
-        Estimated total measurement steps.
-    num_projection_per_measurement : int
-        Number of GFMC projections per measurement
-        (GFMC_n mode only).
-    time_projection_tau : float
-        Imaginary-time projection step (GFMC_t mode only).
+            wf = LRDMC_Workflow(
+                server_machine_name="cluster",
+                alat=0.3,
+                target_error=0.0005,
+                target_survived_walkers_ratio=0.97,
+                number_of_walkers=8,
+            )
+
+        Fixed-step mode (skip error-bar pilot)::
+
+            wf = LRDMC_Workflow(
+                server_machine_name="cluster",
+                alat=0.3,
+                num_gfmc_projections=500,
+                max_continuation=3,
+                number_of_walkers=8,
+            )
+
+        As part of a :class:`Launcher` pipeline::
+
+            enc = Container(
+                label="lrdmc-a0.30",
+                dirname="03_lrdmc",
+                input_files=[FileFrom("mcmc-run", "hamiltonian_data.h5")],
+                workflow=LRDMC_Workflow(
+                    server_machine_name="cluster",
+                    alat=0.3,
+                    target_error=0.001,
+                ),
+            )
+
+    Output Values:
+        energy (float):
+            DMC energy (Ha).
+        energy_error (float):
+            Statistical error on ``energy`` (Ha).
+        alat (float):
+            Lattice spacing used for this run.
+        restart_chk (str):
+            Basename of the restart checkpoint file.
+        forces (object):
+            Atomic forces (only when ``atomic_force=True``).
+        estimated_steps (int):
+            Estimated total measurement steps.
+        num_projection_per_measurement (int):
+            Number of GFMC projections per measurement
+            (GFMC_n mode only).
+        time_projection_tau (float):
+            Imaginary-time projection step (GFMC_t mode only).
 
     Notes:
-    -----
-    * For a^2->0 continuum-limit extrapolation, use
-      :class:`LRDMC_Ext_Workflow` instead.
-    * The pilot is skipped on re-entrance if an estimation already
-      exists in ``workflow_state.toml``.
+        * For a^2->0 continuum-limit extrapolation, use
+          :class:`LRDMC_Ext_Workflow` instead.
+        * The pilot is skipped on re-entrance if an estimation already
+          exists in ``workflow_state.toml``.
 
     See Also:
-    --------
-    LRDMC_Ext_Workflow : Multi-alat extrapolation wrapper.
-    MCMC_Workflow : VMC production sampling (job_type=mcmc).
-    VMC_Workflow : Wavefunction optimisation (job_type=vmc).
+        LRDMC_Ext_Workflow : Multi-alat extrapolation wrapper.
+        MCMC_Workflow : VMC production sampling (job_type=mcmc).
+        VMC_Workflow : Wavefunction optimisation (job_type=vmc).
     """
 
     def __init__(
@@ -391,19 +384,18 @@ class LRDMC_Workflow(Workflow):
     ):
         """Generate LRDMC TOML input file.
 
-        Parameters
-        ----------
-        num_steps : int
-            Number of measurement steps.
-        input_file : str
-            Output filename.
-        restart : bool
-            Whether this is a restart run.
-        restart_chk : str or None
-            Restart checkpoint filename.
-        num_projection_per_measurement : int or None
-            Override for GFMC projections per measurement (GFMC_n only).
-            Falls back to ``self.num_projection_per_measurement``.
+        Args:
+            num_steps (int):
+                Number of measurement steps.
+            input_file (str):
+                Output filename.
+            restart (bool):
+                Whether this is a restart run.
+            restart_chk (str or None):
+                Restart checkpoint filename.
+            num_projection_per_measurement (int or None):
+                Override for GFMC projections per measurement (GFMC_n only).
+                Falls back to ``self.num_projection_per_measurement``.
         """
         jt = self.job_type
         control_ov = resolve_with_defaults(
@@ -1214,19 +1206,17 @@ class LRDMC_Workflow(Workflow):
         Falls back to ``jqmc-tool`` when *output_file* is *None* or
         when stdout parsing fails.
 
-        Parameters
-        ----------
-        restart_chk : str
-            Checkpoint filename (basename).
-        work_dir : str
-            Directory in which to run the command.
-        output_file : str, optional
-            Stdout filename (basename) of the ``jqmc`` run.
+        Args:
+            restart_chk (str):
+                Checkpoint filename (basename).
+            work_dir (str):
+                Directory in which to run the command.
+            output_file (str, optional):
+                Stdout filename (basename) of the ``jqmc`` run.
 
         Returns:
-        -------
-        tuple
-            ``(energy, error)`` or ``(None, None)``.
+            tuple:
+                ``(energy, error)`` or ``(None, None)``.
         """
         # Fast path: parse from jqmc stdout
         if output_file is not None:
@@ -1280,21 +1270,19 @@ class LRDMC_Workflow(Workflow):
         the ``jqmc`` stdout (``Atomic Forces:`` table).  Falls back
         to ``jqmc-tool`` when *output_file* is *None* or parsing fails.
 
-        Parameters
-        ----------
-        restart_chk : str
-            Checkpoint filename (basename).
-        work_dir : str
-            Directory in which to run the command.
-        output_file : str, optional
-            Stdout filename (basename) of the ``jqmc`` run.
+        Args:
+            restart_chk (str):
+                Checkpoint filename (basename).
+            work_dir (str):
+                Directory in which to run the command.
+            output_file (str, optional):
+                Stdout filename (basename) of the ``jqmc`` run.
 
         Returns:
-        -------
-        list of dict or None
-            Each dict has keys ``label``, ``Fx``, ``Fx_err``,
-            ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
-            Returns *None* on failure.
+            list of dict or None:
+                Each dict has keys ``label``, ``Fx``, ``Fx_err``,
+                ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
+                Returns *None* on failure.
         """
         # Fast path: parse from jqmc stdout
         if output_file is not None:

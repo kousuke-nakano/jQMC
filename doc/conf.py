@@ -114,6 +114,9 @@ extensions = [
     "sphinx.ext.todo",
 ]
 myst_enable_extensions = ["linkify", "dollarmath", "amsmath"]
+# Auto-generate anchors for Markdown headings up to depth 4 so that
+# in-document links like ``[text](#phase-management)`` resolve.
+myst_heading_anchors = 4
 
 # Napoleon: parse Google/NumPy style docstrings (used in this project) and
 # render attribute/parameter tables in autodoc pages.
@@ -123,6 +126,9 @@ napoleon_use_param = True
 napoleon_use_ivar = True
 napoleon_attr_annotations = True
 napoleon_preprocess_types = True
+# Custom section "Output Values" used by Workflow docstrings -- render as
+# a parameter-style list (same as "Returns").
+napoleon_custom_sections = [("Output Values", "params_style")]
 
 # Move type hints from signatures into the description so Attributes/Parameters
 # tables remain readable and avoid duplicated type-only attribute listings.

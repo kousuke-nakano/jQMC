@@ -93,178 +93,171 @@ class VMC_Workflow(Workflow):
     optimisation step, and ``max_continuation`` runs are executed
     unconditionally.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Name of the target machine (must be configured in ``~/.jqmc_setting/``).
-    num_opt_steps : int
-        Number of optimization iterations for production runs.
-    hamiltonian_file : str
-        Input ``hamiltonian_data.h5``.
-    queue_label : str
-        Queue/partition label from ``queue_data.toml``.
-    jobname : str
-        Job name for the scheduler.
-    number_of_walkers : int
-        Walkers per MPI process.
-    max_time : int
-        Wall-time limit in seconds.
-    Dt : float, optional
-        MCMC step size (bohr).  Default from ``jqmc_miscs``.
-    epsilon_AS : float, optional
-        Attacalite-Sorella regularization parameter.  Default from ``jqmc_miscs``.
-    num_mcmc_per_measurement : int, optional
-        MCMC updates per measurement.  Default from ``jqmc_miscs``.
-    num_mcmc_warmup_steps : int, optional
-        Warmup measurement steps to discard.  Default from ``jqmc_miscs``.
-    num_mcmc_bin_blocks : int, optional
-        Binning blocks.  Default from ``jqmc_miscs``.
-    wf_dump_freq : int, optional
-        Wavefunction dump frequency.  Default from ``jqmc_miscs``.
-    opt_J1_param : bool, optional
-        Optimize J1 Jastrow parameters.  Default from ``jqmc_miscs``.
-    opt_J2_param : bool, optional
-        Optimize J2 Jastrow parameters.  Default from ``jqmc_miscs``.
-    opt_J3_param : bool, optional
-        Optimize J3 Jastrow parameters.  Default from ``jqmc_miscs``.
-    opt_JNN_param : bool, optional
-        Optimize neural-network Jastrow parameters.  Default from ``jqmc_miscs``.
-    opt_lambda_param : bool, optional
-        Optimize lambda (geminal) parameters.  Default from ``jqmc_miscs``.
-    opt_with_projected_MOs : bool, optional
-        Optimize in a restricted MO space.  Default from ``jqmc_miscs``.
-    opt_J3_basis_exp : bool, optional
-        Optimize J3 AO Gaussian exponents.  Default from ``jqmc_miscs``.
-    opt_J3_basis_coeff : bool, optional
-        Optimize J3 AO contraction coefficients.  Default from ``jqmc_miscs``.
-    opt_lambda_basis_exp : bool, optional
-        Optimize Geminal AO Gaussian exponents.  Default from ``jqmc_miscs``.
-    opt_lambda_basis_coeff : bool, optional
-        Optimize Geminal AO contraction coefficients.  Default from ``jqmc_miscs``.
-    optimizer_kwargs : dict, optional
-        Optimizer configuration dict.  Default from ``jqmc_miscs``.
-    mcmc_seed : int, optional
-        Random seed for MCMC.  Default from ``jqmc_miscs``.
-    verbosity : str, optional
-        Verbosity level.  Default from ``jqmc_miscs``.
-    poll_interval : int
-        Seconds between job-status polls.
-    target_error : float
-        Target statistical error (Ha) per optimization step.  Ignored
-        when *num_mcmc_steps* is set.
-    num_mcmc_steps : int, optional
-        Fixed number of MCMC measurement steps per optimisation step.
-        When set, the pilot run is skipped and ``target_error`` is
-        ignored; each of the ``max_continuation`` production runs uses
-        exactly this many MCMC steps per opt step.
-    pilot_mcmc_steps : int
-        MCMC steps per opt-step for the pilot run.  Ignored when
-        *num_mcmc_steps* is set.
-    pilot_vmc_steps : int
-        Number of optimization steps in the pilot run (small; just
-        enough to estimate the error bar).
-    pilot_queue_label : str, optional
-        Queue label for the pilot run.  Defaults to *queue_label*.
-        Use a shorter/smaller queue for the pilot to save resources.
-    max_continuation : int
-        Maximum number of production runs after the pilot.
-    target_snr : float
-        Target signal-to-noise ratio ``max(|f|/|std f|)`` for force
-        convergence.  The workflow continues until the averaged
-        S/N drops to or below this threshold.
-    snr_avg_window : int
-        Number of trailing optimization steps over which to average
-        the signal-to-noise ratio for the convergence check.
-        When there are fewer S/N values than this window, all
-        available values are averaged.
-    cleanup_patterns : list[str], optional
-        Glob patterns for files to delete after successful completion
-        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
-        are always removed; remote files are removed only when the
-        workflow targets a remote machine.  Default *None* (no cleanup).
+    Args:
+        server_machine_name (str):
+            Name of the target machine (must be configured in ``~/.jqmc_setting/``).
+        num_opt_steps (int):
+            Number of optimization iterations for production runs.
+        hamiltonian_file (str):
+            Input ``hamiltonian_data.h5``.
+        queue_label (str):
+            Queue/partition label from ``queue_data.toml``.
+        jobname (str):
+            Job name for the scheduler.
+        number_of_walkers (int):
+            Walkers per MPI process.
+        max_time (int):
+            Wall-time limit in seconds.
+        Dt (float, optional):
+            MCMC step size (bohr).  Default from ``jqmc_miscs``.
+        epsilon_AS (float, optional):
+            Attacalite-Sorella regularization parameter.  Default from ``jqmc_miscs``.
+        num_mcmc_per_measurement (int, optional):
+            MCMC updates per measurement.  Default from ``jqmc_miscs``.
+        num_mcmc_warmup_steps (int, optional):
+            Warmup measurement steps to discard.  Default from ``jqmc_miscs``.
+        num_mcmc_bin_blocks (int, optional):
+            Binning blocks.  Default from ``jqmc_miscs``.
+        wf_dump_freq (int, optional):
+            Wavefunction dump frequency.  Default from ``jqmc_miscs``.
+        opt_J1_param (bool, optional):
+            Optimize J1 Jastrow parameters.  Default from ``jqmc_miscs``.
+        opt_J2_param (bool, optional):
+            Optimize J2 Jastrow parameters.  Default from ``jqmc_miscs``.
+        opt_J3_param (bool, optional):
+            Optimize J3 Jastrow parameters.  Default from ``jqmc_miscs``.
+        opt_JNN_param (bool, optional):
+            Optimize neural-network Jastrow parameters.  Default from ``jqmc_miscs``.
+        opt_lambda_param (bool, optional):
+            Optimize lambda (geminal) parameters.  Default from ``jqmc_miscs``.
+        opt_with_projected_MOs (bool, optional):
+            Optimize in a restricted MO space.  Default from ``jqmc_miscs``.
+        opt_J3_basis_exp (bool, optional):
+            Optimize J3 AO Gaussian exponents.  Default from ``jqmc_miscs``.
+        opt_J3_basis_coeff (bool, optional):
+            Optimize J3 AO contraction coefficients.  Default from ``jqmc_miscs``.
+        opt_lambda_basis_exp (bool, optional):
+            Optimize Geminal AO Gaussian exponents.  Default from ``jqmc_miscs``.
+        opt_lambda_basis_coeff (bool, optional):
+            Optimize Geminal AO contraction coefficients.  Default from ``jqmc_miscs``.
+        optimizer_kwargs (dict, optional):
+            Optimizer configuration dict.  Default from ``jqmc_miscs``.
+        mcmc_seed (int, optional):
+            Random seed for MCMC.  Default from ``jqmc_miscs``.
+        verbosity (str, optional):
+            Verbosity level.  Default from ``jqmc_miscs``.
+        poll_interval (int):
+            Seconds between job-status polls.
+        target_error (float):
+            Target statistical error (Ha) per optimization step.  Ignored
+            when *num_mcmc_steps* is set.
+        num_mcmc_steps (int, optional):
+            Fixed number of MCMC measurement steps per optimisation step.
+            When set, the pilot run is skipped and ``target_error`` is
+            ignored; each of the ``max_continuation`` production runs uses
+            exactly this many MCMC steps per opt step.
+        pilot_mcmc_steps (int):
+            MCMC steps per opt-step for the pilot run.  Ignored when
+            *num_mcmc_steps* is set.
+        pilot_vmc_steps (int):
+            Number of optimization steps in the pilot run (small; just
+            enough to estimate the error bar).
+        pilot_queue_label (str, optional):
+            Queue label for the pilot run.  Defaults to *queue_label*.
+            Use a shorter/smaller queue for the pilot to save resources.
+        max_continuation (int):
+            Maximum number of production runs after the pilot.
+        target_snr (float):
+            Target signal-to-noise ratio ``max(|f|/|std f|)`` for force
+            convergence.  The workflow continues until the averaged
+            S/N drops to or below this threshold.
+        snr_avg_window (int):
+            Number of trailing optimization steps over which to average
+            the signal-to-noise ratio for the convergence check.
+            When there are fewer S/N values than this window, all
+            available values are averaged.
+        cleanup_patterns (list[str], optional):
+            Glob patterns for files to delete after successful completion
+            (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+            are always removed; remote files are removed only when the
+            workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples:
-    --------
-    Standalone launch (automatic mode)::
+        Standalone launch (automatic mode)::
 
-        wf = VMC_Workflow(
-            server_machine_name="cluster",
-            num_opt_steps=20,
-            target_error=0.001,
-            pilot_mcmc_steps=50,
-            pilot_vmc_steps=5,
-            number_of_walkers=8,
-        )
-        status, files, values = wf.launch()
-        print(values["optimized_hamiltonian"])
-
-    Fixed-step mode (no pilot, no target_error check)::
-
-        wf = VMC_Workflow(
-            server_machine_name="cluster",
-            num_opt_steps=20,
-            num_mcmc_steps=500,
-            number_of_walkers=8,
-            max_continuation=3,
-        )
-        status, files, values = wf.launch()
-
-    As part of a :class:`Launcher` pipeline::
-
-        enc = Container(
-            label="vmc",
-            dirname="01_vmc",
-            input_files=[FileFrom("wf", "hamiltonian_data.h5")],
-            workflow=VMC_Workflow(
+            wf = VMC_Workflow(
                 server_machine_name="cluster",
                 num_opt_steps=20,
                 target_error=0.001,
-            ),
-        )
+                pilot_mcmc_steps=50,
+                pilot_vmc_steps=5,
+                number_of_walkers=8,
+            )
+            status, files, values = wf.launch()
+            print(values["optimized_hamiltonian"])
 
-    Output Values
-    -------------
-    After ``launch()`` completes, ``output_values`` may contain:
+        Fixed-step mode (no pilot, no target_error check)::
 
-    optimized_hamiltonian : str
-        Basename of the last optimised Hamiltonian file
-        (e.g. ``"hamiltonian_data_opt_step_91.h5"``).
-        Use with ``ValueFrom("vmc", "optimized_hamiltonian")``
-        to pass the filename dynamically to downstream workflows.
-    checkpoint : str
-        Basename of the restart checkpoint file.
-    num_mcmc_steps : int
-        Estimated MCMC steps per optimisation step
-        (automatic mode).  In fixed-step mode this key is
-        ``estimated_mcmc_steps`` instead.
-    energy : float
-        Energy from the last optimisation step (Ha).
-    energy_error : float
-        Statistical error on ``energy`` (Ha).
-    signal_to_noise : float
-        Average signal-to-noise ratio over the trailing window
-        (only when force-convergence is enabled).
-    signal_to_noise_last : float
-        Signal-to-noise ratio of the last optimisation step.
-    energy_slope : float
-        Slope of energy vs. step from the trailing window
-        (only when ``energy_slope_sigma_threshold`` is set).
-    energy_slope_std : float
-        Standard deviation of the energy slope.
+            wf = VMC_Workflow(
+                server_machine_name="cluster",
+                num_opt_steps=20,
+                num_mcmc_steps=500,
+                number_of_walkers=8,
+                max_continuation=3,
+            )
+            status, files, values = wf.launch()
+
+        As part of a :class:`Launcher` pipeline::
+
+            enc = Container(
+                label="vmc",
+                dirname="01_vmc",
+                input_files=[FileFrom("wf", "hamiltonian_data.h5")],
+                workflow=VMC_Workflow(
+                    server_machine_name="cluster",
+                    num_opt_steps=20,
+                    target_error=0.001,
+                ),
+            )
+
+    Output Values:
+        optimized_hamiltonian (str):
+            Basename of the last optimised Hamiltonian file
+            (e.g. ``"hamiltonian_data_opt_step_91.h5"``).
+            Use with ``ValueFrom("vmc", "optimized_hamiltonian")``
+            to pass the filename dynamically to downstream workflows.
+        checkpoint (str):
+            Basename of the restart checkpoint file.
+        num_mcmc_steps (int):
+            Estimated MCMC steps per optimisation step
+            (automatic mode).  In fixed-step mode this key is
+            ``estimated_mcmc_steps`` instead.
+        energy (float):
+            Energy from the last optimisation step (Ha).
+        energy_error (float):
+            Statistical error on ``energy`` (Ha).
+        signal_to_noise (float):
+            Average signal-to-noise ratio over the trailing window
+            (only when force-convergence is enabled).
+        signal_to_noise_last (float):
+            Signal-to-noise ratio of the last optimisation step.
+        energy_slope (float):
+            Slope of energy vs. step from the trailing window
+            (only when ``energy_slope_sigma_threshold`` is set).
+        energy_slope_std (float):
+            Standard deviation of the energy slope.
 
     Notes:
-    -----
-    * The pilot uses a small number of opt steps (``pilot_vmc_steps``)
-      just to estimate the error.  The real optimisation happens in
-      production runs with the full ``num_opt_steps``.
-    * The estimation is stored in ``workflow_state.toml`` under
-      ``[estimation]``; on re-entrance the pilot is skipped.
+        * The pilot uses a small number of opt steps (``pilot_vmc_steps``)
+          just to estimate the error.  The real optimisation happens in
+          production runs with the full ``num_opt_steps``.
+        * The estimation is stored in ``workflow_state.toml`` under
+          ``[estimation]``; on re-entrance the pilot is skipped.
 
     See Also:
-    --------
-    MCMC_Workflow : VMC production sampling (job_type=mcmc).
-    LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
-    WF_Workflow : TREXIO -> hamiltonian_data conversion.
+        MCMC_Workflow : VMC production sampling (job_type=mcmc).
+        LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
+        WF_Workflow : TREXIO -> hamiltonian_data conversion.
     """
 
     def __init__(
@@ -369,18 +362,17 @@ class VMC_Workflow(Workflow):
     ):
         """Generate a VMC TOML input file.
 
-        Parameters
-        ----------
-        num_mcmc_steps : int
-            MCMC measurement steps per optimization step.
-        num_opt_steps : int
-            Number of optimization iterations.
-        input_file : str
-            Output filename for the TOML.
-        restart : bool
-            Whether to restart from a checkpoint.
-        restart_chk : str, optional
-            Checkpoint file to restart from.
+        Args:
+            num_mcmc_steps (int):
+                MCMC measurement steps per optimization step.
+            num_opt_steps (int):
+                Number of optimization iterations.
+            input_file (str):
+                Output filename for the TOML.
+            restart (bool):
+                Whether to restart from a checkpoint.
+            restart_chk (str, optional):
+                Checkpoint file to restart from.
         """
         control_ov = resolve_with_defaults(
             "control",
@@ -995,11 +987,10 @@ class VMC_Workflow(Workflow):
         """Parse all signal-to-noise ratios from a VMC output file.
 
         Returns:
-        -------
-        list[float]
-            All ``max(|f|/|std f|)`` values in order, one per
-            optimization step.  Empty list if the file is missing
-            or contains no S/N lines.
+            list[float]:
+                All ``max(|f|/|std f|)`` values in order, one per
+                optimization step.  Empty list if the file is missing
+                or contains no S/N lines.
         """
         if not os.path.isfile(output_file):
             return []
@@ -1024,10 +1015,9 @@ class VMC_Workflow(Workflow):
         :class:`VMC_Step_Data` and returns the energy/error pairs.
 
         Returns:
-        -------
-        list[tuple[float, float]]
-            ``[(E_1, sigma_1), (E_2, sigma_2), ...]`` in file order.
-            Empty list if the file is missing or unparseable.
+            list[tuple[float, float]]:
+                ``[(E_1, sigma_1), (E_2, sigma_2), ...]`` in file order.
+                Empty list if the file is missing or unparseable.
         """
         if not os.path.isfile(output_file):
             return []
@@ -1050,19 +1040,17 @@ class VMC_Workflow(Workflow):
 
         Model: ``E_k = a + b * k + eps_k``, weight ``w_k = 1 / sigma_k^2``.
 
-        Parameters
-        ----------
-        energies : list[float]
-            Energy value per optimisation step (length *N* >= 2).
-        energy_errors : list[float]
-            Statistical error per step (length *N*, positive).
+        Args:
+            energies (list[float]):
+                Energy value per optimisation step (length *N* >= 2).
+            energy_errors (list[float]):
+                Statistical error per step (length *N*, positive).
 
         Returns:
-        -------
-        slope : float
-            Weighted least-squares slope *b*.
-        slope_std : float
-            Standard error of *b*.
+            slope (float):
+                Weighted least-squares slope *b*.
+            slope_std (float):
+                Standard error of *b*.
         """
         import numpy as np
 
@@ -1090,9 +1078,8 @@ class VMC_Workflow(Workflow):
         reflects the optimized wavefunction quality.
 
         Returns:
-        -------
-        tuple
-            ``(energy, error)`` or ``(None, None)``.
+            tuple:
+                ``(energy, error)`` or ``(None, None)``.
         """
         if not os.path.isfile(output_file):
             return None, None

@@ -55,57 +55,53 @@ class WF_Workflow(Workflow):
 
     Calls ``jqmc-tool trexio convert-to`` under the hood.
 
-    Parameters
-    ----------
-    trexio_file : str
-        Path to the input TREXIO ``.h5`` file.
-    hamiltonian_file : str
-        Output filename (default: ``"hamiltonian_data.h5"``).
-    j1_parameter : float, optional
-        Jastrow one-body parameter (``-j1``).
-    j1_type : str, optional
-        Jastrow one-body functional form (``--jastrow-1b-type``).
-        ``"exp"`` (default) or ``"pade"``.
-    j2_parameter : float, optional
-        Jastrow two-body parameter (``-j2``).
-    j2_type : str, optional
-        Jastrow two-body functional form (``--jastrow-2b-type``).
-        ``"pade"`` (default) or ``"exp"``.
-    j3_basis_type : str, optional
-        Jastrow three-body basis-set type (``-j3``).
-        One of ``"ao"``, ``"ao-full"``, ``"ao-small"``, ``"ao-medium"``,
-        ``"ao-large"``, ``"mo"``, ``"none"``, or ``None`` (disabled).
-    j_nn_type : str, optional
-        Neural-network Jastrow type (``-j-nn-type``), e.g. ``"schnet"``.
-    j_nn_params : list[str], optional
-        Extra NN Jastrow parameters (``-jp key=value``).
-    ao_conv_to : str, optional
-        Convert AOs after building the Hamiltonian (``--ao-conv-to``).
-        ``"cart"``  -> convert to Cartesian AOs,
-        ``"sphe"`` -> convert to spherical-harmonic AOs,
-        ``None``    -> keep the original representation.
+    Args:
+        trexio_file (str):
+            Path to the input TREXIO ``.h5`` file.
+        hamiltonian_file (str):
+            Output filename (default: ``"hamiltonian_data.h5"``).
+        j1_parameter (float, optional):
+            Jastrow one-body parameter (``-j1``).
+        j1_type (str, optional):
+            Jastrow one-body functional form (``--jastrow-1b-type``).
+            ``"exp"`` (default) or ``"pade"``.
+        j2_parameter (float, optional):
+            Jastrow two-body parameter (``-j2``).
+        j2_type (str, optional):
+            Jastrow two-body functional form (``--jastrow-2b-type``).
+            ``"pade"`` (default) or ``"exp"``.
+        j3_basis_type (str, optional):
+            Jastrow three-body basis-set type (``-j3``).
+            One of ``"ao"``, ``"ao-full"``, ``"ao-small"``, ``"ao-medium"``,
+            ``"ao-large"``, ``"mo"``, ``"none"``, or ``None`` (disabled).
+        j_nn_type (str, optional):
+            Neural-network Jastrow type (``-j-nn-type``), e.g. ``"schnet"``.
+        j_nn_params (list[str], optional):
+            Extra NN Jastrow parameters (``-jp key=value``).
+        ao_conv_to (str, optional):
+            Convert AOs after building the Hamiltonian (``--ao-conv-to``).
+            ``"cart"``  -> convert to Cartesian AOs,
+            ``"sphe"`` -> convert to spherical-harmonic AOs,
+            ``None``    -> keep the original representation.
 
-    Example:
-    -------
-    >>> wf = WF_Workflow(
-    ...     trexio_file="molecular.h5",
-    ...     j1_parameter=1.0,
-    ...     j1_type="pade",
-    ...     j2_parameter=0.5,
-    ...     j2_type="exp",
-    ...     j3_basis_type="ao-small",
-    ... )
-    >>> status, out_files, out_values = wf.launch()
+    Examples:
+        >>> wf = WF_Workflow(
+        ...     trexio_file="molecular.h5",
+        ...     j1_parameter=1.0,
+        ...     j1_type="pade",
+        ...     j2_parameter=0.5,
+        ...     j2_type="exp",
+        ...     j3_basis_type="ao-small",
+        ... )
+        >>> status, out_files, out_values = wf.launch()
 
     Notes:
-    -----
-    This workflow runs **locally** -- no remote job submission is
-    involved.  It calls ``jqmc-tool trexio convert-to`` via
-    :func:`subprocess.run`.
+        This workflow runs **locally** -- no remote job submission is
+        involved.  It calls ``jqmc-tool trexio convert-to`` via
+        :func:`subprocess.run`.
 
     See Also:
-    --------
-    VMC_Workflow : Optimise the wavefunction produced by this step.
+        VMC_Workflow : Optimise the wavefunction produced by this step.
     """
 
     def __init__(
@@ -176,9 +172,8 @@ class WF_Workflow(Workflow):
         """Run the TREXIO->hamiltonian conversion (locally).
 
         Returns:
-        -------
-        tuple
-            ``(status, output_files, output_values)``
+            tuple:
+                ``(status, output_files, output_values)``
         """
         self._ensure_project_dir()
         _wd = self.project_dir

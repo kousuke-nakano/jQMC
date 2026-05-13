@@ -65,32 +65,31 @@ class VMC_Step_Data:
     """Data for one VMC optimization step.
 
     Attributes:
-    ----------
-    step : int
-        Optimization step number (``Optimization step = N/M`` -> N).
-    energy : float or None
-        Total energy ``E = X +- Y`` -> X  (Ha).
-    energy_error : float or None
-        Energy statistical error -> Y  (Ha).
-    max_force : float or None
-        Maximum force ``Max f = X +- Y`` -> X  (Ha/a.u.).
-    max_force_error : float or None
-        Force error -> Y  (Ha/a.u.).
-    signal_to_noise_ratio : float or None
-        ``Max of signal-to-noise of f = max(|f|/|std f|) = X``.
-    avg_walker_weight : float or None
-        ``Average of walker weights is X``.
-    acceptance_ratio : float or None
-        ``Acceptance ratio is X %`` -> X / 100.
-    total_time_sec : float or None
-        ``Total elapsed time for MCMC N steps. = X sec.``
-    precompilation_time_sec : float or None
-        ``Pre-compilation time for MCMC = X sec.``
-    net_time_sec : float or None
-        ``Net total time for MCMC = X sec.``
-    timing_breakdown : dict
-        Per-MCMC-step timing breakdown (msec).  Keys match the
-        jQMC log lines, e.g. ``"mcmc_update"``, ``"e_L"``, etc.
+        step (int):
+            Optimization step number (``Optimization step = N/M`` -> N).
+        energy (float or None):
+            Total energy ``E = X +- Y`` -> X  (Ha).
+        energy_error (float or None):
+            Energy statistical error -> Y  (Ha).
+        max_force (float or None):
+            Maximum force ``Max f = X +- Y`` -> X  (Ha/a.u.).
+        max_force_error (float or None):
+            Force error -> Y  (Ha/a.u.).
+        signal_to_noise_ratio (float or None):
+            ``Max of signal-to-noise of f = max(|f|/|std f|) = X``.
+        avg_walker_weight (float or None):
+            ``Average of walker weights is X``.
+        acceptance_ratio (float or None):
+            ``Acceptance ratio is X %`` -> X / 100.
+        total_time_sec (float or None):
+            ``Total elapsed time for MCMC N steps. = X sec.``
+        precompilation_time_sec (float or None):
+            ``Pre-compilation time for MCMC = X sec.``
+        net_time_sec (float or None):
+            ``Net total time for MCMC = X sec.``
+        timing_breakdown (dict):
+            Per-MCMC-step timing breakdown (msec).  Keys match the
+            jQMC log lines, e.g. ``"mcmc_update"``, ``"e_L"``, etc.
     """
 
     step: int
@@ -112,36 +111,35 @@ class VMC_Diagnostic_Data:
     """Aggregated parse result for an entire VMC optimization.
 
     Attributes:
-    ----------
-    steps : list of VMC_Step_Data
-        Per-step data in chronological order.
-    total_opt_steps : int or None
-        Total optimization steps (``Optimization step = N/M`` -> M).
-    total_opt_time_sec : float or None
-        ``Total elapsed time for optimization N steps. = X sec.``
-    opt_timing_breakdown : dict
-        Per-optimization-step timing breakdown (sec).  Keys:
-        ``"mcmc_run"``, ``"get_E"``, ``"get_gF"``, ``"optimizer"``,
-        ``"param_update"``, ``"mpi_barrier"``, ``"misc"``.
-    optimized_hamiltonian : str or None
-        Path to the last ``hamiltonian_data_opt_step_*.h5`` file found.
-    restart_checkpoint : str or None
-        Restart file name from ``Dump restart checkpoint file(s) to X.``.
-        ``None`` if the line was not found (indicates abnormal termination).
-    num_mpi_processes : int or None
-        ``The number of MPI process = N.`` -> N.
-    num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` -> N.
-    jax_backend : str or None
-        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
-        Set to ``"cpu"`` when the log says
-        ``Running on CPUs or single GPU``.
-    jax_devices : list or None
-        Parsed list of global XLA device strings from
-        ``*** XLA Global devices recognized by JAX***`` line.
-        e.g. ``["CudaDevice(id=0)", "CudaDevice(id=1)"]``.
-    stderr_tail : str
-        Last portion of stderr (up to 200 lines).
+        steps (list of VMC_Step_Data):
+            Per-step data in chronological order.
+        total_opt_steps (int or None):
+            Total optimization steps (``Optimization step = N/M`` -> M).
+        total_opt_time_sec (float or None):
+            ``Total elapsed time for optimization N steps. = X sec.``
+        opt_timing_breakdown (dict):
+            Per-optimization-step timing breakdown (sec).  Keys:
+            ``"mcmc_run"``, ``"get_E"``, ``"get_gF"``, ``"optimizer"``,
+            ``"param_update"``, ``"mpi_barrier"``, ``"misc"``.
+        optimized_hamiltonian (str or None):
+            Path to the last ``hamiltonian_data_opt_step_*.h5`` file found.
+        restart_checkpoint (str or None):
+            Restart file name from ``Dump restart checkpoint file(s) to X.``.
+            ``None`` if the line was not found (indicates abnormal termination).
+        num_mpi_processes (int or None):
+            ``The number of MPI process = N.`` -> N.
+        num_walkers_per_process (int or None):
+            ``The number of walkers assigned for each MPI process = N.`` -> N.
+        jax_backend (str or None):
+            ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
+            Set to ``"cpu"`` when the log says
+            ``Running on CPUs or single GPU``.
+        jax_devices (list or None):
+            Parsed list of global XLA device strings from
+            ``*** XLA Global devices recognized by JAX***`` line.
+            e.g. ``["CudaDevice(id=0)", "CudaDevice(id=1)"]``.
+        stderr_tail (str):
+            Last portion of stderr (up to 200 lines).
     """
 
     steps: list = field(default_factory=list)  # list[VMC_Step_Data]
@@ -165,43 +163,42 @@ class MCMC_Diagnostic_Data:
     """Parse result for an MCMC sampling run.
 
     Attributes:
-    ----------
-    acceptance_ratio : float or None
-        ``Acceptance ratio is X %`` -> X / 100.
-    avg_walker_weight : float or None
-        ``Average of walker weights is X``.
-    total_time_sec : float or None
-        ``Total elapsed time for MCMC N steps. = X sec.``
-    precompilation_time_sec : float or None
-        ``Pre-compilation time for MCMC = X sec.``
-    net_time_sec : float or None
-        ``Net total time for MCMC = X sec.``
-    timing_breakdown : dict
-        Per-MCMC-step timing breakdown (msec).  Keys: ``"mcmc_update"``,
-        ``"e_L"``, ``"de_L_dR_dr"``, ``"dln_Psi_dR_dr"``,
-        ``"dln_Psi_dc"``, ``"de_L_dc"``, ``"mpi_barrier"``, ``"misc"``.
-    energy : float or None
-        Energy from jqmc-tool post-processing.
-    energy_error : float or None
-        Energy error from jqmc-tool post-processing.
-    atomic_forces : list of dict or None
-        Per-atom forces from ``jqmc-tool mcmc compute-force``.
-        Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
-    hamiltonian_data_file : str or None
-        ``[control] hamiltonian_h5`` value from the input TOML.
-    restart_checkpoint : str or None
-        Restart file name from ``Dump restart checkpoint file(s) to X.``.
-        ``None`` if the line was not found.
-    num_mpi_processes : int or None
-        ``The number of MPI process = N.`` -> N.
-    num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` -> N.
-    jax_backend : str or None
-        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
-    jax_devices : list or None
-        Parsed list of global XLA device strings.
-    stderr_tail : str
-        Last portion of stderr (up to 200 lines).
+        acceptance_ratio (float or None):
+            ``Acceptance ratio is X %`` -> X / 100.
+        avg_walker_weight (float or None):
+            ``Average of walker weights is X``.
+        total_time_sec (float or None):
+            ``Total elapsed time for MCMC N steps. = X sec.``
+        precompilation_time_sec (float or None):
+            ``Pre-compilation time for MCMC = X sec.``
+        net_time_sec (float or None):
+            ``Net total time for MCMC = X sec.``
+        timing_breakdown (dict):
+            Per-MCMC-step timing breakdown (msec).  Keys: ``"mcmc_update"``,
+            ``"e_L"``, ``"de_L_dR_dr"``, ``"dln_Psi_dR_dr"``,
+            ``"dln_Psi_dc"``, ``"de_L_dc"``, ``"mpi_barrier"``, ``"misc"``.
+        energy (float or None):
+            Energy from jqmc-tool post-processing.
+        energy_error (float or None):
+            Energy error from jqmc-tool post-processing.
+        atomic_forces (list of dict or None):
+            Per-atom forces from ``jqmc-tool mcmc compute-force``.
+            Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
+        hamiltonian_data_file (str or None):
+            ``[control] hamiltonian_h5`` value from the input TOML.
+        restart_checkpoint (str or None):
+            Restart file name from ``Dump restart checkpoint file(s) to X.``.
+            ``None`` if the line was not found.
+        num_mpi_processes (int or None):
+            ``The number of MPI process = N.`` -> N.
+        num_walkers_per_process (int or None):
+            ``The number of walkers assigned for each MPI process = N.`` -> N.
+        jax_backend (str or None):
+            ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
+        jax_devices (list or None):
+            Parsed list of global XLA device strings.
+        stderr_tail (str):
+            Last portion of stderr (up to 200 lines).
     """
 
     acceptance_ratio: float | None = None
@@ -230,44 +227,43 @@ class LRDMC_Diagnostic_Data:
     """Parse result for an LRDMC calculation.
 
     Attributes:
-    ----------
-    survived_walkers_ratio : float or None
-        ``Survived walkers ratio = X %`` -> X / 100.
-    avg_num_projections : float or None
-        ``Average of the number of projections = X``.
-    total_time_sec : float or None
-        ``Total GFMC time for N branching steps = X sec.``
-    precompilation_time_sec : float or None
-        ``Pre-compilation time for GFMC = X sec.``
-    net_time_sec : float or None
-        ``Net GFMC time without pre-compilations = X sec.``
-    timing_breakdown : dict
-        Per-branching timing breakdown (msec).  Keys vary by LRDMC
-        variant, e.g. ``"projection"``, ``"observable"``,
-        ``"mpi_barrier"``, ``"collection"``, ``"reconfiguration"``,
-        ``"e_L"``, ``"de_L_dR_dr"``, ``"update_E_scf"``, ``"misc"``.
-    energy : float or None
-        Energy from jqmc-tool post-processing.
-    energy_error : float or None
-        Energy error from jqmc-tool post-processing.
-    atomic_forces : list of dict or None
-        Per-atom forces from ``jqmc-tool lrdmc compute-force``.
-        Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
-    hamiltonian_data_file : str or None
-        ``[control] hamiltonian_h5`` value from the input TOML.
-    restart_checkpoint : str or None
-        Restart file name from ``Dump restart checkpoint file(s) to X.``.
-        ``None`` if the line was not found.
-    num_mpi_processes : int or None
-        ``The number of MPI process = N.`` -> N.
-    num_walkers_per_process : int or None
-        ``The number of walkers assigned for each MPI process = N.`` -> N.
-    jax_backend : str or None
-        ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
-    jax_devices : list or None
-        Parsed list of global XLA device strings.
-    stderr_tail : str
-        Last portion of stderr (up to 200 lines).
+        survived_walkers_ratio (float or None):
+            ``Survived walkers ratio = X %`` -> X / 100.
+        avg_num_projections (float or None):
+            ``Average of the number of projections = X``.
+        total_time_sec (float or None):
+            ``Total GFMC time for N branching steps = X sec.``
+        precompilation_time_sec (float or None):
+            ``Pre-compilation time for GFMC = X sec.``
+        net_time_sec (float or None):
+            ``Net GFMC time without pre-compilations = X sec.``
+        timing_breakdown (dict):
+            Per-branching timing breakdown (msec).  Keys vary by LRDMC
+            variant, e.g. ``"projection"``, ``"observable"``,
+            ``"mpi_barrier"``, ``"collection"``, ``"reconfiguration"``,
+            ``"e_L"``, ``"de_L_dR_dr"``, ``"update_E_scf"``, ``"misc"``.
+        energy (float or None):
+            Energy from jqmc-tool post-processing.
+        energy_error (float or None):
+            Energy error from jqmc-tool post-processing.
+        atomic_forces (list of dict or None):
+            Per-atom forces from ``jqmc-tool lrdmc compute-force``.
+            Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
+        hamiltonian_data_file (str or None):
+            ``[control] hamiltonian_h5`` value from the input TOML.
+        restart_checkpoint (str or None):
+            Restart file name from ``Dump restart checkpoint file(s) to X.``.
+            ``None`` if the line was not found.
+        num_mpi_processes (int or None):
+            ``The number of MPI process = N.`` -> N.
+        num_walkers_per_process (int or None):
+            ``The number of walkers assigned for each MPI process = N.`` -> N.
+        jax_backend (str or None):
+            ``JAX backend = X.`` -> X (e.g. ``"gpu"``, ``"cpu"``).
+        jax_devices (list or None):
+            Parsed list of global XLA device strings.
+        stderr_tail (str):
+            Last portion of stderr (up to 200 lines).
     """
 
     survived_walkers_ratio: float | None = None
@@ -296,15 +292,14 @@ class LRDMC_Ext_Diagnostic_Data:
     """Parse result for an LRDMC a^2->0 extrapolation.
 
     Attributes:
-    ----------
-    extrapolated_energy : float or None
-        ``For a -> 0 bohr: E = X +- Y Ha.`` -> X.
-    extrapolated_energy_error : float or None
-        Y from the above.
-    per_alat_results : list of dict
-        Each dict has ``{"alat": float, "energy": float, "energy_error": float}``.
-    stderr_tail : str
-        Last portion of stderr (up to 200 lines).
+        extrapolated_energy (float or None):
+            ``For a -> 0 bohr: E = X +- Y Ha.`` -> X.
+        extrapolated_energy_error (float or None):
+            Y from the above.
+        per_alat_results (list of dict):
+            Each dict has ``{"alat": float, "energy": float, "energy_error": float}``.
+        stderr_tail (str):
+            Last portion of stderr (up to 200 lines).
     """
 
     extrapolated_energy: float | None = None
@@ -335,14 +330,13 @@ class Input_Parameters:
         }
 
     Attributes:
-    ----------
-    actual_opt_steps : int or None
-        For VMC: last completed optimization step stored in
-        ``restart.h5`` (``rank_0/driver_config`` attrs ``i_opt``).
-        ``None`` for non-VMC workflows.
-    per_input : list of dict
-        Per-input-file parameters.  One dict per ``[[jobs]]`` entry
-        in ``workflow_state.toml``.
+        actual_opt_steps (int or None):
+            For VMC: last completed optimization step stored in
+            ``restart.h5`` (``rank_0/driver_config`` attrs ``i_opt``).
+            ``None`` for non-VMC workflows.
+        per_input (list of dict):
+            Per-input-file parameters.  One dict per ``[[jobs]]`` entry
+            in ``workflow_state.toml``.
     """
 
     actual_opt_steps: int | None = None

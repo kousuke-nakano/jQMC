@@ -79,46 +79,43 @@ class FileFrom:
     inter-workflow file dependencies.  The :class:`Launcher` resolves
     these placeholders before a workflow is launched.
 
-    Parameters
-    ----------
-    label : str
-        Label of the upstream workflow that produces the file.
-    filename : str or ValueFrom
-        Filename (basename) to pull from the upstream workflow's
-        output directory.  Can be a plain string when the filename is
-        known at definition time, or a :class:`ValueFrom` for names
-        that are only determined at runtime (e.g. the optimised
-        Hamiltonian whose step number depends on convergence).
+    Args:
+        label (str):
+            Label of the upstream workflow that produces the file.
+        filename (str or ValueFrom):
+            Filename (basename) to pull from the upstream workflow's
+            output directory.  Can be a plain string when the filename is
+            known at definition time, or a :class:`ValueFrom` for names
+            that are only determined at runtime (e.g. the optimised
+            Hamiltonian whose step number depends on convergence).
 
     Examples:
-    --------
-    Static filename (step number known in advance)::
+        Static filename (step number known in advance)::
 
-        Container(
-            label="mcmc-run",
-            dirname="mcmc",
-            input_files=[FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")],
-            rename_input_files=["hamiltonian_data.h5"],
-            workflow=MCMC_Workflow(...),
-        )
+            Container(
+                label="mcmc-run",
+                dirname="mcmc",
+                input_files=[FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")],
+                rename_input_files=["hamiltonian_data.h5"],
+                workflow=MCMC_Workflow(...),
+            )
 
-    Dynamic filename (resolved from upstream ``output_values``)::
+        Dynamic filename (resolved from upstream ``output_values``)::
 
-        Container(
-            label="mcmc-run",
-            dirname="mcmc",
-            input_files=[
-                FileFrom("vmc-opt",
-                         ValueFrom("vmc-opt", "optimized_hamiltonian")),
-            ],
-            rename_input_files=["hamiltonian_data.h5"],
-            workflow=MCMC_Workflow(...),
-        )
+            Container(
+                label="mcmc-run",
+                dirname="mcmc",
+                input_files=[
+                    FileFrom("vmc-opt",
+                             ValueFrom("vmc-opt", "optimized_hamiltonian")),
+                ],
+                rename_input_files=["hamiltonian_data.h5"],
+                workflow=MCMC_Workflow(...),
+            )
 
     See Also:
-    --------
-    ValueFrom : Declare a scalar-value dependency.
-    Launcher  : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
+        ValueFrom : Declare a scalar-value dependency.
+        Launcher  : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
     """
 
     def __init__(self, label: str, filename):
@@ -136,41 +133,38 @@ class ValueFrom:
     error, filename string, etc.) produced by an upstream workflow.
     The :class:`Launcher` resolves these placeholders before launch.
 
-    Parameters
-    ----------
-    label : str
-        Label of the upstream workflow that produces the value.
-    key : str
-        Key name in the upstream workflow's ``output_values`` dict.
-        See the *Output Values* section of each workflow class for
-        available keys:
+    Args:
+        label (str):
+            Label of the upstream workflow that produces the value.
+        key (str):
+            Key name in the upstream workflow's ``output_values`` dict.
+            See the *Output Values* section of each workflow class for
+            available keys:
 
-        * :class:`VMC_Workflow` -- ``optimized_hamiltonian``,
-          ``energy``, ``energy_error``, ``checkpoint``, ...
-        * :class:`MCMC_Workflow` -- ``energy``, ``energy_error``,
-          ``restart_chk``, ``forces``, ...
-        * :class:`LRDMC_Workflow` -- ``energy``, ``energy_error``,
-          ``alat``, ``restart_chk``, ``forces``, ...
-        * :class:`LRDMC_Ext_Workflow` -- ``extrapolated_energy``,
-          ``extrapolated_energy_error``, ``per_alat_results``, ...
+            * :class:`VMC_Workflow` -- ``optimized_hamiltonian``,
+              ``energy``, ``energy_error``, ``checkpoint``, ...
+            * :class:`MCMC_Workflow` -- ``energy``, ``energy_error``,
+              ``restart_chk``, ``forces``, ...
+            * :class:`LRDMC_Workflow` -- ``energy``, ``energy_error``,
+              ``alat``, ``restart_chk``, ``forces``, ...
+            * :class:`LRDMC_Ext_Workflow` -- ``extrapolated_energy``,
+              ``extrapolated_energy_error``, ``per_alat_results``, ...
 
     Examples:
-    --------
-    Feed the MCMC energy into an LRDMC workflow as ``trial_energy``::
+        Feed the MCMC energy into an LRDMC workflow as ``trial_energy``::
 
-        LRDMC_Workflow(
-            trial_energy=ValueFrom("mcmc-run", "energy"),
-            ...
-        )
+            LRDMC_Workflow(
+                trial_energy=ValueFrom("mcmc-run", "energy"),
+                ...
+            )
 
-    Pass the VMC-optimised Hamiltonian dynamically via ``FileFrom``::
+        Pass the VMC-optimised Hamiltonian dynamically via ``FileFrom``::
 
-        FileFrom("vmc-opt", ValueFrom("vmc-opt", "optimized_hamiltonian"))
+            FileFrom("vmc-opt", ValueFrom("vmc-opt", "optimized_hamiltonian"))
 
     See Also:
-    --------
-    FileFrom : Declare a file dependency.
-    Launcher : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
+        FileFrom : Declare a file dependency.
+        Launcher : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
     """
 
     def __init__(self, label: str, key: str):
@@ -197,56 +191,52 @@ class Workflow:
     Every concrete workflow (VMC, MCMC, LRDMC, WF, ...) inherits from
     this class and overrides :meth:`configure` and :meth:`run`.
 
-    Parameters
-    ----------
-    project_dir : str, optional
-        Absolute path to the working directory for this workflow.
-        When *None* (the default), ``project_dir`` is set to the
-        process CWD at the time :meth:`run` is first called.
-        :class:`Container` sets this explicitly before launching the
-        inner workflow.
-    cleanup_patterns : list[str], optional
-        Glob patterns for files to delete after the workflow completes
-        successfully (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).
-        Local files matching the patterns are always removed.  Remote
-        files are removed only when the workflow targets a remote
-        machine.  Default is *None* (empty list -- no cleanup).
+    Args:
+        project_dir (str, optional):
+            Absolute path to the working directory for this workflow.
+            When *None* (the default), ``project_dir`` is set to the
+            process CWD at the time :meth:`run` is first called.
+            :class:`Container` sets this explicitly before launching the
+            inner workflow.
+        cleanup_patterns (list[str], optional):
+            Glob patterns for files to delete after the workflow completes
+            successfully (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).
+            Local files matching the patterns are always removed.  Remote
+            files are removed only when the workflow targets a remote
+            machine.  Default is *None* (empty list -- no cleanup).
 
     Attributes:
-    ----------
-    status : WorkflowStatus
-        Current lifecycle status.
-    phase : ScientificPhase
-        Current scientific phase.
-    output_files : list[str]
-        Filenames produced by the workflow (populated after run).
-    output_values : dict
-        Scalar results (energy, error, ...) produced by the workflow.
-    project_dir : str or None
-        Working directory for file I/O.  Resolved to an absolute path.
-    cleanup_patterns : list[str]
-        Glob patterns for post-completion file cleanup.
+        status (WorkflowStatus):
+            Current lifecycle status.
+        phase (ScientificPhase):
+            Current scientific phase.
+        output_files (list[str]):
+            Filenames produced by the workflow (populated after run).
+        output_values (dict):
+            Scalar results (energy, error, ...) produced by the workflow.
+        project_dir (str or None):
+            Working directory for file I/O.  Resolved to an absolute path.
+        cleanup_patterns (list[str]):
+            Glob patterns for post-completion file cleanup.
 
     Notes:
-    -----
-    **Subclass contract:**
+        **Subclass contract:**
 
-    * Override :meth:`configure` and :meth:`run`, return
-      ``(status, output_files, output_values)`` from ``run()``.
-    * Call ``super().__init__()`` in your constructor.
+        * Override :meth:`configure` and :meth:`run`, return
+          ``(status, output_files, output_values)`` from ``run()``.
+        * Call ``super().__init__()`` in your constructor.
 
     Examples:
-    --------
-    Minimal custom workflow::
+        Minimal custom workflow::
 
-        class MyWorkflow(Workflow):
-            def configure(self):
-                return {"param": 42}
+            class MyWorkflow(Workflow):
+                def configure(self):
+                    return {"param": 42}
 
-            async def run(self):
-                # ... do work ...
-                self.status = WorkflowStatus.COMPLETED
-                return self.status, ["result.h5"], {"energy": -1.23}
+                async def run(self):
+                    # ... do work ...
+                    self.status = WorkflowStatus.COMPLETED
+                    return self.status, ["result.h5"], {"energy": -1.23}
     """
 
     def __init__(self, project_dir: str | None = None, cleanup_patterns: list[str] | None = None):
@@ -364,23 +354,20 @@ class Workflow:
     async def async_submit(self, action: str = "run") -> dict:
         """Start the workflow in the background and return tracking info.
 
-        Parameters
-        ----------
-        action : str
-            MCP tool name (e.g. ``"run_vmc"``).  Checked against
-            :func:`allowed_actions` for the current phase and status.
+        Args:
+            action (str):
+                MCP tool name (e.g. ``"run_vmc"``).  Checked against
+                :func:`allowed_actions` for the current phase and status.
 
         Returns:
-        -------
-        dict
-            ``{"status": "submitted", "project_dir": ...}``.
+            dict:
+                ``{"status": "submitted", "project_dir": ...}``.
 
         Raises:
-        ------
-        ValueError
-            If *action* is not allowed in the current phase/status.
-        RuntimeError
-            If the workflow has already been submitted.
+            ValueError:
+                If *action* is not allowed in the current phase/status.
+            RuntimeError:
+                If the workflow has already been submitted.
         """
         if self._bg_task is not None and not self._bg_task.done():
             raise RuntimeError("Workflow already submitted and still running.")
@@ -394,10 +381,9 @@ class Workflow:
         """Check whether the submitted workflow has completed.
 
         Returns:
-        -------
-        dict
-            Status dict.  Includes ``get_workflow_summary()`` when
-            the task is still running.
+            dict:
+                Status dict.  Includes ``get_workflow_summary()`` when
+                the task is still running.
         """
         if self._bg_task is None:
             return {"status": "not_submitted"}
@@ -412,16 +398,14 @@ class Workflow:
         """Collect results from the completed workflow.
 
         Returns:
-        -------
-        dict
-            ``{"status": ..., "output_files": [...], **output_values}``.
+            dict:
+                ``{"status": ..., "output_files": [...], **output_values}``.
 
         Raises:
-        ------
-        RuntimeError
-            If the workflow was not submitted or is still running.
-        Exception
-            Re-raises the original exception if the workflow failed.
+            RuntimeError:
+                If the workflow was not submitted or is still running.
+            Exception:
+                Re-raises the original exception if the workflow failed.
         """
         if self._bg_task is None:
             raise RuntimeError("No workflow has been submitted. Call async_submit() first.")
@@ -484,27 +468,26 @@ class Workflow:
         * ``submitted`` -- resume waiting, then fetch
         * no record     -- submit a new job
 
-        Parameters
-        ----------
-        input_file : str
-            Basename of the input TOML file (relative to *work_dir*).
-        output_file : str
-            Basename of the stdout capture file.
-        work_dir : str
-            Absolute path to the directory where the job runs.
-        extra_from_objects : list, optional
-            Additional files to upload with the job (e.g. checkpoint).
-        fetch_from_objects : list, optional
-            Glob patterns for files to fetch.  Defaults to
-            ``["*.h5", output_file]``.
-        queue_label : str, optional
-            Override for the queue label.
-        step : int, optional
-            Step index (0 for pilot, 1+ for production).  Used for
-            cross-run continuation detection.
-        run_id : str
-            Per-job identifier used for scheduler script and stdout/stderr
-            naming.
+        Args:
+            input_file (str):
+                Basename of the input TOML file (relative to *work_dir*).
+            output_file (str):
+                Basename of the stdout capture file.
+            work_dir (str):
+                Absolute path to the directory where the job runs.
+            extra_from_objects (list, optional):
+                Additional files to upload with the job (e.g. checkpoint).
+            fetch_from_objects (list, optional):
+                Glob patterns for files to fetch.  Defaults to
+                ``["*.h5", output_file]``.
+            queue_label (str, optional):
+                Override for the queue label.
+            step (int, optional):
+                Step index (0 for pilot, 1+ for production).  Used for
+                cross-run continuation detection.
+            run_id (str):
+                Per-job identifier used for scheduler script and stdout/stderr
+                naming.
         """
         if fetch_from_objects is None:
             fetch_from_objects = ["*.h5", output_file]
@@ -644,53 +627,49 @@ class Container:
       ``completed``, the workflow is *not* re-run; outputs are read
       from the state file instead.
 
-    Parameters
-    ----------
-    label : str
-        Human-readable label; also used as the key for dependency
-        resolution in the :class:`Launcher`.
-    dirname : str
-        Directory name to create (relative to CWD).
-    input_files : list[str | FileFrom]
-        Files to copy into the project directory before launch.
-        Items may be plain paths or :class:`FileFrom` objects.
-    rename_input_files : list[str], optional
-        If provided (same length as *input_files*), each copied file
-        is renamed to the corresponding entry.
-    workflow : Workflow
-        The inner :class:`Workflow` instance to execute.
+    Args:
+        label (str):
+            Human-readable label; also used as the key for dependency
+            resolution in the :class:`Launcher`.
+        dirname (str):
+            Directory name to create (relative to CWD).
+        input_files (list[str | FileFrom]):
+            Files to copy into the project directory before launch.
+            Items may be plain paths or :class:`FileFrom` objects.
+        rename_input_files (list[str], optional):
+            If provided (same length as *input_files*), each copied file
+            is renamed to the corresponding entry.
+        workflow (Workflow):
+            The inner :class:`Workflow` instance to execute.
 
     Attributes:
-    ----------
-    output_files : list[str]
-        Output filenames (populated after launch).
-    output_values : dict
-        Scalar results from the inner workflow.
-    status : str
-        Current status.
-    project_dir : str
-        Absolute path to the project directory.
+        output_files (list[str]):
+            Output filenames (populated after launch).
+        output_values (dict):
+            Scalar results from the inner workflow.
+        status (str):
+            Current status.
+        project_dir (str):
+            Absolute path to the project directory.
 
     Examples:
-    --------
-    Wrap a VMC optimization in its own directory::
+        Wrap a VMC optimization in its own directory::
 
-        enc = Container(
-            label="vmc-opt",
-            dirname="01_vmc",
-            input_files=["hamiltonian_data.h5"],
-            workflow=VMC_Workflow(
-                server_machine_name="cluster",
-                num_opt_steps=10,
-                target_error=0.001,
-            ),
-        )
-        status, files, values = enc.launch()
+            enc = Container(
+                label="vmc-opt",
+                dirname="01_vmc",
+                input_files=["hamiltonian_data.h5"],
+                workflow=VMC_Workflow(
+                    server_machine_name="cluster",
+                    num_opt_steps=10,
+                    target_error=0.001,
+                ),
+            )
+            status, files, values = enc.launch()
 
     See Also:
-    --------
-    Launcher : Execute multiple ``Container`` objects as a DAG.
-    FileFrom : Reference an output file from another workflow.
+        Launcher : Execute multiple ``Container`` objects as a DAG.
+        FileFrom : Reference an output file from another workflow.
     """
 
     def __init__(
@@ -760,9 +739,8 @@ class Container:
         """Copy input files into the project directory.
 
         Raises:
-        ------
-        FileNotFoundError
-            If a required input file or directory does not exist.
+            FileNotFoundError:
+                If a required input file or directory does not exist.
         """
         for i, src in enumerate(self.input_files):
             src = str(src)  # resolve pathlib objects
@@ -818,10 +796,9 @@ class Container:
         ``WF_Workflow``) *produce* them rather than consume them.
 
         Raises:
-        ------
-        FileNotFoundError
-            With a clear message listing all missing files, raised
-            *before* any job is submitted.
+            FileNotFoundError:
+                With a clear message listing all missing files, raised
+                *before* any job is submitted.
         """
         missing = []
 
@@ -974,15 +951,13 @@ class Container:
         :meth:`async_poll` and :meth:`async_collect` to monitor
         and retrieve results.
 
-        Parameters
-        ----------
-        action : str
-            MCP tool name for action validation.
+        Args:
+            action (str):
+                MCP tool name for action validation.
 
         Returns:
-        -------
-        dict
-            ``{"status": "submitted", "label": ..., "project_dir": ...}``.
+            dict:
+                ``{"status": "submitted", "label": ..., "project_dir": ...}``.
         """
         if self._bg_task is not None and not self._bg_task.done():
             raise RuntimeError(f"[{self.label}] Already submitted and still running.")
@@ -997,9 +972,8 @@ class Container:
         """Check whether the container's workflow has completed.
 
         Returns:
-        -------
-        dict
-            Status dict with ``get_workflow_summary()`` when running.
+            dict:
+                Status dict with ``get_workflow_summary()`` when running.
         """
         if self._bg_task is None:
             return {"status": "not_submitted"}
@@ -1014,17 +988,15 @@ class Container:
         """Collect results from the completed container workflow.
 
         Returns:
-        -------
-        dict
-            ``{"status": ..., "label": ..., "output_files": [...],
-            **output_values}``.
+            dict:
+                ``{"status": ..., "label": ..., "output_files": [...],
+                **output_values}``.
 
         Raises:
-        ------
-        RuntimeError
-            If not submitted or still running.
-        Exception
-            Re-raises the original exception if the workflow failed.
+            RuntimeError:
+                If not submitted or still running.
+            Exception:
+                Re-raises the original exception if the workflow failed.
         """
         if self._bg_task is None:
             raise RuntimeError(f"[{self.label}] Not submitted. Call async_submit() first.")

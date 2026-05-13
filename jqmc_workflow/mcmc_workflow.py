@@ -94,128 +94,121 @@ class MCMC_Workflow(Workflow):
     Each production run uses exactly ``num_mcmc_steps`` measurement
     steps, and ``max_continuation`` runs are executed unconditionally.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Name of the target machine (configured in ``~/.jqmc_setting/``).
-    hamiltonian_file : str
-        Input ``hamiltonian_data.h5``.
-    queue_label : str
-        Queue/partition label.
-    jobname : str
-        Scheduler job name.
-    number_of_walkers : int
-        Walkers per MPI process.
-    max_time : int
-        Wall-time limit (seconds).
-    num_mcmc_bin_blocks : int
-        Binning blocks for post-processing.
-    num_mcmc_warmup_steps : int
-        Warmup steps to discard in post-processing.
-    Dt : float, optional
-        MCMC step size (bohr).  Default from ``jqmc_miscs``.
-    epsilon_AS : float, optional
-        Attacalite-Sorella regularization parameter.  Default from ``jqmc_miscs``.
-    num_mcmc_per_measurement : int, optional
-        MCMC updates per measurement.  Default from ``jqmc_miscs``.
-    atomic_force : bool, optional
-        Compute atomic forces.  Default from ``jqmc_miscs``.
-    use_swct : bool, optional
-        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
-        Default is True for MCMC.
-    parameter_derivatives : bool, optional
-        Compute parameter derivatives.  Default from ``jqmc_miscs``.
-    mcmc_seed : int, optional
-        Random seed for MCMC.  Default from ``jqmc_miscs``.
-    verbosity : str, optional
-        Verbosity level.  Default from ``jqmc_miscs``.
-    poll_interval : int
-        Seconds between job-status polls.
-    target_error : float
-        Target statistical error (Ha).  Ignored when
-        *num_mcmc_steps* is set.
-    num_mcmc_steps : int, optional
-        Fixed number of measurement steps per production run.  When
-        set, the pilot run is skipped and ``target_error`` is ignored;
-        each of the ``max_continuation`` production runs uses exactly
-        this many steps.
-    pilot_steps : int
-        Measurement steps for the pilot estimation run.  Ignored when
-        *num_mcmc_steps* is set.
-    pilot_queue_label : str, optional
-        Queue label for the pilot run.  Defaults to *queue_label*.
-        Use a shorter/smaller queue for the pilot to save resources.
-    max_continuation : int
-        Maximum number of production runs after the pilot.
-    cleanup_patterns : list[str], optional
-        Glob patterns for files to delete after successful completion
-        (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
-        are always removed; remote files are removed only when the
-        workflow targets a remote machine.  Default *None* (no cleanup).
+    Args:
+        server_machine_name (str):
+            Name of the target machine (configured in ``~/.jqmc_setting/``).
+        hamiltonian_file (str):
+            Input ``hamiltonian_data.h5``.
+        queue_label (str):
+            Queue/partition label.
+        jobname (str):
+            Scheduler job name.
+        number_of_walkers (int):
+            Walkers per MPI process.
+        max_time (int):
+            Wall-time limit (seconds).
+        num_mcmc_bin_blocks (int):
+            Binning blocks for post-processing.
+        num_mcmc_warmup_steps (int):
+            Warmup steps to discard in post-processing.
+        Dt (float, optional):
+            MCMC step size (bohr).  Default from ``jqmc_miscs``.
+        epsilon_AS (float, optional):
+            Attacalite-Sorella regularization parameter.  Default from ``jqmc_miscs``.
+        num_mcmc_per_measurement (int, optional):
+            MCMC updates per measurement.  Default from ``jqmc_miscs``.
+        atomic_force (bool, optional):
+            Compute atomic forces.  Default from ``jqmc_miscs``.
+        use_swct (bool, optional):
+            Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is True for MCMC.
+        parameter_derivatives (bool, optional):
+            Compute parameter derivatives.  Default from ``jqmc_miscs``.
+        mcmc_seed (int, optional):
+            Random seed for MCMC.  Default from ``jqmc_miscs``.
+        verbosity (str, optional):
+            Verbosity level.  Default from ``jqmc_miscs``.
+        poll_interval (int):
+            Seconds between job-status polls.
+        target_error (float):
+            Target statistical error (Ha).  Ignored when
+            *num_mcmc_steps* is set.
+        num_mcmc_steps (int, optional):
+            Fixed number of measurement steps per production run.  When
+            set, the pilot run is skipped and ``target_error`` is ignored;
+            each of the ``max_continuation`` production runs uses exactly
+            this many steps.
+        pilot_steps (int):
+            Measurement steps for the pilot estimation run.  Ignored when
+            *num_mcmc_steps* is set.
+        pilot_queue_label (str, optional):
+            Queue label for the pilot run.  Defaults to *queue_label*.
+            Use a shorter/smaller queue for the pilot to save resources.
+        max_continuation (int):
+            Maximum number of production runs after the pilot.
+        cleanup_patterns (list[str], optional):
+            Glob patterns for files to delete after successful completion
+            (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+            are always removed; remote files are removed only when the
+            workflow targets a remote machine.  Default *None* (no cleanup).
 
     Examples:
-    --------
-    Standalone launch (automatic mode)::
+        Standalone launch (automatic mode)::
 
-        wf = MCMC_Workflow(
-            server_machine_name="cluster",
-            target_error=0.0005,
-            pilot_steps=200,
-            number_of_walkers=8,
-        )
-        status, files, values = wf.launch()
-        print(values["energy"], values["energy_error"])
-
-    Fixed-step mode (no pilot, no target_error check)::
-
-        wf = MCMC_Workflow(
-            server_machine_name="cluster",
-            num_mcmc_steps=5000,
-            number_of_walkers=8,
-            max_continuation=3,
-        )
-        status, files, values = wf.launch()
-
-    As part of a :class:`Launcher` pipeline::
-
-        enc = Container(
-            label="mcmc",
-            dirname="02_mcmc",
-            input_files=[FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")],
-            rename_input_files=["hamiltonian_data.h5"],
-            workflow=MCMC_Workflow(
+            wf = MCMC_Workflow(
                 server_machine_name="cluster",
-                target_error=0.001,
-            ),
-        )
+                target_error=0.0005,
+                pilot_steps=200,
+                number_of_walkers=8,
+            )
+            status, files, values = wf.launch()
+            print(values["energy"], values["energy_error"])
 
-    Output Values
-    -------------
-    After ``launch()`` completes, ``output_values`` may contain:
+        Fixed-step mode (no pilot, no target_error check)::
 
-    energy : float
-        VMC energy (Ha).
-    energy_error : float
-        Statistical error on ``energy`` (Ha).
-    restart_chk : str
-        Basename of the restart checkpoint file.
-    forces : object
-        Atomic forces (only when ``atomic_force=True``).
-    num_mcmc_steps : int
-        Estimated total measurement steps (automatic mode).
-        In fixed-step mode this key is ``estimated_steps``.
+            wf = MCMC_Workflow(
+                server_machine_name="cluster",
+                num_mcmc_steps=5000,
+                number_of_walkers=8,
+                max_continuation=3,
+            )
+            status, files, values = wf.launch()
+
+        As part of a :class:`Launcher` pipeline::
+
+            enc = Container(
+                label="mcmc",
+                dirname="02_mcmc",
+                input_files=[FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")],
+                rename_input_files=["hamiltonian_data.h5"],
+                workflow=MCMC_Workflow(
+                    server_machine_name="cluster",
+                    target_error=0.001,
+                ),
+            )
+
+    Output Values:
+        energy (float):
+            VMC energy (Ha).
+        energy_error (float):
+            Statistical error on ``energy`` (Ha).
+        restart_chk (str):
+            Basename of the restart checkpoint file.
+        forces (object):
+            Atomic forces (only when ``atomic_force=True``).
+        num_mcmc_steps (int):
+            Estimated total measurement steps (automatic mode).
+            In fixed-step mode this key is ``estimated_steps``.
 
     Notes:
-    -----
-    * The pilot run is skipped on re-entrance if an estimation already
-      exists in ``workflow_state.toml``.
-    * Continuation runs restart from the most recent ``.h5``
-      checkpoint file.
+        * The pilot run is skipped on re-entrance if an estimation already
+          exists in ``workflow_state.toml``.
+        * Continuation runs restart from the most recent ``.h5``
+          checkpoint file.
 
     See Also:
-    --------
-    VMC_Workflow : Wavefunction optimisation (job_type=vmc).
-    LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
+        VMC_Workflow : Wavefunction optimisation (job_type=vmc).
+        LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
     """
 
     def __init__(
@@ -907,19 +900,17 @@ class MCMC_Workflow(Workflow):
         Falls back to ``jqmc-tool`` when *output_file* is *None* or
         when stdout parsing fails.
 
-        Parameters
-        ----------
-        restart_chk : str
-            Checkpoint filename (basename).
-        work_dir : str
-            Directory in which to run the command.
-        output_file : str, optional
-            Stdout filename (basename) of the ``jqmc`` run.
+        Args:
+            restart_chk (str):
+                Checkpoint filename (basename).
+            work_dir (str):
+                Directory in which to run the command.
+            output_file (str, optional):
+                Stdout filename (basename) of the ``jqmc`` run.
 
         Returns:
-        -------
-        tuple
-            ``(energy, error)`` or ``(None, None)``.
+            tuple:
+                ``(energy, error)`` or ``(None, None)``.
         """
         # Fast path: parse from jqmc stdout
         if output_file is not None:
@@ -968,21 +959,19 @@ class MCMC_Workflow(Workflow):
         the ``jqmc`` stdout (``Atomic Forces:`` table).  Falls back
         to ``jqmc-tool`` when *output_file* is *None* or parsing fails.
 
-        Parameters
-        ----------
-        restart_chk : str
-            Checkpoint filename (basename).
-        work_dir : str
-            Directory in which to run the command.
-        output_file : str, optional
-            Stdout filename (basename) of the ``jqmc`` run.
+        Args:
+            restart_chk (str):
+                Checkpoint filename (basename).
+            work_dir (str):
+                Directory in which to run the command.
+            output_file (str, optional):
+                Stdout filename (basename) of the ``jqmc`` run.
 
         Returns:
-        -------
-        list of dict or None
-            Each dict has keys ``label``, ``Fx``, ``Fx_err``,
-            ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
-            Returns *None* on failure.
+            list of dict or None:
+                Each dict has keys ``label``, ``Fx``, ``Fx_err``,
+                ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
+                Returns *None* on failure.
         """
         # Fast path: parse from jqmc stdout
         if output_file is not None:

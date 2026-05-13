@@ -48,12 +48,11 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 class Data_transfer:
     """Convenience layer over Machines_handler for local <-> remote transfers.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Name of the server machine as defined in ~/.jqmc_setting/machine_data.yaml.
-    safe_mode : bool
-        If True, verify root directories exist before transfer.
+    Args:
+        server_machine_name (str):
+            Name of the server machine as defined in ~/.jqmc_setting/machine_data.yaml.
+        safe_mode (bool):
+            If True, verify root directories exist before transfer.
     """
 
     def __init__(self, server_machine_name: str, safe_mode: bool = False):
@@ -84,18 +83,17 @@ class Data_transfer:
     def put_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
         """Upload files from *work_dir* to the corresponding remote directory.
 
-        Parameters
-        ----------
-        from_objects : list[str], optional
-            Basenames or glob patterns of files to upload.  When empty,
-            the entire *work_dir* is synced.
-        exclude_patterns : list[str], optional
-            Glob patterns to exclude from the transfer.
-        work_dir : str, optional
-            Local directory that maps to the remote workspace.  When
-            *None*, falls back to ``os.getcwd()`` for backward
-            compatibility, but callers should always pass this
-            explicitly.
+        Args:
+            from_objects (list[str], optional):
+                Basenames or glob patterns of files to upload.  When empty,
+                the entire *work_dir* is synced.
+            exclude_patterns (list[str], optional):
+                Glob patterns to exclude from the transfer.
+            work_dir (str, optional):
+                Local directory that maps to the remote workspace.  When
+                *None*, falls back to ``os.getcwd()`` for backward
+                compatibility, but callers should always pass this
+                explicitly.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
@@ -158,23 +156,22 @@ class Data_transfer:
     def get_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Download files from the remote directory to *work_dir*.
 
-        Parameters
-        ----------
-        from_objects : list[str], optional
-            Basenames or glob patterns of files to download.  When
-            empty, the entire remote directory is synced.
-        exclude_patterns : list[str], optional
-            Glob patterns to exclude from the transfer.
-        work_dir : str, optional
-            Local directory that maps to the remote workspace.  When
-            *None*, falls back to ``os.getcwd()`` for backward
-            compatibility, but callers should always pass this
-            explicitly.
-        optional_patterns : list[str], optional
-            Basenames or glob patterns of files that are non-essential.
-            When a file matching one of these patterns is missing on
-            the server, a warning is logged instead of raising
-            ``FileNotFoundError``.
+        Args:
+            from_objects (list[str], optional):
+                Basenames or glob patterns of files to download.  When
+                empty, the entire remote directory is synced.
+            exclude_patterns (list[str], optional):
+                Glob patterns to exclude from the transfer.
+            work_dir (str, optional):
+                Local directory that maps to the remote workspace.  When
+                *None*, falls back to ``os.getcwd()`` for backward
+                compatibility, but callers should always pass this
+                explicitly.
+            optional_patterns (list[str], optional):
+                Basenames or glob patterns of files that are non-essential.
+                When a file matching one of these patterns is missing on
+                the server, a warning is logged instead of raising
+                ``FileNotFoundError``.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
@@ -248,14 +245,13 @@ class Data_transfer:
         Matching is **recursive** -- each pattern is applied to *work_dir*
         and all of its subdirectories (e.g. ``_pilot/``, ``_pilot_a/``).
 
-        Parameters
-        ----------
-        patterns : list[str]
-            Glob patterns relative to *work_dir* (e.g. ``["restart.h5",
-            "hamiltonian_opt*.h5"]``).  Each pattern is searched in
-            the top-level directory **and** all subdirectories.
-        work_dir : str, optional
-            Local directory.  When *None*, falls back to ``os.getcwd()``.
+        Args:
+            patterns (list[str]):
+                Glob patterns relative to *work_dir* (e.g. ``["restart.h5",
+                "hamiltonian_opt*.h5"]``).  Each pattern is searched in
+                the top-level directory **and** all subdirectories.
+            work_dir (str, optional):
+                Local directory.  When *None*, falls back to ``os.getcwd()``.
         """
         local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 

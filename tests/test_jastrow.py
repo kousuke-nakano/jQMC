@@ -1427,8 +1427,18 @@ def test_analytical_and_auto_grads_and_laplacian_Jastrow_part(j1b_type, j2b_type
 @pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("j1b_type,j2b_type,include_nn", _JASTROW_COMBOS)
 @pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
-def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern: str):
-    """Compare ratio Jastrow part: debug vs rank-1 update implementation."""
+@pytest.mark.parametrize("n_grid", [1, 3, 6])
+def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern: str, n_grid: int):
+    """Compare ratio Jastrow part: debug vs rank-1 update implementation.
+
+    Sweeps ``n_grid`` to cover the two production regimes:
+      * ``n_grid = 1`` -- MCMC walker-update path. Exercises the J2 rewrite
+        that replaced the (N-1)/N-wasted O(N^2) baseline with on-demand
+        ``_batch_pairwise_sum`` calls.
+      * ``n_grid = 3, 6`` -- ECP nonlocal mesh path (Nv = 6 default).
+        Confirms the rewrite is numerically equivalent when N_grid is large
+        enough that the old baseline was fully amortized.
+    """
     # Both _compute_ratio_Jastrow_part_rank1_update and _compute_ratio_Jastrow_part_debug
     # operate in the jastrow_ratio zone (J(R')/J(R) log-ratio). Use that zone's tolerance
     # to honor the 1-zone-1-module principle.
@@ -1436,22 +1446,31 @@ def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern
     np.random.seed(0)
     jastrow_data, old_r_up_carts, old_r_dn_carts = _build_jastrow_data_for_part_tests(j1b_type, j2b_type, include_nn)
 
-    # Build three grid moves (inlined from the former _build_three_grid_moves_for_jastrow helper)
-    new_r_up_carts_arr = np.repeat(old_r_up_carts[None, ...], 3, axis=0)
-    new_r_dn_carts_arr = np.repeat(old_r_dn_carts[None, ...], 3, axis=0)
+    new_r_up_carts_arr = np.repeat(old_r_up_carts[None, ...], n_grid, axis=0)
+    new_r_dn_carts_arr = np.repeat(old_r_dn_carts[None, ...], n_grid, axis=0)
 
     up_alt_idx = min(1, old_r_up_carts.shape[0] - 1)
     dn_alt_idx = min(1, old_r_dn_carts.shape[0] - 1)
 
     if pattern == "all_moved":
-        new_r_up_carts_arr[0, 0, 0] += 0.05
-        new_r_dn_carts_arr[1, 0, 1] -= 0.07
-        new_r_up_carts_arr[2, up_alt_idx, 2] += 0.09
+        # Every grid moves exactly one electron; rotate (spin, index, axis)
+        # mod 3 to cover up_case/dn_case selection and alternate indices.
+        for g in range(n_grid):
+            r = g % 3
+            if r == 0:
+                new_r_up_carts_arr[g, 0, 0] += 0.05
+            elif r == 1:
+                new_r_dn_carts_arr[g, 0, 1] -= 0.07
+            else:
+                new_r_up_carts_arr[g, up_alt_idx, 2] += 0.09
     elif pattern == "none_moved":
         pass
     elif pattern == "mixed":
+        # Move on first grid; if n_grid >= 3 also move on the last grid (the
+        # interior grids stay put -- their ratio must be exactly 1.0).
         new_r_up_carts_arr[0, 0, 0] += 0.05
-        new_r_dn_carts_arr[2, dn_alt_idx, 1] += 0.04
+        if n_grid >= 3:
+            new_r_dn_carts_arr[n_grid - 1, dn_alt_idx, 1] += 0.04
 
     ratio_debug = _compute_ratio_Jastrow_part_debug(
         jastrow_data,
@@ -1469,6 +1488,7 @@ def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
+    assert ratio_auto.shape == (n_grid,)
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(np.asarray(ratio_debug), np.asarray(ratio_auto), atol=atol, rtol=rtol)

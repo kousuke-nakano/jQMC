@@ -68,82 +68,77 @@ class Launcher:
     as **all** predecessors of a node complete, that node starts immediately
     -- there is no layer-based grouping.
 
-    Parameters
-    ----------
-    workflows : list[Container]
-        Workflows to execute.  Labels must be unique.
-    log_level : str
-        Logging level (``"DEBUG"`` or ``"INFO"``).
-    log_name : str
-        Log file name (appended, not overwritten).
-    draw_graph : bool
-        If ``True``, render the dependency graph to ``dependency_graph.png``
-        (requires the ``graphviz`` Python package).
+    Args:
+        workflows (list[Container]):
+            Workflows to execute.  Labels must be unique.
+        log_level (str):
+            Logging level (``"DEBUG"`` or ``"INFO"``).
+        log_name (str):
+            Log file name (appended, not overwritten).
+        draw_graph (bool):
+            If ``True``, render the dependency graph to ``dependency_graph.png``
+            (requires the ``graphviz`` Python package).
 
     Raises:
-    ------
-    ValueError
-        If workflow labels are duplicated or a dependency references an
-        undefined workflow label.
+        ValueError:
+            If workflow labels are duplicated or a dependency references an
+            undefined workflow label.
 
     Examples:
-    --------
-    Typical three-stage QMC pipeline::
+        Typical three-stage QMC pipeline::
 
-        from jqmc_workflow import (
-            Launcher, Container, FileFrom,
-            WF_Workflow, VMC_Workflow, MCMC_Workflow,
-        )
+            from jqmc_workflow import (
+                Launcher, Container, FileFrom,
+                WF_Workflow, VMC_Workflow, MCMC_Workflow,
+            )
 
-        wf = Container(
-            label="wf",
-            dirname="00_wf",
-            input_files=["trexio.h5"],
-            workflow=WF_Workflow(trexio_file="trexio.h5"),
-        )
+            wf = Container(
+                label="wf",
+                dirname="00_wf",
+                input_files=["trexio.h5"],
+                workflow=WF_Workflow(trexio_file="trexio.h5"),
+            )
 
-        vmc = Container(
-            label="vmc-opt",
-            dirname="01_vmc",
-            input_files=[FileFrom("wf", "hamiltonian_data.h5")],
-            workflow=VMC_Workflow(
-                server_machine_name="cluster",
-                num_opt_steps=10,
-                target_error=0.001,
-            ),
-        )
+            vmc = Container(
+                label="vmc-opt",
+                dirname="01_vmc",
+                input_files=[FileFrom("wf", "hamiltonian_data.h5")],
+                workflow=VMC_Workflow(
+                    server_machine_name="cluster",
+                    num_opt_steps=10,
+                    target_error=0.001,
+                ),
+            )
 
-        mcmc = Container(
-            label="mcmc-run",
-            dirname="02_mcmc",
-            input_files=[
-                FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")
-            ],
-            rename_input_files=["hamiltonian_data.h5"],
-            workflow=MCMC_Workflow(
-                server_machine_name="cluster",
-                target_error=0.001,
-            ),
-        )
+            mcmc = Container(
+                label="mcmc-run",
+                dirname="02_mcmc",
+                input_files=[
+                    FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")
+                ],
+                rename_input_files=["hamiltonian_data.h5"],
+                workflow=MCMC_Workflow(
+                    server_machine_name="cluster",
+                    target_error=0.001,
+                ),
+            )
 
-        launcher = Launcher(
-            workflows=[wf, vmc, mcmc],
-            draw_graph=True,
-        )
-        launcher.launch()
+            launcher = Launcher(
+                workflows=[wf, vmc, mcmc],
+                draw_graph=True,
+            )
+            launcher.launch()
 
     Notes:
-    -----
-    * The launcher changes the working directory during execution and
-      restores it afterwards.
-    * If a workflow fails, all downstream dependents are automatically
-      skipped.
+        * The launcher changes the working directory during execution and
+          restores it afterwards.
+        * If a workflow fails, all downstream dependents are automatically
+          skipped.
 
     See Also:
-    --------
-    Container : Wraps a workflow in a project directory.
-    FileFrom : File dependency placeholder.
-    ValueFrom : Value dependency placeholder.
+        Container : Wraps a workflow in a project directory.
+        FileFrom : File dependency placeholder.
+        ValueFrom : Value dependency placeholder.
     """
 
     def __init__(

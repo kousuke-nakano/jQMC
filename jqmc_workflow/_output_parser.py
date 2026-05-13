@@ -88,16 +88,14 @@ def parse_ufloat_short(text: str):
     * ``+3(8)e-05``     -- scientific notation with integer uncertainty
     * ``+3.9(3.5)e-05`` -- scientific notation with decimal uncertainty
 
-    Parameters
-    ----------
-    text : str
-        A single token like ``"+0.0114(14)"``, ``"-1.23(4)"``,
-        ``"+3(8)e-05"``, or ``"+3.9(3.5)e-05"``.
+    Args:
+        text (str):
+            A single token like ``"+0.0114(14)"``, ``"-1.23(4)"``,
+            ``"+3(8)e-05"``, or ``"+3.9(3.5)e-05"``.
 
     Returns:
-    -------
-    tuple
-        ``(value, uncertainty)`` or ``(None, None)`` on failure.
+        tuple:
+            ``(value, uncertainty)`` or ``(None, None)`` on failure.
     """
     m = re.match(r"([+-]?\d+\.?\d*)\((\d+\.?\d*)\)([eE][+-]?\d+)?", text.strip())
     if not m:
@@ -136,16 +134,14 @@ def parse_force_table(text: str):
         H       +0.0112(11)  +0.0050(7)   +0.0054(9)
         ------------------------------------------------
 
-    Parameters
-    ----------
-    text : str
-        Full stdout from ``jqmc-tool {mcmc,lrdmc} compute-force``.
+    Args:
+        text (str):
+            Full stdout from ``jqmc-tool {mcmc,lrdmc} compute-force``.
 
     Returns:
-    -------
-    list of dict or None
-        Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
-        Returns *None* when no force data is found.
+        list of dict or None:
+            Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
+            Returns *None* when no force data is found.
     """
     lines = text.splitlines()
     forces = []
@@ -543,9 +539,8 @@ def _parse_vmc_log_text(text: str) -> list:
     the first ``Optimization step`` header are ignored.
 
     Returns:
-    -------
-    list of VMC_Step_Data
-        One entry per optimization step found.
+        list of VMC_Step_Data:
+            One entry per optimization step found.
     """
     steps: list[VMC_Step_Data] = []
     current: VMC_Step_Data | None = None
@@ -658,15 +653,13 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
     records, parses per-step data, and looks for
     ``hamiltonian_data_opt_step_*.h5``.
 
-    Parameters
-    ----------
-    work_dir : str
-        Path to the VMC working directory.
+    Args:
+        work_dir (str):
+            Path to the VMC working directory.
 
     Returns:
-    -------
-    VMC_Diagnostic_Data
-        Structured parse result containing per-step data and metadata.
+        VMC_Diagnostic_Data:
+            Structured parse result containing per-step data and metadata.
     """
     result = VMC_Diagnostic_Data()
 
@@ -775,15 +768,13 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
     section (populated by jqmc-tool post-processing) or from stdout
     if ``jqmc-tool mcmc compute-energy`` output is present.
 
-    Parameters
-    ----------
-    work_dir : str
-        Path to the MCMC working directory.
+    Args:
+        work_dir (str):
+            Path to the MCMC working directory.
 
     Returns:
-    -------
-    MCMC_Diagnostic_Data
-        Structured parse result.
+        MCMC_Diagnostic_Data:
+            Structured parse result.
     """
     result = MCMC_Diagnostic_Data()
 
@@ -885,15 +876,13 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
     and net GFMC time from stdout.  Energy/error come from
     ``workflow_state.toml`` result section.
 
-    Parameters
-    ----------
-    work_dir : str
-        Path to the LRDMC working directory.
+    Args:
+        work_dir (str):
+            Path to the LRDMC working directory.
 
     Returns:
-    -------
-    LRDMC_Diagnostic_Data
-        Structured parse result.
+        LRDMC_Diagnostic_Data:
+            Structured parse result.
     """
     result = LRDMC_Diagnostic_Data()
 
@@ -998,15 +987,13 @@ def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
     Looks for ``For a -> 0 bohr: E = ...`` in the stdout of the
     extrapolation step.
 
-    Parameters
-    ----------
-    work_dir : str
-        Path to the LRDMC extrapolation working directory.
+    Args:
+        work_dir (str):
+            Path to the LRDMC extrapolation working directory.
 
     Returns:
-    -------
-    LRDMC_Ext_Diagnostic_Data
-        Structured parse result.
+        LRDMC_Ext_Diagnostic_Data:
+            Structured parse result.
     """
     result = LRDMC_Ext_Diagnostic_Data()
 
@@ -1077,15 +1064,13 @@ def parse_input_params(work_dir: str) -> Input_Parameters:
     ``actual_opt_steps`` is read from ``restart.h5`` when available
     (VMC only).
 
-    Parameters
-    ----------
-    work_dir : str
-        Path to the workflow working directory.
+    Args:
+        work_dir (str):
+            Path to the workflow working directory.
 
     Returns:
-    -------
-    Input_Parameters
-        Structured parameter data with per-input detail.
+        Input_Parameters:
+            Structured parameter data with per-input detail.
     """
     result = Input_Parameters()
 
