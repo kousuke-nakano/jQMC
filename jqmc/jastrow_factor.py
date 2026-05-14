@@ -4353,6 +4353,188 @@ def _advance_grads_laplacian_Jastrow_three_body_streaming_state(
     return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
 
 
+# -----------------------------------------------------------------------------
+# Slim ratio-only J3 streaming state (8 fields, no grad/lap).
+#
+# Mirrors the ``Det_ratio_streaming_state`` / ``Det_streaming_state`` split:
+# ``_compute_ratio_Jastrow_part_rank1_update`` only reads the 8 fields below
+# (aos_*, j3_mat_aos_*, j3_mat_T_aos_*, rowsums), so the MCMC walker update
+# path -- which never consumes grad/lap -- can carry just these and skip the
+# remaining 10 fields the full state holds for LRDMC kinetic-energy work.
+#
+# Cuts ~63% of the per-walker state bytes (grad_aos_* alone is 3x larger via
+# the trailing xyz axis), removing the bulk of the DtoD plumbing traffic the
+# full state would cost in an MCMC ``fori_loop`` carry.
+# -----------------------------------------------------------------------------
+
+
+@struct.dataclass
+class Jastrow_three_body_ratio_state:
+    """Slim ratio-only J3 streaming state.
+
+    Subset of :class:`Jastrow_three_body_streaming_state` containing exactly
+    the 8 fields read by :func:`_compute_ratio_Jastrow_part_rank1_update` when
+    a J3 cache is supplied. Field names match the full state so the ratio
+    kernel consumes either via duck-typing (mirrors the
+    ``Det_ratio_streaming_state`` / ``Det_streaming_state`` pattern).
+
+    Fields (shapes use ``n_orb`` for the orbital dimension; for MO-based
+    three-body the same ``n_orb`` is used, since orbitals are evaluated by
+    ``compute_MOs`` to dimension ``orb_data._num_orb``):
+
+    - ``aos_up`` / ``aos_dn``: ``(n_orb, N_up)`` / ``(n_orb, N_dn)`` orbital values.
+    - ``j3_mat_aos_up`` / ``j3_mat_aos_dn``: ``j3_mat @ aos_*`` (shapes match aos_*).
+    - ``j3_mat_T_aos_up`` / ``j3_mat_T_aos_dn``: ``j3_mat.T @ aos_*``.
+    - ``j3_mat_aos_dn_rowsum`` / ``j3_mat_T_aos_up_rowsum``: ``(n_orb,)`` -- the
+      ``dn_cross_vec`` / ``up_cross_vec`` consumed by the ratio kernel.
+    """
+
+    aos_up: jax.Array = struct.field(pytree_node=True)
+    aos_dn: jax.Array = struct.field(pytree_node=True)
+    j3_mat_aos_up: jax.Array = struct.field(pytree_node=True)
+    j3_mat_aos_dn: jax.Array = struct.field(pytree_node=True)
+    j3_mat_T_aos_up: jax.Array = struct.field(pytree_node=True)
+    j3_mat_T_aos_dn: jax.Array = struct.field(pytree_node=True)
+    j3_mat_aos_dn_rowsum: jax.Array = struct.field(pytree_node=True)
+    j3_mat_T_aos_up_rowsum: jax.Array = struct.field(pytree_node=True)
+
+
+@jit
+def _init_jastrow_ratio_state(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> Jastrow_three_body_ratio_state:
+    """Initialize the slim ratio-only J3 streaming state at ``(r_up, r_dn)``.
+
+    Value-only AO evaluation (no grad/lap), four ``(n_orb, n_orb) @ (n_orb, N_e)``
+    matmuls, and two ``(n_orb,)`` row-sums. Subsequent advances refresh only
+    one column per accepted single-electron move.
+
+    Cost: dominated by 2 ``compute_orb`` calls + 4 matmuls, equivalent to the
+    j3_state-less branch of :func:`_compute_ratio_Jastrow_part_rank1_update`.
+    """
+    # Use the ratio-zone dtype to match what
+    # ``_compute_ratio_Jastrow_part_rank1_update`` will cast its inputs to;
+    # this avoids a re-cast on first consumption.
+    dtype_jnp = get_dtype_jnp("jastrow_ratio")
+    orb_data = jastrow_three_body_data.orb_data
+    compute_orb, _compute_orb_grad, _compute_orb_lapl, _compute_orb_vgl = _three_body_orb_apis(jastrow_three_body_data)
+
+    # Value-only AO eval. Forward r_*_carts unchanged so the underlying
+    # kernels reconstruct r-R in fp64 (Principle 3b).
+    aos_up = jnp.asarray(compute_orb(orb_data, r_up_carts), dtype=dtype_jnp)
+    aos_dn = jnp.asarray(compute_orb(orb_data, r_dn_carts), dtype=dtype_jnp)
+
+    j_matrix = jastrow_three_body_data._j_matrix_jnp.astype(dtype_jnp)
+    j3_mat = j_matrix[:, :-1]
+
+    j3_mat_aos_up = j3_mat @ aos_up
+    j3_mat_T_aos_up = j3_mat.T @ aos_up
+    j3_mat_aos_dn = j3_mat @ aos_dn
+    j3_mat_T_aos_dn = j3_mat.T @ aos_dn
+    # Row-sums consumed as ``dn_cross_vec`` / ``up_cross_vec`` by the ratio kernel.
+    j3_mat_aos_dn_rowsum = jnp.sum(j3_mat_aos_dn, axis=1)
+    j3_mat_T_aos_up_rowsum = jnp.sum(j3_mat_T_aos_up, axis=1)
+
+    return Jastrow_three_body_ratio_state(
+        aos_up=aos_up,
+        aos_dn=aos_dn,
+        j3_mat_aos_up=j3_mat_aos_up,
+        j3_mat_aos_dn=j3_mat_aos_dn,
+        j3_mat_T_aos_up=j3_mat_T_aos_up,
+        j3_mat_T_aos_dn=j3_mat_T_aos_dn,
+        j3_mat_aos_dn_rowsum=j3_mat_aos_dn_rowsum,
+        j3_mat_T_aos_up_rowsum=j3_mat_T_aos_up_rowsum,
+    )
+
+
+@jit
+def _advance_jastrow_ratio_state(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    state: Jastrow_three_body_ratio_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+) -> Jastrow_three_body_ratio_state:
+    """Advance the slim ratio-only J3 streaming state after a single-electron move.
+
+    Mirrors :func:`_advance_grads_laplacian_Jastrow_three_body_streaming_state`
+    but with the grad/lap field plumbing removed:
+
+    - Single-point AO eval at the moved electron's new position (value only,
+      no grad/lap so the per-call ``compute_orb_vgl`` becomes ``compute_orb``).
+    - ``delta_aos = aos_new - state.aos[:, moved_index]``,
+      ``d_J = j3_mat @ delta_aos``, ``d_JT = j3_mat.T @ delta_aos``.
+    - Refresh the moved column of ``j3_mat_aos_*`` / ``j3_mat_T_aos_*`` via
+      ``.at[:, moved_index].add(...)`` and the corresponding row-sum.
+
+    Cost: ``O(n_ao + n_ao^2)`` per call -- one single-electron AO eval plus
+    two ``n_ao``-sized matvecs. Strictly less work than the full advance:
+    the grad/lap einsums and the ``g_up`` / ``g_dn`` triangular updates are
+    not needed for the ratio kernel.
+    """
+    dtype_jnp = get_dtype_jnp("jastrow_ratio")
+    orb_data = jastrow_three_body_data.orb_data
+    compute_orb, _compute_orb_grad, _compute_orb_lapl, _compute_orb_vgl = _three_body_orb_apis(jastrow_three_body_data)
+
+    j_matrix = jastrow_three_body_data._j_matrix_jnp.astype(dtype_jnp)
+    j3_mat = j_matrix[:, :-1]
+
+    num_up = state.aos_up.shape[1]
+    num_dn = state.aos_dn.shape[1]
+
+    def _branch_up(_):
+        # Single-electron AO eval at the new up position (value only).
+        r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
+        aos_new_col = jnp.asarray(compute_orb(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+
+        delta_aos = aos_new_col - state.aos_up[:, moved_index]
+        d_J = j3_mat @ delta_aos  # (n_orb,)
+        d_JT = j3_mat.T @ delta_aos  # (n_orb,)
+
+        new_aos_up = state.aos_up.at[:, moved_index].set(aos_new_col)
+        new_j3_mat_aos_up = state.j3_mat_aos_up.at[:, moved_index].add(d_J)
+        new_j3_mat_T_aos_up = state.j3_mat_T_aos_up.at[:, moved_index].add(d_JT)
+        # Only the moved up column of ``j3_mat_T_aos_up`` changes -> rowsum
+        # picks up exactly ``d_JT``. ``j3_mat_aos_dn_rowsum`` is unchanged
+        # (depends on aos_dn only).
+        return state.replace(
+            aos_up=new_aos_up,
+            j3_mat_aos_up=new_j3_mat_aos_up,
+            j3_mat_T_aos_up=new_j3_mat_T_aos_up,
+            j3_mat_T_aos_up_rowsum=state.j3_mat_T_aos_up_rowsum + d_JT,
+        )
+
+    def _branch_dn(_):
+        r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
+        aos_new_col = jnp.asarray(compute_orb(orb_data, r_new)[:, 0], dtype=dtype_jnp)
+
+        delta_aos = aos_new_col - state.aos_dn[:, moved_index]
+        d_J = j3_mat @ delta_aos
+        d_JT = j3_mat.T @ delta_aos
+
+        new_aos_dn = state.aos_dn.at[:, moved_index].set(aos_new_col)
+        new_j3_mat_aos_dn = state.j3_mat_aos_dn.at[:, moved_index].add(d_J)
+        new_j3_mat_T_aos_dn = state.j3_mat_T_aos_dn.at[:, moved_index].add(d_JT)
+        # Mirror branch_up: only the moved dn column of ``j3_mat_aos_dn``
+        # changes -> rowsum picks up ``d_J``. Up rowsum is unchanged.
+        return state.replace(
+            aos_dn=new_aos_dn,
+            j3_mat_aos_dn=new_j3_mat_aos_dn,
+            j3_mat_T_aos_dn=new_j3_mat_T_aos_dn,
+            j3_mat_aos_dn_rowsum=state.j3_mat_aos_dn_rowsum + d_J,
+        )
+
+    # Edge case: zero-electron spin sector -- the cond collapses at trace time.
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
+
+
 def _compute_grads_and_laplacian_Jastrow_three_body_debug(
     jastrow_three_body_data: Jastrow_three_body_data,
     r_up_carts: np.ndarray,

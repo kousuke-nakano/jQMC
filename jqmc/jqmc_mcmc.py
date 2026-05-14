@@ -88,9 +88,9 @@ from .hamiltonians import (
     compute_local_energy_fast,
 )
 from .jastrow_factor import (
-    _advance_grads_laplacian_Jastrow_three_body_streaming_state,
+    _advance_jastrow_ratio_state,
     _compute_ratio_Jastrow_part_rank1_update,
-    _init_grads_laplacian_Jastrow_three_body_streaming_state,
+    _init_jastrow_ratio_state,
     compute_Jastrow_part,
 )
 from .structure import _find_nearest_index_jnp
@@ -4858,13 +4858,17 @@ def _update_electron_positions(
             ``(init_r_up_carts, init_r_dn_carts)``. Built once at the MCMC
             chain entry by :func:`_init_det_ratio_streaming_state` and
             advanced via :func:`_advance_det_ratio_streaming_state` on accept.
-        j3_state_init: Optional ``Jastrow_three_body_streaming_state`` consistent
+        j3_state_init: Optional ``Jastrow_three_body_ratio_state`` consistent
             with ``(init_r_up_carts, init_r_dn_carts)``. When ``jastrow_three_body_data``
             is present, built once at the MCMC chain entry and advanced via
-            :func:`_advance_grads_laplacian_Jastrow_three_body_streaming_state`
-            on accept; passing it to ``_compute_ratio_Jastrow_part_rank1_update``
-            avoids the per-step ``O(n_ao^2 * N_e)`` matmul rebuild. ``None`` when
-            no three-body Jastrow component exists.
+            :func:`_advance_jastrow_ratio_state` on accept; passing it to
+            ``_compute_ratio_Jastrow_part_rank1_update`` avoids the per-step
+            ``O(n_ao^2 * N_e)`` matmul rebuild. ``None`` when no three-body
+            Jastrow component exists. The slim ratio-state mirrors the
+            ``Det_ratio_streaming_state`` pattern: only the 8 fields the ratio
+            kernel reads (aos_*, j3_mat_aos_*, j3_mat_T_aos_*, rowsums) are
+            carried through the ``fori_loop``, avoiding the grad/lap plumbing
+            cost the full LRDMC-kinetic state would impose.
 
     Returns:
         jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
@@ -5090,7 +5094,7 @@ def _update_electron_positions(
         # no J3 component exists ``j3_state`` is ``None`` and we just pass it
         # through (also avoids tracing the advance kernel).
         if hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-            j3_state_new = _advance_grads_laplacian_Jastrow_three_body_streaming_state(
+            j3_state_new = _advance_jastrow_ratio_state(
                 jastrow_three_body_data=hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data,
                 state=j3_state,
                 moved_spin_is_up=is_up,
@@ -5491,7 +5495,7 @@ _jit_vmap_init_det_ratio_state = jit(
     vmap(_init_det_ratio_streaming_state, in_axes=(None, 0, 0)),
 )
 _jit_vmap_init_j3_state = jit(
-    vmap(_init_grads_laplacian_Jastrow_three_body_streaming_state, in_axes=(None, 0, 0)),
+    vmap(_init_jastrow_ratio_state, in_axes=(None, 0, 0)),
 )
 _jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0, 0)))
 _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
