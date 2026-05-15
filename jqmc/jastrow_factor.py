@@ -1377,32 +1377,20 @@ class Jastrow_three_body_data:
 
     @property
     def ao_exponents(self) -> jax.Array:
-        """AO Gaussian exponents in basis-natural primitive order.
-
-        Returns the raw storage order (matching ``aos_data.exponents``),
-        not the bucket-K-major order used internally by
-        ``_exponents_jnp`` for the AO eval kernel. The optimization
-        API (``with_updated_ao_exponents`` and the basis variational
-        blocks) reads/writes basis-natural order so this accessor must
-        match.
-        """
+        """AO Gaussian exponents (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
-            return jnp.asarray(self.orb_data.exponents, dtype=jnp.float64)
+            return self.orb_data._exponents_jnp
         if isinstance(self.orb_data, MOs_data):
-            return jnp.asarray(self.orb_data.aos_data.exponents, dtype=jnp.float64)
+            return self.orb_data.aos_data._exponents_jnp
         raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     @property
     def ao_coefficients(self) -> jax.Array:
-        """AO contraction coefficients in basis-natural primitive order.
-
-        See :attr:`ao_exponents` for why we return raw order rather
-        than the permuted ``_coefficients_jnp``.
-        """
+        """AO contraction coefficients (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
-            return jnp.asarray(self.orb_data.coefficients, dtype=jnp.float64)
+            return self.orb_data._coefficients_jnp
         if isinstance(self.orb_data, MOs_data):
-            return jnp.asarray(self.orb_data.aos_data.coefficients, dtype=jnp.float64)
+            return self.orb_data.aos_data._coefficients_jnp
         raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     def with_updated_ao_exponents(self, new_exp: npt.NDArray[np.float64]) -> "Jastrow_three_body_data":
