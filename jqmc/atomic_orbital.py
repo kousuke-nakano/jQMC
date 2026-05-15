@@ -56,7 +56,6 @@ from __future__ import annotations
 # POSSIBILITY OF SUCH DAMAGE.
 from logging import getLogger
 from math import comb
-from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -559,35 +558,27 @@ class AOs_cart_data:
 
     @property
     def _orbital_indices_np(self) -> npt.NDArray[np.int32]:
-        """orbital_index in bucket-K-major primitive order.
-
-        The primitive axis is permuted into bucket order (see
-        :func:`_build_prim_buckets_by_K`); the returned int32 array of
-        length ``num_ao_prim`` carries the basis-natural AO index at
-        each bucket-order primitive position.
-        """
-        return np.asarray(self.orbital_indices, dtype=np.int32)[self._prim_perm_np]
+        """orbital_index."""
+        return np.array(self.orbital_indices, dtype=np.int32)
 
     @property
     def _orbital_indices_jnp(self) -> jax.Array:
-        """orbital_index (bucket-K-major; see :attr:`_orbital_indices_np`)."""
-        return jnp.asarray(self._orbital_indices_np, dtype=jnp.int32)
+        """orbital_index."""
+        return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
-    def _prim_buckets_by_K(self) -> PrimBucketLayout:
-        """Bucket-K-major primitive layout descriptor.
+    def _prim_groups_by_K(self) -> tuple:
+        """Group AOs by contraction depth K (primitives per AO).
 
-        See :class:`PrimBucketLayout` for field semantics and
-        :func:`_build_prim_buckets_by_K` for construction; consumed by
-        :func:`_reduce_primitives_to_aos` for contiguous-slice bucket
-        reductions.
+        Used by :func:`_reduce_primitives_to_aos` to replace
+        ``segment_sum`` (which falls back to a scatter-add while-loop
+        in XLA) with a small, fixed number of dense ``reduce_sum`` ops
+        -- one per unique contraction depth K.
+
+        Returns:
+            tuple of ``(K, ao_idx_np, prim_idx_np, is_identity_perm)``.
         """
-        return _build_prim_buckets_by_K(self.orbital_indices, self.num_ao)
-
-    @property
-    def _prim_perm_np(self) -> npt.NDArray[np.int32]:
-        """Bucket-K-major primitive permutation (alias of ``_prim_buckets_by_K.prim_perm``)."""
-        return self._prim_buckets_by_K.prim_perm
+        return _build_prim_groups_by_K(self.orbital_indices, self.num_ao)
 
     @property
     def _atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
@@ -615,15 +606,19 @@ class AOs_cart_data:
 
     @property
     def _atomic_center_carts_unique_jnp(self) -> jax.Array:
-        """Atomic positions in cartesian, deduplicated to one entry per atom.
+        """Unique atomic positions in cartesian.
 
-        ``structure_data.positions_cart`` is already stored one-per-atom
-        (no per-AO duplication); ``self.nucleus_index`` is the prim->atom
-        map into this array. Used by Proposal 3 (compute ``r-R`` at
-        unique-atom rank, gather to primitive rank) in the AO eval / lap
-        kernels.
+        Returns unique atomic positions in cartesian
+
+        Returns:
+            jax.Array: atomic positions in cartesian
         """
         return self.structure_data._positions_cart_jnp
+        """ the same as above.
+        _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
+        sorted_order = jnp.argsort(first_indices)
+        return self.structure_data.positions_cart_jnp[sorted_order]
+        """
 
     @property
     def _atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
@@ -634,7 +629,7 @@ class AOs_cart_data:
         Returns:
             npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
         """
-        return self._atomic_center_carts_np[self._orbital_indices_np]
+        return self._atomic_center_carts_np[self.orbital_indices]
 
     @property
     def _atomic_center_carts_prim_jnp(self) -> jax.Array:
@@ -762,29 +757,19 @@ class AOs_cart_data:
 
     @property
     def _exponents_jnp(self) -> jax.Array:
-        """Return exponents in bucket-K-major primitive order.
-
-        Permuted to align with every other ``_*_prim_*`` accessor on
-        the dataclass so that downstream produce-then-reduce kernels
-        see a contiguous bucket layout. The permutation itself is a
-        host-side numpy op at trace time; runtime cost is zero.
-        """
+        """Return exponents."""
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.asarray(self.exponents, dtype=dtype_jnp)[self._prim_perm_np]
+        return jnp.asarray(self.exponents, dtype=dtype_jnp)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
-        """Return coefficients in bucket-K-major primitive order.
-
-        Permuted to align with :attr:`_exponents_jnp`; see that
-        accessor's docstring for rationale.
-        """
+        """Return coefficients."""
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.asarray(self.coefficients, dtype=dtype_jnp)[self._prim_perm_np]
+        return jnp.asarray(self.coefficients, dtype=dtype_jnp)
 
     @property
     def _num_orb(self) -> int:
@@ -1210,35 +1195,27 @@ class AOs_sphe_data:
 
     @property
     def _orbital_indices_np(self) -> npt.NDArray[np.int32]:
-        """orbital_index in bucket-K-major primitive order.
-
-        The primitive axis is permuted into bucket order (see
-        :func:`_build_prim_buckets_by_K`); the returned int32 array of
-        length ``num_ao_prim`` carries the basis-natural AO index at
-        each bucket-order primitive position.
-        """
-        return np.asarray(self.orbital_indices, dtype=np.int32)[self._prim_perm_np]
+        """orbital_index."""
+        return np.array(self.orbital_indices, dtype=np.int32)
 
     @property
     def _orbital_indices_jnp(self) -> jax.Array:
-        """orbital_index (bucket-K-major; see :attr:`_orbital_indices_np`)."""
-        return jnp.asarray(self._orbital_indices_np, dtype=jnp.int32)
+        """orbital_index."""
+        return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
-    def _prim_buckets_by_K(self) -> PrimBucketLayout:
-        """Bucket-K-major primitive layout descriptor.
+    def _prim_groups_by_K(self) -> tuple:
+        """Group AOs by contraction depth K (primitives per AO).
 
-        See :class:`PrimBucketLayout` for field semantics and
-        :func:`_build_prim_buckets_by_K` for construction; consumed by
-        :func:`_reduce_primitives_to_aos` for contiguous-slice bucket
-        reductions.
+        Used by :func:`_reduce_primitives_to_aos` to replace
+        ``segment_sum`` (which falls back to a scatter-add while-loop
+        in XLA) with a small, fixed number of dense ``reduce_sum`` ops
+        -- one per unique contraction depth K.
+
+        Returns:
+            tuple of ``(K, ao_idx_np, prim_idx_np, is_identity_perm)``.
         """
-        return _build_prim_buckets_by_K(self.orbital_indices, self.num_ao)
-
-    @property
-    def _prim_perm_np(self) -> npt.NDArray[np.int32]:
-        """Bucket-K-major primitive permutation (alias of ``_prim_buckets_by_K.prim_perm``)."""
-        return self._prim_buckets_by_K.prim_perm
+        return _build_prim_groups_by_K(self.orbital_indices, self.num_ao)
 
     @property
     def _atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
@@ -1266,15 +1243,19 @@ class AOs_sphe_data:
 
     @property
     def _atomic_center_carts_unique_jnp(self) -> jax.Array:
-        """Atomic positions in cartesian, deduplicated to one entry per atom.
+        """Unique atomic positions in cartesian.
 
-        ``structure_data.positions_cart`` is already stored one-per-atom
-        (no per-AO duplication); ``self.nucleus_index`` is the prim->atom
-        map into this array. Used by Proposal 3 (compute ``r-R`` at
-        unique-atom rank, gather to primitive rank) in the AO eval / lap
-        kernels.
+        Returns unique atomic positions in cartesian
+
+        Returns:
+            jax.Array: atomic positions in cartesian
         """
         return self.structure_data._positions_cart_jnp
+        """ the same as above.
+        _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
+        sorted_order = jnp.argsort(first_indices)
+        return self.structure_data.positions_cart_jnp[sorted_order]
+        """
 
     @property
     def _atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
@@ -1285,7 +1266,7 @@ class AOs_sphe_data:
         Returns:
             npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
         """
-        return self._atomic_center_carts_np[self._orbital_indices_np]
+        return self._atomic_center_carts_np[self.orbital_indices]
 
     @property
     def _atomic_center_carts_prim_jnp(self) -> jax.Array:
@@ -1346,29 +1327,19 @@ class AOs_sphe_data:
 
     @property
     def _exponents_jnp(self) -> jax.Array:
-        """Return exponents in bucket-K-major primitive order.
-
-        Permuted to align with every other ``_*_prim_*`` accessor on
-        the dataclass so that downstream produce-then-reduce kernels
-        see a contiguous bucket layout. The permutation itself is a
-        host-side numpy op at trace time; runtime cost is zero.
-        """
+        """Return exponents."""
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.asarray(self.exponents, dtype=dtype_jnp)[self._prim_perm_np]
+        return jnp.asarray(self.exponents, dtype=dtype_jnp)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
-        """Return coefficients in bucket-K-major primitive order.
-
-        Permuted to align with :attr:`_exponents_jnp`; see that
-        accessor's docstring for rationale.
-        """
+        """Return coefficients."""
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.asarray(self.coefficients, dtype=dtype_jnp)[self._prim_perm_np]
+        return jnp.asarray(self.coefficients, dtype=dtype_jnp)
 
     @property
     def _num_orb(self) -> int:
@@ -2062,54 +2033,33 @@ def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.flo
     return aos_values
 
 
-class PrimBucketLayout(NamedTuple):
-    """Descriptor of the bucket-K-major primitive layout.
+def _build_prim_groups_by_K(orbital_indices, num_ao: int) -> tuple:
+    """Group AOs by contraction depth K (number of primitives per AO).
 
-    Attributes:
-        bucket_sizes: ``((K, n_ao_K), ...)`` per unique contraction depth
-            ``K``, in ascending K order. Consumers iterate this to slice
-            contiguous ``K * n_ao_K`` strides off the primitive axis.
-        prim_perm: int32 array of shape ``(num_ao_prim,)`` mapping
-            bucket-order primitive index -> basis-natural primitive
-            index. Every ``_*_prim_*`` accessor applies this so that the
-            primitive axis is stored in bucket order.
-        inv_ao_perm: int32 array of shape ``(num_ao,)`` mapping the
-            bucket-order AO position back to the basis-natural AO index,
-            applied as the final gather in
-            :func:`_reduce_primitives_to_aos`.
-        is_identity_ao_perm: ``True`` iff ``inv_ao_perm == arange(num_ao)``
-            (final gather is a no-op and is skipped).
-    """
-
-    bucket_sizes: tuple[tuple[int, int], ...]
-    prim_perm: npt.NDArray[np.int32]
-    inv_ao_perm: npt.NDArray[np.int32]
-    is_identity_ao_perm: bool
-
-
-def _build_prim_buckets_by_K(orbital_indices, num_ao: int) -> PrimBucketLayout:
-    """Build a :class:`PrimBucketLayout` for the given basis.
-
-    Reorders the primitive axis so that AOs with the same contraction
-    depth K are adjacent (bucket order), and within each K-bucket the
-    primitives belonging to AO ``i`` occupy a contiguous ``K``-length
-    stripe. After this permutation,
-    :func:`_reduce_primitives_to_aos` reduces each bucket via a
-    contiguous ``dynamic_slice`` + ``reshape`` + ``reduce_sum``,
-    eliminating the fancy primitive-index gather that drove the
-    9-10 sectors/request L1 access pattern in the basis-natural
-    layout.
+    This is a pure-Python (numpy) preprocessor invoked at trace time
+    by the cached property :attr:`AOs_cart_data._prim_groups_by_K` /
+    :attr:`AOs_sphe_data._prim_groups_by_K`. It produces the static
+    bucket descriptors consumed by :func:`_reduce_primitives_to_aos`,
+    which replaces the AO-side ``segment_sum`` (XLA scatter-add
+    fallback) with one fixed-shape ``reduce_sum`` per unique K plus a
+    final inverse-permutation gather (no scatter at all).
 
     Args:
         orbital_indices: Sequence of length ``num_ao_prim``; entry
-            ``j`` is the parent AO index of primitive ``j`` in
-            basis-natural (storage) order.
+            ``j`` is the parent AO index of primitive ``j``.
         num_ao: Total number of contracted AOs.
 
     Returns:
-        :class:`PrimBucketLayout` describing the bucket sizes and the
-        primitive / AO permutations. See its docstring for field
-        semantics.
+        Tuple of ``(groups, inv_perm_np, is_identity_perm)`` where:
+            - ``groups`` is a tuple of ``(K, prim_idx_np)`` for each
+              unique contraction depth K, with ``prim_idx_np`` of
+              shape ``(n_ao_K, K)``.
+            - ``inv_perm_np`` (int32, shape ``(num_ao,)``) maps the
+              concatenated bucket-order layout back to the original
+              AO ordering.
+            - ``is_identity_perm`` (bool): True iff ``inv_perm_np``
+              equals ``arange(num_ao)`` (lets callers skip the final
+              gather).
     """
     prim_per_ao: dict[int, list[int]] = {}
     for prim_idx, ao_idx in enumerate(orbital_indices):
@@ -2119,77 +2069,71 @@ def _build_prim_buckets_by_K(orbital_indices, num_ao: int) -> PrimBucketLayout:
     for ao_idx, prims in prim_per_ao.items():
         by_K.setdefault(len(prims), []).append((ao_idx, prims))
 
-    bucket_sizes: list[tuple[int, int]] = []
-    prim_perm: list[int] = []
-    concat_ao_order: list[int] = []
+    # Bucket order: by ascending K, and inside each bucket by ascending
+    # AO index. ``concat_order`` lists AO indices in this layout.
+    groups = []
+    concat_order: list[int] = []
     for K in sorted(by_K.keys()):
         items = sorted(by_K[K], key=lambda t: t[0])
-        bucket_sizes.append((K, len(items)))
-        for ao_idx, prims in items:
-            prim_perm.extend(prims)
-            concat_ao_order.append(ao_idx)
+        prim_idx_np = np.asarray([p for _, p in items], dtype=np.int32)
+        groups.append((K, prim_idx_np))
+        concat_order.extend(a for a, _ in items)
 
-    prim_perm_np = np.asarray(prim_perm, dtype=np.int32)
-    inv_ao_perm_np = np.empty(num_ao, dtype=np.int32)
-    for pos, ao_idx in enumerate(concat_ao_order):
-        inv_ao_perm_np[ao_idx] = pos
-    is_identity_ao_perm = bool(np.array_equal(inv_ao_perm_np, np.arange(num_ao, dtype=np.int32)))
-    return PrimBucketLayout(
-        bucket_sizes=tuple(bucket_sizes),
-        prim_perm=prim_perm_np,
-        inv_ao_perm=inv_ao_perm_np,
-        is_identity_ao_perm=is_identity_ao_perm,
-    )
+    # Inverse permutation: out[ao_idx] = concatenated[inv_perm[ao_idx]]
+    inv_perm_np = np.empty(num_ao, dtype=np.int32)
+    for pos, ao_idx in enumerate(concat_order):
+        inv_perm_np[ao_idx] = pos
+    is_identity_perm = bool(np.array_equal(inv_perm_np, np.arange(num_ao, dtype=np.int32)))
+    return tuple(groups), inv_perm_np, is_identity_perm
 
 
 def _reduce_primitives_to_aos(values: jax.Array, aos_data) -> jax.Array:
-    """Sum primitives into contracted AOs via contiguous bucket slices.
+    """Sum primitives into contracted AOs without scatter / while loop.
 
-    Assumes ``values`` is in bucket-K-major primitive order (the same
-    order returned by every ``_*_prim_*`` accessor on ``aos_data``).
-    For each bucket K the slice
-    ``values[offset:offset + K * n_ao_K]`` is reshaped to
-    ``(n_ao_K, K, ...)`` and reduced along the K axis; the per-bucket
-    outputs are concatenated in bucket-AO order and a single
-    AO-level inverse-permutation gather restores the basis-natural
-    AO ordering. No fancy primitive-index gather is emitted, so the
-    L1 access pattern is coalesced (4 sectors/request) instead of
-    the 9-10 sectors/request driven by the basis-natural layout.
+    Functionally equivalent to::
+
+        jax.ops.segment_sum(values,
+                            aos_data._orbital_indices_jnp,
+                            num_segments=aos_data.num_ao)
+
+    but emits, for each unique contraction depth K, a single dense
+    ``reduce_sum`` over ``(n_ao_K, K, ...)``; the per-K outputs are
+    concatenated in bucket order and finally permuted into the
+    original AO ordering by a single ``gather``. There is no
+    ``scatter`` and no XLA ``while`` loop, so the kernel chain that
+    replaces the legacy ``segment_sum`` consists only of fusable
+    gather/reduce/gather ops.
 
     Args:
-        values: Primitive values in bucket-K-major order, shape
-            ``(num_ao_prim, ...)``.
+        values: Primitive values, shape ``(num_ao_prim, ...)``.
         aos_data: ``AOs_cart_data`` or ``AOs_sphe_data`` providing
-            ``num_ao`` and ``_prim_buckets_by_K``.
+            ``num_ao`` and ``_prim_groups_by_K``.
 
     Returns:
         Reduced values, shape ``(num_ao, ...)`` and same dtype as
         ``values``.
     """
-    layout = aos_data._prim_buckets_by_K
+    groups, inv_perm_np, is_identity_perm = aos_data._prim_groups_by_K
 
-    # Single-bucket fast path: one reshape + one reduce, no concat.
-    if len(layout.bucket_sizes) == 1:
-        K, n_ao_K = layout.bucket_sizes[0]
-        tile = values.reshape((n_ao_K, K) + values.shape[1:])
+    # Single-bucket fast path: one reduce, no concat, no gather.
+    if len(groups) == 1:
+        _K, prim_idx_np = groups[0]
+        tile = values[jnp.asarray(prim_idx_np)]  # (num_ao, K, ...)
         summed = jnp.sum(tile, axis=1)
-        if layout.is_identity_ao_perm:
+        if is_identity_perm:
             return summed
-        return summed[jnp.asarray(layout.inv_ao_perm)]
+        return summed[jnp.asarray(inv_perm_np)]
 
-    # General path: contiguous slice per bucket -> reduce -> concat.
+    # General path: per-K dense reduce -> concat in bucket order -> final
+    # inverse-permutation gather.
     pieces = []
-    offset = 0
-    for K, n_ao_K in layout.bucket_sizes:
-        n_prims_K = K * n_ao_K
-        tile = jax.lax.dynamic_slice_in_dim(values, offset, n_prims_K, axis=0)
-        tile = tile.reshape((n_ao_K, K) + tile.shape[1:])
+    for _K, prim_idx_np in groups:
+        tile = values[jnp.asarray(prim_idx_np)]  # (n_ao_K, K, ...)
         pieces.append(jnp.sum(tile, axis=1))
-        offset += n_prims_K
     concatenated = jnp.concatenate(pieces, axis=0)
-    if layout.is_identity_ao_perm:
+    if is_identity_perm:
         return concatenated
-    return concatenated[jnp.asarray(layout.inv_ao_perm)]
+    return concatenated[jnp.asarray(inv_perm_np)]
 
 
 def _cart_max_polynomial_order(aos_data: AOs_cart_data) -> int:
@@ -2274,25 +2218,17 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
         loops at AO rank rather than primitive rank.
     """
     dtype_jnp = get_dtype_jnp("ao_eval")
-    # r-R at the **unique-atom** rank: ``n_atoms_unique`` is typically
-    # O(few) whereas ``num_ao_prim`` is O(hundreds-to-thousands).
-    # Per-primitive r-R is the same for every primitive sharing an atom,
-    # so the broadcast intermediate shrinks from
-    # ``(num_ao_prim, n_elec, 3)`` to ``(n_atoms_unique, n_elec, 3)``
-    # and the heavy diff materialisation that drove much of the
-    # register-spill local-memory traffic disappears. The downstream
-    # gather ``r2_unique[_nucleus_index_prim_jnp]`` then broadcasts r^2
-    # back to primitive rank inside the fused kernel without
-    # re-materialising the (num_ao_prim, n_elec, 3) tensor.
-    # See: work/04benchmark/04nvidia-nsight/ao_kernel/ao_future_plan.md (Proposal 3).
-    R_unique = aos_data._atomic_center_carts_unique_jnp
-    r_R_diffs_uq = (r_carts[None, :, :] - R_unique[:, None, :]).astype(dtype_jnp)
-    r2_unique = jnp.sum(r_R_diffs_uq**2, axis=-1)  # (n_atoms_unique, n_elec)
-    r_squared = r2_unique[aos_data._nucleus_index_prim_jnp]  # (num_ao_prim, n_elec)
-
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion when one operand is fp64, then downcast to the ao_eval
+    # zone (Principle 3b -- local cast at point of arithmetic). r_carts is
+    # forwarded as-is (Principle 3a) and R_carts is read from the fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
     c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
+
     N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp.astype(dtype_jnp)
     # Static-unrolled (8 Z)**l avoids the XLA repeated-squaring while-loop
     # emitted by ``base ** l`` when ``l`` is a traced int array. ``L_MAX`` is
@@ -2301,15 +2237,10 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     L_MAX = _cart_max_polynomial_order(aos_data)
     N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z_jnp, l_jnp, L_MAX)
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
+    r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
-    # Radial part at primitive level -> reduce to AO level: primitive
-    # arrays are stored bucket-K-major (see ``_prim_perm_np`` on the
-    # AOs_*_data accessors), so ``_reduce_primitives_to_aos`` issues a
-    # contiguous ``dynamic_slice`` + ``reshape`` + ``reduce_sum`` per K
-    # bucket instead of a fancy primitive-index gather. This collapses
-    # the L1 sectors-per-request from ~10 to the ideal of 4.
-    # See: work/04benchmark/04nvidia-nsight/ao_kernel/ao_future_plan.md (Proposal 1).
+    # Radial part at primitive level -> reduce to AO level (case 1: see docstring).
     NR_dup = N_n_dup[:, None] * R_n_dup  # (num_ao_prim, n_elec)
     NR_ao = _reduce_primitives_to_aos(NR_dup, aos_data)  # (num_ao, n_elec)
 
@@ -2351,20 +2282,15 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     """
     dtype_jnp = get_dtype_jnp("ao_eval")
-    # r-R at unique-atom rank: the same ``r_R_diffs_uq`` tensor that
-    # powers :func:`_compute_S_l_m` below is reused to compute ``r^2``
-    # via the prim->atom gather, eliminating the
-    # ``(num_ao_prim, n_elec, 3)`` broadcast intermediate that was the
-    # main register-spill source on the Cartesian sibling kernel. The
-    # gather ``r2_unique[_nucleus_index_prim_jnp]`` fuses with the
-    # downstream ``exp/mul/reduce`` without re-materialising the full
-    # ``(num_ao_prim, n_elec)`` r^2 tensor.
-    # See: work/04benchmark/04nvidia-nsight/ao_kernel/ao_future_plan.md (Proposal 3).
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion when one operand is fp64, then downcast to the ao_eval
+    # zone (Principle 3b -- local cast at point of arithmetic). r_carts is
+    # forwarded as-is (Principle 3a) and R_carts is read from the fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
     R_carts_unique = aos_data._atomic_center_carts_unique_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
     r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
-    r2_unique = jnp.sum(r_R_diffs_uq**2, axis=-1)  # (n_atoms_unique, n_elec)
-    r_squared = r2_unique[aos_data._nucleus_index_prim_jnp]  # (num_ao_prim, n_elec)
-
     c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z_jnp = aos_data._exponents_jnp.astype(dtype_jnp)
     l_jnp = aos_data._angular_momentums_prim_jnp
@@ -2379,6 +2305,7 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
         / (factorial_2l_plus_2 * jnp.sqrt(jnp.asarray(jnp.pi, dtype=dtype_jnp)))
     )
     N_l_m_dup = jnp.sqrt((2 * l_typed + 1) / (4 * jnp.asarray(jnp.pi, dtype=dtype_jnp)))
+    r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     # Radial part at primitive level -> reduce to AO level. Same distributive-law
@@ -2923,19 +2850,12 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
         path.
     """
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
-    # r-R at unique-atom rank: per-primitive r-R is the same for every
-    # primitive sharing an atom, so the broadcast intermediate shrinks
-    # from ``(num_ao_prim, n_elec, 3)`` to ``(n_atoms_unique, n_elec, 3)``.
-    # ``r^2`` is computed at unique rank then gathered to primitive rank
-    # via ``_nucleus_index_prim_jnp`` (XLA fuses the gather into the
-    # downstream exp/mul). Same precision protocol as
-    # ``_compute_AOs_cart`` (Principles 3a/3b).
-    # See: work/04benchmark/04nvidia-nsight/ao_kernel/ao_future_plan.md (Proposal 3).
-    R_carts_unique = aos_data._atomic_center_carts_unique_jnp
-    r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
-    r2_unique = jnp.sum(r_R_diffs_uq**2, axis=-1)  # (n_atoms_unique, n_elec)
-    r2_prim = r2_unique[aos_data._nucleus_index_prim_jnp]  # (num_ao_prim, n_elec)
-
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    diff = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
     c = aos_data._coefficients_jnp.astype(dtype_jnp)
     Z = aos_data._exponents_jnp.astype(dtype_jnp)
     l = aos_data._angular_momentums_prim_jnp
@@ -2947,6 +2867,7 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * _int_pow_unrolled_cart(8.0 * Z, l, L_MAX)
     N = jnp.sqrt(N_Z * N_fact)
 
+    r2_prim = jnp.sum(diff**2, axis=-1)
     pref_prim = N[:, None] * c[:, None] * jnp.exp(-Z[:, None] * r2_prim)
 
     # Three radial moments contracted at primitive rank -> reduced to AO rank.
@@ -2993,21 +2914,15 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 
 @jit
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
-    """Analytic Laplacian for spherical AOs (contracted).
-
-    Implementation note (perf):
-        ``r-R``, ``r^2`` and the ``grad_S . r`` dot product are all
-        computed at unique-atom rank (n_atoms_unique << num_ao_prim);
-        results are gathered to primitive rank via the prim->atom map
-        only at the point of use. This eliminates the
-        ``(num_ao_prim, n_elec, 3)`` prim-rank ``r_R_diffs`` broadcast
-        intermediate that previously dominated this kernel's
-        register-spill local-memory traffic on the GPU. Same precision
-        protocol as ``_compute_AOs_sphe`` (Principles 3a/3b).
-        See: work/04benchmark/04nvidia-nsight/ao_kernel/ao_future_plan.md (Proposal 3).
-    """
+    """Analytic Laplacian for spherical AOs (contracted)."""
     dtype_jnp = get_dtype_jnp("ao_grad_lap")
+    # Reconstruct r-R in caller-supplied precision (fp64 from MCMC walker state)
+    # via JAX promotion, then downcast to the ao_grad_lap zone (Principle 3b).
+    # r_carts forwarded as-is (Principle 3a); R_carts read from fp64 storage
+    # accessor on the basis-data dataclass.
+    R_carts = aos_data._atomic_center_carts_prim_jnp
     R_carts_unique = aos_data._atomic_center_carts_unique_jnp
+    r_R_diffs = (r_carts[None, :, :] - R_carts[:, None, :]).astype(dtype_jnp)
     r_R_diffs_uq = (r_carts[None, :, :] - R_carts_unique[:, None, :]).astype(dtype_jnp)
     nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
     c_jnp = aos_data._coefficients_jnp.astype(dtype_jnp)
@@ -3025,35 +2940,26 @@ def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.n
     )
     N_l_m_dup = jnp.sqrt((2 * l_f64 + 1) / (4 * jnp.pi))
 
-    # r^2 at unique-atom rank, gathered to primitive rank (Proposal 3).
-    r2_unique = jnp.sum(r_R_diffs_uq**2, axis=-1)  # (n_atoms_unique, n_elec)
-    r_squared = r2_unique[nucleus_index_prim_jnp]  # (num_ao_prim, n_elec)
+    r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     S_l_m_vals_all, S_l_m_grads_all, S_l_m_laps_all = _compute_S_l_m_and_grad_lap(r_R_diffs_uq)
     max_ml = S_l_m_vals_all.shape[0]
-    n_atoms_unique = S_l_m_vals_all.shape[1]
 
-    # ``grad_S . r_R`` is computed at unique-atom rank then gathered to
-    # primitive rank as a *scalar* per primitive. This sidesteps any
-    # (num_ao_prim, n_elec, 3) prim-rank materialisation of either
-    # ``r_R_diffs`` or ``S_l_m_grad_dup``: only the (num_ao_prim,
-    # n_elec) scalar dot product survives at prim rank.
-    grad_S_dot_r_all = jnp.sum(S_l_m_grads_all * r_R_diffs_uq[None, :, :, :], axis=-1)  # (max_ml, n_atoms_unique, n_elec)
-
-    S_l_m_vals_flat = S_l_m_vals_all.reshape((max_ml * n_atoms_unique, S_l_m_vals_all.shape[2]), order="F")
-    S_l_m_laps_flat = S_l_m_laps_all.reshape((max_ml * n_atoms_unique, S_l_m_laps_all.shape[2]), order="F")
-    grad_S_dot_r_flat = grad_S_dot_r_all.reshape((max_ml * n_atoms_unique, grad_S_dot_r_all.shape[2]), order="F")
+    S_l_m_vals_flat = S_l_m_vals_all.reshape((max_ml * S_l_m_vals_all.shape[1], S_l_m_vals_all.shape[2]), order="F")
+    S_l_m_grads_flat = S_l_m_grads_all.reshape((max_ml * S_l_m_grads_all.shape[1], S_l_m_grads_all.shape[2], 3), order="F")
+    S_l_m_laps_flat = S_l_m_laps_all.reshape((max_ml * S_l_m_laps_all.shape[1], S_l_m_laps_all.shape[2]), order="F")
 
     global_l_m_index = l_jnp**2 + (m_jnp + l_jnp)
     global_R_l_m_index = nucleus_index_prim_jnp * max_ml + global_l_m_index
     S_l_m_dup = S_l_m_vals_flat[global_R_l_m_index]
+    S_l_m_grad_dup = S_l_m_grads_flat[global_R_l_m_index]
     S_l_m_lap_dup = S_l_m_laps_flat[global_R_l_m_index]
-    grad_S_dot_r = grad_S_dot_r_flat[global_R_l_m_index]
 
     pref = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None]
     AOs_dup = pref * S_l_m_dup
 
+    grad_S_dot_r = jnp.sum(S_l_m_grad_dup * r_R_diffs, axis=-1)
     lap_dup = (
         pref * S_l_m_lap_dup
         + AOs_dup * (4.0 * (Z_jnp[:, None] ** 2) * r_squared - 6.0 * Z_jnp[:, None])
