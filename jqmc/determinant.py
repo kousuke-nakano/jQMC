@@ -181,38 +181,54 @@ class Geminal_data:
 
     @property
     def ao_exponents_up(self) -> jax.Array:
-        """AO Gaussian exponents for spin-up orbitals (jnp view of underlying numpy storage)."""
+        """AO Gaussian exponents for spin-up orbitals (basis-natural order).
+
+        Returns the raw storage order (matching ``orb_data_up_spin.exponents``),
+        not the bucket-K-major order used internally by ``_exponents_jnp``
+        for the AO eval kernel. The optimization API (``with_updated_ao_exponents``
+        and the lambda_basis variational blocks) reads/writes basis-natural
+        order so this accessor must match.
+        """
         if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_up_spin._exponents_jnp
+            return jnp.asarray(self.orb_data_up_spin.exponents, dtype=jnp.float64)
         if isinstance(self.orb_data_up_spin, MOs_data):
-            return self.orb_data_up_spin.aos_data._exponents_jnp
+            return jnp.asarray(self.orb_data_up_spin.aos_data.exponents, dtype=jnp.float64)
         raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
 
     @property
     def ao_exponents_dn(self) -> jax.Array:
-        """AO Gaussian exponents for spin-down orbitals (jnp view of underlying numpy storage)."""
+        """AO Gaussian exponents for spin-down orbitals (basis-natural order).
+
+        See :attr:`ao_exponents_up` for the order/permutation rationale.
+        """
         if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_dn_spin._exponents_jnp
+            return jnp.asarray(self.orb_data_dn_spin.exponents, dtype=jnp.float64)
         if isinstance(self.orb_data_dn_spin, MOs_data):
-            return self.orb_data_dn_spin.aos_data._exponents_jnp
+            return jnp.asarray(self.orb_data_dn_spin.aos_data.exponents, dtype=jnp.float64)
         raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
 
     @property
     def ao_coefficients_up(self) -> jax.Array:
-        """AO contraction coefficients for spin-up orbitals (jnp view of underlying numpy storage)."""
+        """AO contraction coefficients for spin-up orbitals (basis-natural order).
+
+        See :attr:`ao_exponents_up` for the order/permutation rationale.
+        """
         if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_up_spin._coefficients_jnp
+            return jnp.asarray(self.orb_data_up_spin.coefficients, dtype=jnp.float64)
         if isinstance(self.orb_data_up_spin, MOs_data):
-            return self.orb_data_up_spin.aos_data._coefficients_jnp
+            return jnp.asarray(self.orb_data_up_spin.aos_data.coefficients, dtype=jnp.float64)
         raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
 
     @property
     def ao_coefficients_dn(self) -> jax.Array:
-        """AO contraction coefficients for spin-down orbitals (jnp view of underlying numpy storage)."""
+        """AO contraction coefficients for spin-down orbitals (basis-natural order).
+
+        See :attr:`ao_exponents_up` for the order/permutation rationale.
+        """
         if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_dn_spin._coefficients_jnp
+            return jnp.asarray(self.orb_data_dn_spin.coefficients, dtype=jnp.float64)
         if isinstance(self.orb_data_dn_spin, MOs_data):
-            return self.orb_data_dn_spin.aos_data._coefficients_jnp
+            return jnp.asarray(self.orb_data_dn_spin.aos_data.coefficients, dtype=jnp.float64)
         raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
 
     def _replace_orb_exponents(self, orb_data, new_exp):

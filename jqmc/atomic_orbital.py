@@ -768,28 +768,23 @@ class AOs_cart_data:
         the dataclass so that downstream produce-then-reduce kernels
         see a contiguous bucket layout. The permutation itself is a
         host-side numpy op at trace time; runtime cost is zero.
-
-        The take is along the **last** axis so that vmap-batched
-        leaves (e.g. ``(num_walkers, num_ao_prim)`` gradients flowing
-        through ``collect_param_grads``) are also permuted correctly
-        on the primitive axis.
         """
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.take(jnp.asarray(self.exponents, dtype=dtype_jnp), self._prim_perm_np, axis=-1)
+        return jnp.asarray(self.exponents, dtype=dtype_jnp)[self._prim_perm_np]
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients in bucket-K-major primitive order.
 
-        Permuted along the last axis; see :attr:`_exponents_jnp` for
-        rationale and batched-leaf safety.
+        Permuted to align with :attr:`_exponents_jnp`; see that
+        accessor's docstring for rationale.
         """
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.take(jnp.asarray(self.coefficients, dtype=dtype_jnp), self._prim_perm_np, axis=-1)
+        return jnp.asarray(self.coefficients, dtype=dtype_jnp)[self._prim_perm_np]
 
     @property
     def _num_orb(self) -> int:
@@ -1357,28 +1352,23 @@ class AOs_sphe_data:
         the dataclass so that downstream produce-then-reduce kernels
         see a contiguous bucket layout. The permutation itself is a
         host-side numpy op at trace time; runtime cost is zero.
-
-        The take is along the **last** axis so that vmap-batched
-        leaves (e.g. ``(num_walkers, num_ao_prim)`` gradients flowing
-        through ``collect_param_grads``) are also permuted correctly
-        on the primitive axis.
         """
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.take(jnp.asarray(self.exponents, dtype=dtype_jnp), self._prim_perm_np, axis=-1)
+        return jnp.asarray(self.exponents, dtype=dtype_jnp)[self._prim_perm_np]
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients in bucket-K-major primitive order.
 
-        Permuted along the last axis; see :attr:`_exponents_jnp` for
-        rationale and batched-leaf safety.
+        Permuted to align with :attr:`_exponents_jnp`; see that
+        accessor's docstring for rationale.
         """
         # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
         # consumer casts to its own zone at use site.
         dtype_jnp = jnp.float64
-        return jnp.take(jnp.asarray(self.coefficients, dtype=dtype_jnp), self._prim_perm_np, axis=-1)
+        return jnp.asarray(self.coefficients, dtype=dtype_jnp)[self._prim_perm_np]
 
     @property
     def _num_orb(self) -> int:
