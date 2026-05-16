@@ -64,6 +64,7 @@ from jqmc.jastrow_factor import (
     _compute_Jastrow_two_body_debug,
     _compute_ratio_Jastrow_part_debug,
     _compute_ratio_Jastrow_part_rank1_update,
+    _init_grads_laplacian_Jastrow_three_body_streaming_state,
     compute_grads_and_laplacian_Jastrow_one_body,
     compute_grads_and_laplacian_Jastrow_part,
     compute_grads_and_laplacian_Jastrow_three_body,
@@ -1424,11 +1425,50 @@ def test_analytical_and_auto_grads_and_laplacian_Jastrow_part(j1b_type, j2b_type
     jax.clear_caches()
 
 
+# Hand-picked covering set replacing the 5x3x3x2 = 90-case full Cartesian
+# product. The default Jastrow combo gets a full (pattern, n_grid,
+# use_j3_state) sweep because the rank-1 update + J3 streaming-cache logic
+# lives outside the J1/J2/NN function paths -- so the other four Jastrow
+# combos only need representative configs to confirm those paths still
+# integrate. ``mixed`` + ``n_grid=1`` is omitted because the test body's
+# ``if n_grid >= 3`` branch does not fire there, making it a duplicate of
+# ``all_moved`` + ``n_grid=1``. All single-value coverage and the
+# (n_grid x use_j3_state), (pattern x use_j3_state), and valid
+# (pattern x n_grid) pairs are preserved.
+_RATIO_RANK1_PARAM_SETS = [
+    # (j1b_type, j2b_type, include_nn, pattern, n_grid, use_j3_state)
+    # --- default Jastrow combo: full (pattern, n_grid, use_j3_state) sweep ---
+    ("exp", "pade", False, "all_moved", 1, False),
+    ("exp", "pade", False, "all_moved", 1, True),
+    ("exp", "pade", False, "all_moved", 3, False),
+    ("exp", "pade", False, "all_moved", 3, True),
+    ("exp", "pade", False, "all_moved", 6, False),
+    ("exp", "pade", False, "all_moved", 6, True),
+    ("exp", "pade", False, "none_moved", 1, False),
+    ("exp", "pade", False, "none_moved", 6, True),
+    ("exp", "pade", False, "mixed", 3, False),
+    ("exp", "pade", False, "mixed", 3, True),
+    ("exp", "pade", False, "mixed", 6, False),
+    ("exp", "pade", False, "mixed", 6, True),
+    # --- other Jastrow combos: representative configs ---
+    ("pade", "pade", False, "all_moved", 3, True),
+    ("pade", "pade", False, "none_moved", 1, False),
+    ("exp", "exp", False, "all_moved", 6, False),
+    ("exp", "exp", False, "mixed", 6, True),
+    ("pade", "exp", False, "all_moved", 1, True),
+    ("pade", "exp", False, "mixed", 3, False),
+    ("exp", "pade", True, "all_moved", 1, False),
+    ("exp", "pade", True, "none_moved", 3, True),
+    ("exp", "pade", True, "mixed", 6, True),
+]
+
+
 @pytest.mark.activate_if_skip_heavy
-@pytest.mark.parametrize("j1b_type,j2b_type,include_nn", _JASTROW_COMBOS)
-@pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
-@pytest.mark.parametrize("n_grid", [1, 3, 6])
-def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern: str, n_grid: int):
+@pytest.mark.parametrize(
+    "j1b_type,j2b_type,include_nn,pattern,n_grid,use_j3_state",
+    _RATIO_RANK1_PARAM_SETS,
+)
+def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern: str, n_grid: int, use_j3_state: bool):
     """Compare ratio Jastrow part: debug vs rank-1 update implementation.
 
     Sweeps ``n_grid`` to cover the two production regimes:
@@ -1438,6 +1478,12 @@ def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern
       * ``n_grid = 3, 6`` -- ECP nonlocal mesh path (Nv = 6 default).
         Confirms the rewrite is numerically equivalent when N_grid is large
         enough that the old baseline was fully amortized.
+
+    ``use_j3_state`` toggles the J3 streaming-cache path inside the rank-1
+    update (``j3_state=None`` -> recompute aos / j3_mat @ aos every call;
+    ``j3_state=init(...)`` -> read from cache). Both must agree with the
+    debug reference; this is the regression guard for the MCMC walker
+    update integration of the cache.
     """
     # Both _compute_ratio_Jastrow_part_rank1_update and _compute_ratio_Jastrow_part_debug
     # operate in the jastrow_ratio zone (J(R')/J(R) log-ratio). Use that zone's tolerance
@@ -1480,12 +1526,24 @@ def test_ratio_Jastrow_part_rank1_update(j1b_type, j2b_type, include_nn, pattern
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
+    # Build the J3 streaming cache from the OLD configuration when requested.
+    # ``_build_jastrow_data_for_part_tests`` always includes a J3 component,
+    # so the cache is always constructible here.
+    j3_state = None
+    if use_j3_state:
+        j3_state = _init_grads_laplacian_Jastrow_three_body_streaming_state(
+            jastrow_data.jastrow_three_body_data,
+            old_r_up_carts,
+            old_r_dn_carts,
+        )
+
     ratio_auto = _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data,
         old_r_up_carts=old_r_up_carts,
         old_r_dn_carts=old_r_dn_carts,
         new_r_up_carts_arr=new_r_up_carts_arr,
         new_r_dn_carts_arr=new_r_dn_carts_arr,
+        j3_state=j3_state,
     )
 
     assert ratio_auto.shape == (n_grid,)

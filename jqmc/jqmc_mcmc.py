@@ -87,7 +87,12 @@ from .hamiltonians import (
     compute_local_energy,
     compute_local_energy_fast,
 )
-from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
+from .jastrow_factor import (
+    _advance_jastrow_ratio_state,
+    _compute_ratio_Jastrow_part_rank1_update,
+    _init_jastrow_ratio_state,
+    compute_Jastrow_part,
+)
 from .structure import _find_nearest_index_jnp
 from .swct import evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import evaluate_ln_wavefunction, evaluate_ln_wavefunction_fast
@@ -734,6 +739,18 @@ class MCMC:
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
+        # Same throwaway-for-trace pattern for the J3 streaming state; ``None``
+        # when no three-body Jastrow component is present (Python-static
+        # dispatch keeps the trace consistent with the chain-entry value below).
+        _j3d_warmup = self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data
+        if _j3d_warmup is not None:
+            j3_state_warmup = _jit_vmap_init_j3_state(
+                _j3d_warmup,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+        else:
+            j3_state_warmup = None
 
         dtype_jnp = jnp.float64
         dtype_np = np.float64
@@ -758,6 +775,7 @@ class MCMC:
                     geminal_inv,
                     geminal,
                     det_ratio_state_warmup,
+                    j3_state_warmup,
                 )
             else:
                 _ = _jit_vmap_update(
@@ -771,6 +789,7 @@ class MCMC:
                     geminal_inv,
                     geminal,
                     det_ratio_state_warmup,
+                    j3_state_warmup,
                 )
             _ = _jit_vmap_e_L_fast(
                 self.__hamiltonian_data,
@@ -905,6 +924,22 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
+        # J3 streaming state: skip the O(n_ao^2 * N_e) matmul rebuild of
+        # ``W_up/W_dn = j3_mat @ aos_*`` and ``U_up/U_dn = j3_mat.T @ aos_*``
+        # on every MCMC ratio call by maintaining the rank-1-updatable cache
+        # alongside ``det_ratio_state``. Only constructed when a three-body
+        # Jastrow component is present; otherwise pass-through ``None`` keeps
+        # the rank-1 ratio path on its existing (no-cache) trace.
+        _j3d = self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data
+        if _j3d is not None:
+            j3_state = _jit_vmap_init_j3_state(
+                _j3d,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+        else:
+            j3_state = None
+
         mcmc_loop_start = time.perf_counter()
         for i_mcmc_step in range(num_mcmc_steps):
             if i_mcmc_step % mcmc_interval == 0:
@@ -926,6 +961,7 @@ class MCMC:
                     geminal_inv,
                     geminal,
                     det_ratio_state,
+                    j3_state,
                 ) = _jit_vmap_update_up(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -937,6 +973,7 @@ class MCMC:
                     geminal_inv,
                     geminal,
                     det_ratio_state,
+                    j3_state,
                 )
             else:
                 (
@@ -948,6 +985,7 @@ class MCMC:
                     geminal_inv,
                     geminal,
                     det_ratio_state,
+                    j3_state,
                 ) = _jit_vmap_update(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -959,6 +997,7 @@ class MCMC:
                     geminal_inv,
                     geminal,
                     det_ratio_state,
+                    j3_state,
                 )
             self.__latest_r_up_carts.block_until_ready()
             self.__latest_r_dn_carts.block_until_ready()
@@ -4800,6 +4839,7 @@ def _update_electron_positions(
     geminal_inv_init,
     geminal_init,
     det_ratio_state_init,
+    j3_state_init,
 ):
     """Update electron positions based on the MH method.
 
@@ -4818,6 +4858,17 @@ def _update_electron_positions(
             ``(init_r_up_carts, init_r_dn_carts)``. Built once at the MCMC
             chain entry by :func:`_init_det_ratio_streaming_state` and
             advanced via :func:`_advance_det_ratio_streaming_state` on accept.
+        j3_state_init: Optional ``Jastrow_three_body_ratio_state`` consistent
+            with ``(init_r_up_carts, init_r_dn_carts)``. When ``jastrow_three_body_data``
+            is present, built once at the MCMC chain entry and advanced via
+            :func:`_advance_jastrow_ratio_state` on accept; passing it to
+            ``_compute_ratio_Jastrow_part_rank1_update`` avoids the per-step
+            ``O(n_ao^2 * N_e)`` matmul rebuild. ``None`` when no three-body
+            Jastrow component exists. The slim ratio-state mirrors the
+            ``Det_ratio_streaming_state`` pattern: only the 8 fields the ratio
+            kernel reads (aos_*, j3_mat_aos_*, j3_mat_T_aos_*, rowsums) are
+            carried through the ``fori_loop``, avoiding the grad/lap plumbing
+            cost the full LRDMC-kinetic state would impose.
 
     Returns:
         jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
@@ -4834,6 +4885,7 @@ def _update_electron_positions(
     geminal = geminal_init
     geminal_inv = geminal_inv_init
     det_ratio_state = det_ratio_state_init
+    j3_state = j3_state_init
 
     def body_fun(_, carry):
         (
@@ -4845,6 +4897,7 @@ def _update_electron_positions(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         ) = carry
         total_electrons = len(r_up_carts) + len(r_dn_carts)
         num_up_electrons = len(r_up_carts)
@@ -4931,13 +4984,17 @@ def _update_electron_positions(
             * (1.0 / (2.0 * f_prime_l**2 * Dt**2) - 1.0 / (2.0 * f_l**2 * Dt**2))
         )
 
-        # Jastrow ratio via dedicated fast-update API (includes exp)
+        # Jastrow ratio via dedicated fast-update API (includes exp).
+        # ``j3_state`` (when not None) lets the J3 block reuse cached
+        # ``aos_*`` and ``j3_mat @ aos_*`` / ``j3_mat.T @ aos_*`` precontracts
+        # instead of recomputing the O(n_ao^2 * N_e) matmuls each step.
         J_ratio = _compute_ratio_Jastrow_part_rank1_update(
             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
             old_r_up_carts=r_up_carts,
             old_r_dn_carts=r_dn_carts,
             new_r_up_carts_arr=jnp.expand_dims(proposed_r_up_carts, axis=0),
             new_r_dn_carts_arr=jnp.expand_dims(proposed_r_dn_carts, axis=0),
+            j3_state=j3_state,
         )[0]
 
         # Determinant part, fast update using the matrix determinant lemma.
@@ -5032,6 +5089,22 @@ def _update_electron_positions(
             r_dn_carts_new=proposed_r_dn_carts,
         )
 
+        # On accept, advance the J3 streaming state to the new configuration.
+        # Python-static dispatch on ``jastrow_three_body_data is None`` -- when
+        # no J3 component exists ``j3_state`` is ``None`` and we just pass it
+        # through (also avoids tracing the advance kernel).
+        if hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+            j3_state_new = _advance_jastrow_ratio_state(
+                jastrow_three_body_data=hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data,
+                state=j3_state,
+                moved_spin_is_up=is_up,
+                moved_index=selected_electron_index,
+                r_up_carts_new=proposed_r_up_carts,
+                r_dn_carts_new=proposed_r_dn_carts,
+            )
+        else:
+            j3_state_new = j3_state
+
         def _accepted_fun(_):
             # Move accepted
             return (
@@ -5042,6 +5115,7 @@ def _update_electron_positions(
                 geminal_inv_new,
                 geminal_new,
                 det_ratio_state_new,
+                j3_state_new,
             )
 
         def _rejected_fun(_):
@@ -5054,6 +5128,7 @@ def _update_electron_positions(
                 geminal_inv,
                 geminal,
                 det_ratio_state,
+                j3_state,
             )
 
         # judge accept or reject the propsed move using jax.lax.cond
@@ -5065,6 +5140,7 @@ def _update_electron_positions(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         ) = lax.cond(b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None)
 
         carry = (
@@ -5076,6 +5152,7 @@ def _update_electron_positions(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         )
         return carry
 
@@ -5089,6 +5166,7 @@ def _update_electron_positions(
         geminal_inv,
         geminal,
         det_ratio_state,
+        j3_state,
     ) = jax.lax.fori_loop(
         0,
         num_mcmc_per_measurement,
@@ -5102,6 +5180,7 @@ def _update_electron_positions(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         ),
     )
 
@@ -5114,6 +5193,7 @@ def _update_electron_positions(
         geminal_inv,
         geminal,
         det_ratio_state,
+        j3_state,
     )
 
 
@@ -5129,12 +5209,20 @@ def _update_electron_positions_only_up_electron(
     geminal_inv_init,
     geminal_init,
     det_ratio_state_init,
+    j3_state_init,
 ):
     """Update electron positions based on the MH method (up-spin electrons only).
 
     See :func:`_update_electron_positions` for the slim state ``det_ratio_state_init``
     contract; here only up-electrons move so ``state.ao_dn`` and ``state.paired_dn``
     stay constant for the entire chain.
+
+    ``j3_state_init`` mirrors the signature of :func:`_update_electron_positions`
+    so the vmap wrappers stay symmetric, but this variant evaluates the Jastrow
+    factor via the legacy ``compute_Jastrow_part`` path rather than the
+    rank-1 ratio API, so the state is only carried through (never consumed
+    or advanced). A future refactor to the ratio path would also light up
+    the same J3 streaming-cache savings here.
     """
     dtype_jnp = jnp.float64
     accepted_moves = 0
@@ -5144,6 +5232,7 @@ def _update_electron_positions_only_up_electron(
     geminal_inv = geminal_inv_init
     geminal = geminal_init
     det_ratio_state = det_ratio_state_init
+    j3_state = j3_state_init
 
     def body_fun(_, carry):
         (
@@ -5155,6 +5244,7 @@ def _update_electron_positions_only_up_electron(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         ) = carry
         num_up_electrons = len(r_up_carts)
 
@@ -5296,7 +5386,10 @@ def _update_electron_positions_only_up_electron(
         )
 
         def _accepted_fun(_):
-            # Move accepted
+            # Move accepted. ``j3_state`` is carried through unchanged: this
+            # variant uses the legacy full-Jastrow path (``compute_Jastrow_part``)
+            # rather than the rank-1 ratio API, so the J3 streaming cache is
+            # not consumed or advanced here.
             return (
                 accepted_moves + 1,
                 rejected_moves,
@@ -5305,6 +5398,7 @@ def _update_electron_positions_only_up_electron(
                 geminal_inv_new,
                 geminal_new,
                 det_ratio_state_new,
+                j3_state,
             )
 
         def _rejected_fun(_):
@@ -5317,6 +5411,7 @@ def _update_electron_positions_only_up_electron(
                 geminal_inv,
                 geminal,
                 det_ratio_state,
+                j3_state,
             )
 
         # judge accept or reject the propsed move using jax.lax.cond
@@ -5328,6 +5423,7 @@ def _update_electron_positions_only_up_electron(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         ) = lax.cond(b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None)
 
         carry = (
@@ -5339,6 +5435,7 @@ def _update_electron_positions_only_up_electron(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         )
         return carry
 
@@ -5352,6 +5449,7 @@ def _update_electron_positions_only_up_electron(
         geminal_inv,
         geminal,
         det_ratio_state,
+        j3_state,
     ) = jax.lax.fori_loop(
         0,
         num_mcmc_per_measurement,
@@ -5365,6 +5463,7 @@ def _update_electron_positions_only_up_electron(
             geminal_inv,
             geminal,
             det_ratio_state,
+            j3_state,
         ),
     )
 
@@ -5377,6 +5476,7 @@ def _update_electron_positions_only_up_electron(
         geminal_inv,
         geminal,
         det_ratio_state,
+        j3_state,
     )
 
 
@@ -5384,15 +5484,18 @@ def _update_electron_positions_only_up_electron(
 # Created once at import time so subsequent MCMC.run() calls reuse
 # the same Python function objects and hit JAX's compilation cache.
 _jit_vmap_update = jit(
-    vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0)),
+    vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0, 0)),
     static_argnums=3,
 )
 _jit_vmap_update_up = jit(
-    vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0)),
+    vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0, 0)),
     static_argnums=3,
 )
 _jit_vmap_init_det_ratio_state = jit(
     vmap(_init_det_ratio_streaming_state, in_axes=(None, 0, 0)),
+)
+_jit_vmap_init_j3_state = jit(
+    vmap(_init_jastrow_ratio_state, in_axes=(None, 0, 0)),
 )
 _jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0, 0)))
 _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
