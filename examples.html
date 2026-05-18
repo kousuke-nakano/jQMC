@@ -168,6 +168,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="notes/mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -1464,19 +1465,19 @@ If the optimization does not converge well, try the following:</p>
 </pre></div>
 </div>
 <p>The directory structure will look like:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>water_dimer_qmc/
-├── 01_S22_water_monomer_1/   # monomer 1
-│   └── 01DFT/
-├── 02_S22_water_monomer_2/   # monomer 2
-│   └── 01DFT/
-└── 03_S22_water_dimer/       # dimer
-    ├── 01DFT/
-    ├── 02vmc_JSD/
-    ├── 03mcmc_JSD/
-    ├── 04lrdmc_JSD/
-    ├── 05vmc_JAGP/
-    ├── 06mcmc_JAGP/
-    └── 07lrdmc_JAGP/
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">water_dimer_qmc</span><span class="o">/</span>
+<span class="o">---</span> <span class="mi">01</span><span class="n">_S22_water_monomer_1</span><span class="o">/</span>   <span class="c1"># monomer 1</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="mi">01</span><span class="n">DFT</span><span class="o">/</span>
+<span class="o">---</span> <span class="mi">02</span><span class="n">_S22_water_monomer_2</span><span class="o">/</span>   <span class="c1"># monomer 2</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="mi">01</span><span class="n">DFT</span><span class="o">/</span>
+<span class="o">---</span> <span class="mi">03</span><span class="n">_S22_water_dimer</span><span class="o">/</span>       <span class="c1"># dimer</span>
+    <span class="o">---</span> <span class="mi">01</span><span class="n">DFT</span><span class="o">/</span>
+    <span class="o">---</span> <span class="mi">02</span><span class="n">vmc_JSD</span><span class="o">/</span>
+    <span class="o">---</span> <span class="mi">03</span><span class="n">mcmc_JSD</span><span class="o">/</span>
+    <span class="o">---</span> <span class="mi">04</span><span class="n">lrdmc_JSD</span><span class="o">/</span>
+    <span class="o">---</span> <span class="mi">05</span><span class="n">vmc_JAGP</span><span class="o">/</span>
+    <span class="o">---</span> <span class="mi">06</span><span class="n">mcmc_JAGP</span><span class="o">/</span>
+    <span class="o">---</span> <span class="mi">07</span><span class="n">lrdmc_JAGP</span><span class="o">/</span>
 </pre></div>
 </div>
 </section>
@@ -2895,26 +2896,26 @@ python<span class="w"> </span>run_pes_pipeline.py
 <section id="directory-structure">
 <h3>Directory structure<a class="headerlink" href="#directory-structure" title="Link to this heading">#</a></h3>
 <p>After running the pipeline, each bond length has the following structure:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>R_0.74/
-├── 00_pyscf/          # pySCF DFT calculation
-│   ├── run_pyscf.py
-│   ├── H2_R_0.74.h5   # TREXIO file
-│   └── H2_R_0.74.out  # pySCF output
-├── 01_wf/             # WF_Workflow: TREXIO --&gt; hamiltonian_data.h5
-├── 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_20.h5
-├── 03_mcmc/           # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">R_0</span><span class="mf">.74</span><span class="o">/</span>
+<span class="o">---</span> <span class="mi">00</span><span class="n">_pyscf</span><span class="o">/</span>          <span class="c1"># pySCF DFT calculation</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">run_pyscf</span><span class="o">.</span><span class="n">py</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">H2_R_0</span><span class="mf">.74</span><span class="o">.</span><span class="n">h5</span>   <span class="c1"># TREXIO file</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">H2_R_0</span><span class="mf">.74</span><span class="o">.</span><span class="n">out</span>  <span class="c1"># pySCF output</span>
+<span class="o">---</span> <span class="mi">01</span><span class="n">_wf</span><span class="o">/</span>             <span class="c1"># WF_Workflow: TREXIO --&gt; hamiltonian_data.h5</span>
+<span class="o">---</span> <span class="mi">02</span><span class="n">_vmc</span><span class="o">/</span>            <span class="c1"># VMC_Workflow: Jastrow + MO optimization</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">hamiltonian_data_opt_step_1</span><span class="o">.</span><span class="n">h5</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="o">...</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">hamiltonian_data_opt_step_20</span><span class="o">.</span><span class="n">h5</span>
+<span class="o">---</span> <span class="mi">03</span><span class="n">_mcmc</span><span class="o">/</span>           <span class="c1"># MCMC_Workflow: production sampling + forces</span>
+<span class="o">---</span> <span class="mi">04</span><span class="n">_lrdmc</span><span class="o">/</span>          <span class="c1"># LRDMC_Workflow: LRDMC (a=0.2) + forces</span>
 </pre></div>
 </div>
 </section>
 <section id="workflow-dag">
 <h3>Workflow DAG<a class="headerlink" href="#workflow-dag" title="Link to this heading">#</a></h3>
 <p>For each R, the dependency graph is:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>pySCF --&gt; WF --&gt; VMC ─┬─--&gt; MCMC
-                   └─--&gt; LRDMC (a=0.2)
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pySCF</span> <span class="o">--&gt;</span> <span class="n">WF</span> <span class="o">--&gt;</span> <span class="n">VMC</span> <span class="o">-----&gt;</span> <span class="n">MCMC</span>
+                   <span class="o">----&gt;</span> <span class="n">LRDMC</span> <span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>All 20 R values are independent and execute in parallel via <code class="docutils literal notranslate"><span class="pre">Launcher</span></code>.</p>
@@ -2957,7 +2958,7 @@ python<span class="w"> </span>run_pes_pipeline.py
 </section>
 <section id="id40">
 <h3>Results<a class="headerlink" href="#id40" title="Link to this heading">#</a></h3>
-<p><img alt="H2 PES — MCMC and LRDMC" src="_images/H2_PES_mcmc_lrdmc.png" /></p>
+<p><img alt="H2 PES -- MCMC and LRDMC" src="_images/H2_PES_mcmc_lrdmc.png" /></p>
 </section>
 <section id="references">
 <h3>References<a class="headerlink" href="#references" title="Link to this heading">#</a></h3>
@@ -3138,36 +3139,36 @@ python<span class="w"> </span>run_pipelines.py
 <section id="id47">
 <h3>Directory structure<a class="headerlink" href="#id47" title="Link to this heading">#</a></h3>
 <p>After running the pipeline:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>jqmc-workflow-example02/
-├── run_pipelines.py         # Main script
-├── run_pyscf.py             # Standalone pySCF script (reference)
-├── water_trexio.hdf5        # TREXIO file (pySCF output)
-├── jqmc_setting_local/      # Machine configuration
-├── 01_wf/                   # WF_Workflow: TREXIO --&gt; hamiltonian_data.h5
-├── 02_vmc/                  # VMC_Workflow: Jastrow optimization
-├── 03_mcmc/                 # MCMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
-├── 04_lrdmc/                # LRDMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">workflow</span><span class="o">-</span><span class="n">example02</span><span class="o">/</span>
+<span class="o">---</span> <span class="n">run_pipelines</span><span class="o">.</span><span class="n">py</span>         <span class="c1"># Main script</span>
+<span class="o">---</span> <span class="n">run_pyscf</span><span class="o">.</span><span class="n">py</span>             <span class="c1"># Standalone pySCF script (reference)</span>
+<span class="o">---</span> <span class="n">water_trexio</span><span class="o">.</span><span class="n">hdf5</span>        <span class="c1"># TREXIO file (pySCF output)</span>
+<span class="o">---</span> <span class="n">jqmc_setting_local</span><span class="o">/</span>      <span class="c1"># Machine configuration</span>
+<span class="o">---</span> <span class="mi">01</span><span class="n">_wf</span><span class="o">/</span>                   <span class="c1"># WF_Workflow: TREXIO --&gt; hamiltonian_data.h5</span>
+<span class="o">---</span> <span class="mi">02</span><span class="n">_vmc</span><span class="o">/</span>                  <span class="c1"># VMC_Workflow: Jastrow optimization</span>
+<span class="o">---</span> <span class="mi">03</span><span class="n">_mcmc</span><span class="o">/</span>                 <span class="c1"># MCMC production (per walker count)</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">w00008</span><span class="o">/</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">w00016</span><span class="o">/</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="o">...</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">w08192</span><span class="o">/</span>
+<span class="o">---</span> <span class="mi">04</span><span class="n">_lrdmc</span><span class="o">/</span>                <span class="c1"># LRDMC production (per walker count)</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">w00008</span><span class="o">/</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">w00016</span><span class="o">/</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="o">...</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">w08192</span><span class="o">/</span>
 </pre></div>
 </div>
 </section>
 <section id="id48">
 <h3>Workflow DAG<a class="headerlink" href="#id48" title="Link to this heading">#</a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>pySCF --&gt; WF --&gt; VMC ─┬─--&gt; MCMC  (w8)    ─┐
-                   ├─--&gt; MCMC  (w16)    │
-                   ├─--&gt; ...            ├─--&gt; Summary table
-                   ├─--&gt; MCMC  (w8192)  │
-                   ├─--&gt; LRDMC (w8)     │
-                   ├─--&gt; LRDMC (w16)    │
-                   ├─--&gt; ...            │
-                   └─--&gt; LRDMC (w8192)  ─┘
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pySCF</span> <span class="o">--&gt;</span> <span class="n">WF</span> <span class="o">--&gt;</span> <span class="n">VMC</span> <span class="o">-----&gt;</span> <span class="n">MCMC</span>  <span class="p">(</span><span class="n">w8</span><span class="p">)</span>    <span class="o">--</span>
+                   <span class="o">----&gt;</span> <span class="n">MCMC</span>  <span class="p">(</span><span class="n">w16</span><span class="p">)</span>    <span class="o">-</span>
+                   <span class="o">----&gt;</span> <span class="o">...</span>            <span class="o">----&gt;</span> <span class="n">Summary</span> <span class="n">table</span>
+                   <span class="o">----&gt;</span> <span class="n">MCMC</span>  <span class="p">(</span><span class="n">w8192</span><span class="p">)</span>  <span class="o">-</span>
+                   <span class="o">----&gt;</span> <span class="n">LRDMC</span> <span class="p">(</span><span class="n">w8</span><span class="p">)</span>     <span class="o">-</span>
+                   <span class="o">----&gt;</span> <span class="n">LRDMC</span> <span class="p">(</span><span class="n">w16</span><span class="p">)</span>    <span class="o">-</span>
+                   <span class="o">----&gt;</span> <span class="o">...</span>            <span class="o">-</span>
+                   <span class="o">----&gt;</span> <span class="n">LRDMC</span> <span class="p">(</span><span class="n">w8192</span><span class="p">)</span>  <span class="o">--</span>
 </pre></div>
 </div>
 </section>
@@ -3182,10 +3183,10 @@ python<span class="w"> </span>run_pipelines.py
 </thead>
 <tbody>
 <tr class="row-even"><td><p>CPU</p></td>
-<td><p>Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90–3.50 GHz) × 2 sockets</p></td>
+<td><p>Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90-3.50 GHz) x 2 sockets</p></td>
 </tr>
 <tr class="row-odd"><td><p>GPU</p></td>
-<td><p>NVIDIA H100 (Hopper) × 4 sockets</p></td>
+<td><p>NVIDIA H100 (Hopper) x 4 sockets</p></td>
 </tr>
 </tbody>
 </table>
@@ -3395,22 +3396,22 @@ python<span class="w"> </span>run_pipelines.py
 <section id="id56">
 <h3>Directory structure<a class="headerlink" href="#id56" title="Link to this heading">#</a></h3>
 <p>After running the pipeline:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>jqmc-workflow-example03/
-├── run_pipelines.py          # Main script
-├── 01_wf/                    # WF_Workflow: TREXIO --&gt; hamiltonian_data.h5
-├── 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_100.h5
-├── 03_mcmc/                  # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">workflow</span><span class="o">-</span><span class="n">example03</span><span class="o">/</span>
+<span class="o">---</span> <span class="n">run_pipelines</span><span class="o">.</span><span class="n">py</span>          <span class="c1"># Main script</span>
+<span class="o">---</span> <span class="mi">01</span><span class="n">_wf</span><span class="o">/</span>                    <span class="c1"># WF_Workflow: TREXIO --&gt; hamiltonian_data.h5</span>
+<span class="o">---</span> <span class="mi">02</span><span class="n">_vmc</span><span class="o">/</span>                   <span class="c1"># VMC_Workflow: Jastrow optimization (100 steps)</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">hamiltonian_data_opt_step_1</span><span class="o">.</span><span class="n">h5</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="o">...</span>
+<span class="o">-</span>   <span class="o">---</span> <span class="n">hamiltonian_data_opt_step_100</span><span class="o">.</span><span class="n">h5</span>
+<span class="o">---</span> <span class="mi">03</span><span class="n">_mcmc</span><span class="o">/</span>                  <span class="c1"># MCMC_Workflow: production sampling + forces</span>
+<span class="o">---</span> <span class="mi">04</span><span class="n">_lrdmc</span><span class="o">/</span>                 <span class="c1"># LRDMC_Workflow: LRDMC (a=0.30) + forces</span>
 </pre></div>
 </div>
 </section>
 <section id="id57">
 <h3>Workflow DAG<a class="headerlink" href="#id57" title="Link to this heading">#</a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>pySCF --&gt; WF --&gt; VMC ─┬─--&gt; MCMC  (energy + force)
-                   └─--&gt; LRDMC (energy + force)
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pySCF</span> <span class="o">--&gt;</span> <span class="n">WF</span> <span class="o">--&gt;</span> <span class="n">VMC</span> <span class="o">-----&gt;</span> <span class="n">MCMC</span>  <span class="p">(</span><span class="n">energy</span> <span class="o">+</span> <span class="n">force</span><span class="p">)</span>
+                   <span class="o">----&gt;</span> <span class="n">LRDMC</span> <span class="p">(</span><span class="n">energy</span> <span class="o">+</span> <span class="n">force</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>

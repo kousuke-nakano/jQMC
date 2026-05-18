@@ -168,6 +168,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -327,8 +328,8 @@
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">Atomic orbitals for the pairing function and the Jastrow factor</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-solidharmonic-basis">Gaussian‑Type Orbitals with Solid‑Harmonic Basis</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-cartesian-basis">Gaussian‑Type Orbitals with Cartesian Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussian-type-orbitals-with-solid-harmonic-basis">Gaussian-Type Orbitals with Solid-Harmonic Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussian-type-orbitals-with-cartesian-basis">Gaussian-Type Orbitals with Cartesian Basis</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-tip">Practical Tip</a></li>
 </ul>
 </li>
@@ -363,9 +364,9 @@
 <span id="sec-atomic-orbitals"></span><h1>Atomic orbitals (AOs) and Basis sets<a class="headerlink" href="#atomic-orbitals-aos-and-basis-sets" title="Link to this heading">#</a></h1>
 <section id="atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">
 <h2>Atomic orbitals for the pairing function and the Jastrow factor<a class="headerlink" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor" title="Link to this heading">#</a></h2>
-<p>One of the most common choices for atomic orbitals in QMC is atom‑centered Gaussian‑type orbitals (GTOs). A primitive GTO <span class="math notranslate nohighlight">\(\psi_{l,m,\alpha}(\mathbf{r})\)</span> can be constructed using either solid harmonics or Cartesian polynomial basis functions.</p>
-<section id="gaussiantype-orbitals-with-solidharmonic-basis">
-<h3>Gaussian‑Type Orbitals with Solid‑Harmonic Basis<a class="headerlink" href="#gaussiantype-orbitals-with-solidharmonic-basis" title="Link to this heading">#</a></h3>
+<p>One of the most common choices for atomic orbitals in QMC is atom-centered Gaussian-type orbitals (GTOs). A primitive GTO <span class="math notranslate nohighlight">\(\psi_{l,m,\alpha}(\mathbf{r})\)</span> can be constructed using either solid harmonics or Cartesian polynomial basis functions.</p>
+<section id="gaussian-type-orbitals-with-solid-harmonic-basis">
+<h3>Gaussian-Type Orbitals with Solid-Harmonic Basis<a class="headerlink" href="#gaussian-type-orbitals-with-solid-harmonic-basis" title="Link to this heading">#</a></h3>
 <p>Primitive orbitals with regular solid harmonics are given by:</p>
 <div class="math notranslate nohighlight">
 \[\psi_{l,m,\alpha}(\mathbf{r}) = \mathcal{N}^{\rm solid}_{l,m,\alpha}\;\mathcal{R}_{\alpha}(\mathbf{r})\;\mathcal{S}_{l,m,\alpha}(\mathbf{r})\]</div>
@@ -391,8 +392,8 @@
 <div class="math notranslate nohighlight">
 \[\frac{\mathcal{N}^{\rm solid}_{l,m,\alpha}}{\mathcal{N}^{\rm sphe}_{l,m,\alpha}} = \sqrt{\frac{2l+1}{4\pi}}.\]</div>
 </section>
-<section id="gaussiantype-orbitals-with-cartesian-basis">
-<h3>Gaussian‑Type Orbitals with Cartesian Basis<a class="headerlink" href="#gaussiantype-orbitals-with-cartesian-basis" title="Link to this heading">#</a></h3>
+<section id="gaussian-type-orbitals-with-cartesian-basis">
+<h3>Gaussian-Type Orbitals with Cartesian Basis<a class="headerlink" href="#gaussian-type-orbitals-with-cartesian-basis" title="Link to this heading">#</a></h3>
 <p>Primitive orbitals in the Cartesian basis are</p>
 <div class="math notranslate nohighlight">
 \[\psi_{n_x,n_y,n_z,\alpha}(\mathbf{r}) = \mathcal{N}^{\rm cart}_{n_x,n_y,n_z,\alpha}\;e^{-Z_\alpha\,|\mathbf{r}-\mathbf{R}_\alpha|^2}\;x^{n_x}y^{n_y}z^{n_z}.\]</div>
@@ -407,12 +408,12 @@
 </section>
 <section id="practical-tip">
 <h3>Practical Tip<a class="headerlink" href="#practical-tip" title="Link to this heading">#</a></h3>
-<p>In jQMC (JAX), Cartesian GTOs are computationally faster than spherical ones when using <code class="docutils literal notranslate"><span class="pre">jit</span></code> and <code class="docutils literal notranslate"><span class="pre">grad</span></code>, since they avoid branching logic by varying only polynomial exponents rather than basis‑function forms.</p>
+<p>In jQMC (JAX), Cartesian GTOs are computationally faster than spherical ones when using <code class="docutils literal notranslate"><span class="pre">jit</span></code> and <code class="docutils literal notranslate"><span class="pre">grad</span></code>, since they avoid branching logic by varying only polynomial exponents rather than basis-function forms.</p>
 </section>
 </section>
 <section id="real-spherical-and-solid-harmonics">
 <h2>Real Spherical and Solid Harmonics<a class="headerlink" href="#real-spherical-and-solid-harmonics" title="Link to this heading">#</a></h2>
-<p>The <strong>real spherical harmonics</strong> <span class="math notranslate nohighlight">\(\mathcal{Y}_{l,m}(\theta,\phi)\)</span> are built from the complex spherical harmonics <span class="math notranslate nohighlight">\(Y_{l,m}(\theta,\phi)\)</span> with the Condon–Shortley phase:</p>
+<p>The <strong>real spherical harmonics</strong> <span class="math notranslate nohighlight">\(\mathcal{Y}_{l,m}(\theta,\phi)\)</span> are built from the complex spherical harmonics <span class="math notranslate nohighlight">\(Y_{l,m}(\theta,\phi)\)</span> with the Condon-Shortley phase:</p>
 <div class="math notranslate nohighlight" id="equation-eq-real-spherical">
 <span class="eqno">(1)<a class="headerlink" href="#equation-eq-real-spherical" title="Link to this equation">#</a></span>\[\begin{split}\mathcal{Y}_{l,m}(\theta,\phi) =
 \begin{cases}
@@ -700,8 +701,8 @@ Y_{6,6}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-6}+Y_6^6\bigr)
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">Atomic orbitals for the pairing function and the Jastrow factor</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-solidharmonic-basis">Gaussian‑Type Orbitals with Solid‑Harmonic Basis</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-cartesian-basis">Gaussian‑Type Orbitals with Cartesian Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussian-type-orbitals-with-solid-harmonic-basis">Gaussian-Type Orbitals with Solid-Harmonic Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussian-type-orbitals-with-cartesian-basis">Gaussian-Type Orbitals with Cartesian Basis</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-tip">Practical Tip</a></li>
 </ul>
 </li>

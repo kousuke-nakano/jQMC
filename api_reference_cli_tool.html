@@ -168,6 +168,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="notes/mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -432,7 +433,7 @@ python<span class="w"> </span>-m<span class="w"> </span>jqmc.jqmc_tool<span clas
 </section>
 <section id="to-xyz">
 <h3><code class="docutils literal notranslate"><span class="pre">to-xyz</span></code><a class="headerlink" href="#to-xyz" title="Link to this heading">#</a></h3>
-<p>Export nuclear geometry to XYZ (Bohr -&gt; Å).</p>
+<p>Export nuclear geometry to XYZ (Bohr -&gt; A).</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">hamiltonian</span> <span class="n">to</span><span class="o">-</span><span class="n">xyz</span> <span class="o">&lt;</span><span class="n">hamiltonian_data</span><span class="o">&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span> <span class="n">struct</span><span class="o">.</span><span class="n">xyz</span><span class="p">]</span>
 </pre></div>
 </div>
@@ -444,7 +445,7 @@ python<span class="w"> </span>-m<span class="w"> </span>jqmc.jqmc_tool<span clas
 </pre></div>
 </div>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--convert-to</span></code>: <code class="docutils literal notranslate"><span class="pre">jagp</span></code> converts SD→AGP (AOs); <code class="docutils literal notranslate"><span class="pre">jsd</span></code> is not implemented.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--convert-to</span></code>: <code class="docutils literal notranslate"><span class="pre">jagp</span></code> converts SD-&gt;AGP (AOs); <code class="docutils literal notranslate"><span class="pre">jsd</span></code> is not implemented.</p></li>
 </ul>
 </section>
 </section>
@@ -476,19 +477,19 @@ python<span class="w"> </span>-m<span class="w"> </span>jqmc.jqmc_tool<span clas
 </pre></div>
 </div>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_mcmc_bin_blocks</span></code> (int, default 1): Binning blocks per MPI × walker; total blocks = <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">*</span> <span class="pre">mpi_size</span> <span class="pre">*</span> <span class="pre">walkers</span></code>. Must be ≥ <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_BIN_BLOCKS</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_mcmc_warmup_steps</span></code> (int, default 0): Discarded warmup measurements; must be ≥ <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_WARMUP_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_mcmc_bin_blocks</span></code> (int, default 1): Binning blocks per MPI x walker; total blocks = <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">*</span> <span class="pre">mpi_size</span> <span class="pre">*</span> <span class="pre">walkers</span></code>. Must be &gt;= <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_BIN_BLOCKS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_mcmc_warmup_steps</span></code> (int, default 0): Discarded warmup measurements; must be &gt;= <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_WARMUP_STEPS</span></code>.</p></li>
 </ul>
 </section>
 <section id="compute-force">
 <h3><code class="docutils literal notranslate"><span class="pre">compute-force</span></code><a class="headerlink" href="#compute-force" title="Link to this heading">#</a></h3>
-<p>Jackknife estimator of VMC atomic forces (Hellmann–Feynman + Pulay) from an MCMC restart archive.  Requires that the MCMC run was performed with <code class="docutils literal notranslate"><span class="pre">atomic_force</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
+<p>Jackknife estimator of VMC atomic forces (Hellmann-Feynman + Pulay) from an MCMC restart archive.  Requires that the MCMC run was performed with <code class="docutils literal notranslate"><span class="pre">atomic_force</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">mcmc</span> <span class="n">compute</span><span class="o">-</span><span class="n">force</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">b</span> <span class="n">N</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">w</span> <span class="n">W</span><span class="p">]</span>
 </pre></div>
 </div>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_mcmc_bin_blocks</span></code> (int, default 1): Binning blocks per MPI × walker; total blocks = <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">*</span> <span class="pre">mpi_size</span> <span class="pre">*</span> <span class="pre">walkers</span></code>. Must be ≥ <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_BIN_BLOCKS</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_mcmc_warmup_steps</span></code> (int, default 0): Discarded warmup measurements; must be ≥ <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_WARMUP_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_mcmc_bin_blocks</span></code> (int, default 1): Binning blocks per MPI x walker; total blocks = <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">*</span> <span class="pre">mpi_size</span> <span class="pre">*</span> <span class="pre">walkers</span></code>. Must be &gt;= <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_BIN_BLOCKS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_mcmc_warmup_steps</span></code> (int, default 0): Discarded warmup measurements; must be &gt;= <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_WARMUP_STEPS</span></code>.</p></li>
 </ul>
 <p>Outputs a per-atom force table in Ha/bohr with jackknife error bars.</p>
 </section>
@@ -510,21 +511,21 @@ python<span class="w"> </span>-m<span class="w"> </span>jqmc.jqmc_tool<span clas
 </pre></div>
 </div>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_gfmc_bin_blocks</span></code> (int, default 5): Binning blocks per MPI × walker (note: total blocks = <code class="docutils literal notranslate"><span class="pre">b</span></code>, not multiplied by ranks × walkers). Must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_BIN_BLOCKS</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_gfmc_warmup_steps</span></code> (int, default 0): Discarded warmup steps; must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_WARMUP_STEPS</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--num_gfmc_collect_steps</span></code> (int, default 5): Pre-binning measurements used to collect weights; must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_COLLECT_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_gfmc_bin_blocks</span></code> (int, default 5): Binning blocks per MPI x walker (note: total blocks = <code class="docutils literal notranslate"><span class="pre">b</span></code>, not multiplied by ranks x walkers). Must be &gt;= <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_BIN_BLOCKS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_gfmc_warmup_steps</span></code> (int, default 0): Discarded warmup steps; must be &gt;= <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_WARMUP_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--num_gfmc_collect_steps</span></code> (int, default 5): Pre-binning measurements used to collect weights; must be &gt;= <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_COLLECT_STEPS</span></code>.</p></li>
 </ul>
 </section>
 <section id="id4">
 <h3><code class="docutils literal notranslate"><span class="pre">compute-force</span></code><a class="headerlink" href="#id4" title="Link to this heading">#</a></h3>
-<p>Jackknife estimator of LRDMC atomic forces (Hellmann–Feynman + Pulay) from an LRDMC restart archive.  Requires that the LRDMC run was performed with <code class="docutils literal notranslate"><span class="pre">atomic_force</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
+<p>Jackknife estimator of LRDMC atomic forces (Hellmann-Feynman + Pulay) from an LRDMC restart archive.  Requires that the LRDMC run was performed with <code class="docutils literal notranslate"><span class="pre">atomic_force</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">lrdmc</span> <span class="n">compute</span><span class="o">-</span><span class="n">force</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">b</span> <span class="n">N</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">w</span> <span class="n">W</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">c</span> <span class="n">C</span><span class="p">]</span>
 </pre></div>
 </div>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_gfmc_bin_blocks</span></code> (int, default 5): Binning blocks per MPI × walker. Must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_BIN_BLOCKS</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_gfmc_warmup_steps</span></code> (int, default 0): Discarded warmup steps; must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_WARMUP_STEPS</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--num_gfmc_collect_steps</span></code> (int, default 5): Pre-binning measurements used to collect weights; must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_COLLECT_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_gfmc_bin_blocks</span></code> (int, default 5): Binning blocks per MPI x walker. Must be &gt;= <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_BIN_BLOCKS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_gfmc_warmup_steps</span></code> (int, default 0): Discarded warmup steps; must be &gt;= <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_WARMUP_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--num_gfmc_collect_steps</span></code> (int, default 5): Pre-binning measurements used to collect weights; must be &gt;= <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_COLLECT_STEPS</span></code>.</p></li>
 </ul>
 <p>Outputs a per-atom force table in Ha/bohr with jackknife error bars.</p>
 </section>

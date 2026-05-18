@@ -165,6 +165,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="notes/mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -291,6 +292,7 @@
  | <a href="#H"><strong>H</strong></a>
  | <a href="#I"><strong>I</strong></a>
  | <a href="#J"><strong>J</strong></a>
+ | <a href="#K"><strong>K</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
  | <a href="#N"><strong>N</strong></a>
@@ -354,6 +356,16 @@
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.ao_coefficients_up">ao_coefficients_up (jqmc.determinant.Geminal_data property)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_ratio_streaming_state.ao_dn">ao_dn (jqmc.determinant.Det_ratio_streaming_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.ao_dn">(jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.ao_dn_grads">ao_dn_grads (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.ao_dn_lap">ao_dn_lap (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.ao_exponents">ao_exponents (jqmc.jastrow_factor.Jastrow_three_body_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.ao_exponents_dn">ao_exponents_dn (jqmc.determinant.Geminal_data property)</a>
@@ -368,16 +380,38 @@
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.orbital_type.ao_small">ao_small (jqmc.jqmc_tool.orbital_type attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_ratio_streaming_state.ao_up">ao_up (jqmc.determinant.Det_ratio_streaming_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.ao_up">(jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.ao_up_grads">ao_up_grads (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.ao_up_lap">ao_up_lap (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.AOs_cart_data">AOs_cart_data (class in jqmc.atomic_orbital)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.aos_data">aos_data (jqmc.molecular_orbital.MOs_data attribute)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.AOs_sphe_data">AOs_sphe_data (class in jqmc.atomic_orbital)</a>
-</li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.apply_ao_projected_paired_update_and_reproject">apply_ao_projected_paired_update_and_reproject() (jqmc.determinant.Geminal_data method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.aos_dn">aos_dn (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.aos_dn">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.AOs_sphe_data">AOs_sphe_data (class in jqmc.atomic_orbital)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.aos_up">aos_up (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.aos_up">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.apply_ao_projected_paired_update_and_reproject">apply_ao_projected_paired_update_and_reproject() (jqmc.determinant.Geminal_data method)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.apply_block_update">apply_block_update() (jqmc.determinant.Geminal_data method)</a>
 
       <ul>
@@ -516,6 +550,8 @@
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.compute_AOs_laplacian">compute_AOs_laplacian() (in module jqmc.atomic_orbital)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.compute_AOs_value_grad_lap">compute_AOs_value_grad_lap() (in module jqmc.atomic_orbital)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_AS_regularization_factor">compute_AS_regularization_factor() (in module jqmc.determinant)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_AS_regularization_factor_fast_update">compute_AS_regularization_factor_fast_update() (in module jqmc.determinant)</a>
@@ -568,10 +604,10 @@
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_part">compute_grads_and_laplacian_Jastrow_part() (in module jqmc.jastrow_factor)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_three_body">compute_grads_and_laplacian_Jastrow_three_body() (in module jqmc.jastrow_factor)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_two_body">compute_grads_and_laplacian_Jastrow_two_body() (in module jqmc.jastrow_factor)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det_fast">compute_grads_and_laplacian_ln_Det_fast() (in module jqmc.determinant)</a>
@@ -602,6 +638,8 @@
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.compute_MOs_laplacian">compute_MOs_laplacian() (in module jqmc.molecular_orbital)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.compute_MOs_value_grad_lap">compute_MOs_value_grad_lap() (in module jqmc.molecular_orbital)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.compute_nodal_distance">compute_nodal_distance() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_api">compute_orb_api (jqmc.determinant.Geminal_data property)</a>
@@ -613,6 +651,8 @@
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_grad_api">compute_orb_grad_api (jqmc.determinant.Geminal_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_laplacian_api">compute_orb_laplacian_api (jqmc.determinant.Geminal_data property)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_value_grad_lap_api">compute_orb_value_grad_lap_api (jqmc.determinant.Geminal_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.compute_overlap_matrix">compute_overlap_matrix() (in module jqmc.atomic_orbital)</a>
 </li>
@@ -678,8 +718,14 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dc">de_L_dc (jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_ratio_streaming_state">Det_ratio_streaming_state (class in jqmc.determinant)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.det_state">det_state (jqmc.wavefunction.Kinetic_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state">Det_streaming_state (class in jqmc.determinant)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc">dln_Psi_dc (jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
   </ul></td>
@@ -816,9 +862,21 @@
 <h2 id="G">G</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.g_dn">g_dn (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.g_up">g_up (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data">Geminal_data (class in jqmc.determinant)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.geminal_data">geminal_data (jqmc.wavefunction.Wavefunction_data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.geminal_grad_dn">geminal_grad_dn (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.geminal_grad_up">geminal_grad_up (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.geminal_lap_dn">geminal_lap_dn (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.geminal_lap_up">geminal_lap_up (jqmc.determinant.Det_streaming_state attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.get_aF">get_aF() (jqmc.jqmc_gfmc.GFMC_n method)</a>
 
@@ -844,8 +902,6 @@
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_dln_WF">get_dln_WF() (jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.get_E">get_E() (jqmc.jqmc_gfmc.GFMC_n method)</a>
 
       <ul>
@@ -854,6 +910,8 @@
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_E">(jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_gF">get_gF() (jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Launcher.get_job_history">get_job_history() (jqmc_workflow.Launcher method)</a>
@@ -875,6 +933,26 @@
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n">GFMC_n (class in jqmc.jqmc_gfmc)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t">GFMC_t (class in jqmc.jqmc_gfmc)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_aos_dn">grad_aos_dn (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_aos_up">grad_aos_up (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.grad_J1_dn">grad_J1_dn (jqmc.jastrow_factor.Jastrow_one_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.grad_J1_up">grad_J1_up (jqmc.jastrow_factor.Jastrow_one_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.grad_J2_dn">grad_J2_dn (jqmc.jastrow_factor.Jastrow_two_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.grad_J2_up">grad_J2_up (jqmc.jastrow_factor.Jastrow_two_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_J3_dn">grad_J3_dn (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_J3_up">grad_J3_up (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.grad_ln_D_dn">grad_ln_D_dn (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.grad_ln_D_up">grad_ln_D_up (jqmc.determinant.Det_streaming_state attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -944,6 +1022,48 @@
 <h2 id="J">J</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.j1_state">j1_state (jqmc.wavefunction.Kinetic_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.j2_state">j2_state (jqmc.wavefunction.Kinetic_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_aos_dn">j3_mat_aos_dn (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_aos_dn">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_aos_dn_rowsum">j3_mat_aos_dn_rowsum (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_aos_dn_rowsum">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_aos_up">j3_mat_aos_up (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_aos_up">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_T_aos_dn">j3_mat_T_aos_dn (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_T_aos_dn">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_T_aos_up">j3_mat_T_aos_up (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_T_aos_up">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_T_aos_up_rowsum">j3_mat_T_aos_up_rowsum (jqmc.jastrow_factor.Jastrow_three_body_ratio_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_T_aos_up_rowsum">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.j3_state">j3_state (jqmc.wavefunction.Kinetic_streaming_state attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.j_matrix">j_matrix (jqmc.jastrow_factor.Jastrow_three_body_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.ansatz_type.jagp">jagp (jqmc.jqmc_tool.ansatz_type attribute)</a>
@@ -968,13 +1088,21 @@
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_one_body_data">jastrow_one_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state">Jastrow_one_body_streaming_state (class in jqmc.jastrow_factor)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data">Jastrow_three_body_data (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_three_body_data">jastrow_three_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state">Jastrow_three_body_ratio_state (class in jqmc.jastrow_factor)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state">Jastrow_three_body_streaming_state (class in jqmc.jastrow_factor)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data">Jastrow_two_body_data (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_two_body_data">jastrow_two_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state">Jastrow_two_body_streaming_state (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.jax_backend">jax_backend (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
 
@@ -1014,6 +1142,8 @@
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.atomic_orbital">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     jqmc.coulomb_potential
 
@@ -1049,8 +1179,6 @@
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.jqmc_cli">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     jqmc.jqmc_gfmc
 
@@ -1182,10 +1310,44 @@
   </ul></td>
 </tr></table>
 
+<h2 id="K">K</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.ke_dn">ke_dn (jqmc.wavefunction.Kinetic_streaming_state attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.ke_up">ke_up (jqmc.wavefunction.Kinetic_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state">Kinetic_streaming_state (class in jqmc.wavefunction)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="L">L</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.lambda_matrix">lambda_matrix (jqmc.determinant.Geminal_data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_aos_dn">lap_aos_dn (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_aos_up">lap_aos_up (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.lap_J1_dn">lap_J1_dn (jqmc.jastrow_factor.Jastrow_one_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.lap_J1_up">lap_J1_up (jqmc.jastrow_factor.Jastrow_one_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.lap_J2_dn">lap_J2_dn (jqmc.jastrow_factor.Jastrow_two_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.lap_J2_up">lap_J2_up (jqmc.jastrow_factor.Jastrow_two_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_J3_dn">lap_J3_dn (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_J3_up">lap_J3_up (jqmc.jastrow_factor.Jastrow_three_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.lap_ln_D_dn">lap_ln_D_dn (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.lap_ln_D_up">lap_ln_D_up (jqmc.determinant.Det_streaming_state attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.lattice_vec_a">lattice_vec_a (jqmc.structure.Structure_data property)</a>
 </li>
@@ -1207,6 +1369,8 @@
         <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow.launch">(jqmc_workflow.workflow.Workflow method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Launcher">Launcher (class in jqmc_workflow)</a>
 
       <ul>
@@ -1225,8 +1389,6 @@
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.load_from_hdf5">(jqmc.jqmc_mcmc.MCMC class method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.ScientificPhase.LRDMC">LRDMC (jqmc_workflow.ScientificPhase attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_compute_energy">lrdmc_compute_energy() (in module jqmc.jqmc_tool)</a>
@@ -1538,6 +1700,22 @@
 <h2 id="P">P</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_ratio_streaming_state.paired_dn">paired_dn (jqmc.determinant.Det_ratio_streaming_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.paired_dn">(jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.paired_dn_grads">paired_dn_grads (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.paired_dn_lap">paired_dn_lap (jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_ratio_streaming_state.paired_up_lambda">paired_up_lambda (jqmc.determinant.Det_ratio_streaming_state attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.paired_up_lambda">(jqmc.determinant.Det_streaming_state attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.params">params (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.parent">parent (jqmc.jastrow_factor.NNJastrow attribute)</a>
@@ -1558,14 +1736,14 @@
 </li>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_mcmc_output">parse_mcmc_output() (in module jqmc_workflow)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_vmc_output">parse_vmc_output() (in module jqmc_workflow)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.pbc_flag">pbc_flag (jqmc.structure.Structure_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.WorkflowStatus.PENDING">PENDING (jqmc_workflow.WorkflowStatus attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.per_alat_results">per_alat_results (jqmc_workflow.LRDMC_Ext_Diagnostic_Data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Input_Parameters.per_input">per_input (jqmc_workflow.Input_Parameters attribute)</a>
@@ -1600,6 +1778,10 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.r_dn_carts">r_dn_carts (jqmc.jastrow_factor.Jastrow_two_body_streaming_state attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.r_up_carts">r_up_carts (jqmc.jastrow_factor.Jastrow_two_body_streaming_state attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.trexio_wrapper.read_trexio_file">read_trexio_file() (in module jqmc.trexio_wrapper)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.recip_cell">recip_cell (jqmc.structure.Structure_data property)</a>
@@ -1621,6 +1803,10 @@
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.replace">(jqmc.coulomb_potential.Coulomb_potential_data method)</a>
 </li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_ratio_streaming_state.replace">(jqmc.determinant.Det_ratio_streaming_state method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Det_streaming_state.replace">(jqmc.determinant.Det_streaming_state method)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.replace">(jqmc.determinant.Geminal_data method)</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.Hamiltonian_data.replace">(jqmc.hamiltonians.Hamiltonian_data method)</a>
@@ -1631,13 +1817,23 @@
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.replace">(jqmc.jastrow_factor.Jastrow_one_body_data method)</a>
 </li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.replace">(jqmc.jastrow_factor.Jastrow_one_body_streaming_state method)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.replace">(jqmc.jastrow_factor.Jastrow_three_body_data method)</a>
 </li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.replace">(jqmc.jastrow_factor.Jastrow_three_body_ratio_state method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.replace">(jqmc.jastrow_factor.Jastrow_three_body_streaming_state method)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.replace">(jqmc.jastrow_factor.Jastrow_two_body_data method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.replace">(jqmc.jastrow_factor.Jastrow_two_body_streaming_state method)</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.replace">(jqmc.molecular_orbital.MOs_data method)</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.replace">(jqmc.structure.Structure_data method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.replace">(jqmc.wavefunction.Kinetic_streaming_state method)</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock.replace">(jqmc.wavefunction.VariationalParameterBlock method)</a>
 </li>

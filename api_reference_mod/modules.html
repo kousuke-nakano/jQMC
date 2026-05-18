@@ -166,6 +166,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../notes/mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">API reference for modules</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -378,6 +379,7 @@
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs"><code class="docutils literal notranslate"><span class="pre">compute_AOs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs_grad"><code class="docutils literal notranslate"><span class="pre">compute_AOs_grad()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs_laplacian"><code class="docutils literal notranslate"><span class="pre">compute_AOs_laplacian()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs_value_grad_lap"><code class="docutils literal notranslate"><span class="pre">compute_AOs_value_grad_lap()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_overlap_matrix"><code class="docutils literal notranslate"><span class="pre">compute_overlap_matrix()</span></code></a></li>
 </ul>
 </li>
@@ -415,6 +417,36 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.determinant">jqmc.determinant module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_ratio_streaming_state"><code class="docutils literal notranslate"><span class="pre">Det_ratio_streaming_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_ratio_streaming_state.ao_dn"><code class="docutils literal notranslate"><span class="pre">Det_ratio_streaming_state.ao_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_ratio_streaming_state.ao_up"><code class="docutils literal notranslate"><span class="pre">Det_ratio_streaming_state.ao_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_ratio_streaming_state.paired_dn"><code class="docutils literal notranslate"><span class="pre">Det_ratio_streaming_state.paired_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_ratio_streaming_state.paired_up_lambda"><code class="docutils literal notranslate"><span class="pre">Det_ratio_streaming_state.paired_up_lambda</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_ratio_streaming_state.replace"><code class="docutils literal notranslate"><span class="pre">Det_ratio_streaming_state.replace()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.ao_dn"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.ao_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.ao_dn_grads"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.ao_dn_grads</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.ao_dn_lap"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.ao_dn_lap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.ao_up"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.ao_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.ao_up_grads"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.ao_up_grads</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.ao_up_lap"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.ao_up_lap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.geminal_grad_dn"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.geminal_grad_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.geminal_grad_up"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.geminal_grad_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.geminal_lap_dn"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.geminal_lap_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.geminal_lap_up"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.geminal_lap_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.grad_ln_D_dn"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.grad_ln_D_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.grad_ln_D_up"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.grad_ln_D_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.lap_ln_D_dn"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.lap_ln_D_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.lap_ln_D_up"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.lap_ln_D_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.paired_dn"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.paired_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.paired_dn_grads"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.paired_dn_grads</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.paired_dn_lap"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.paired_dn_lap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.paired_up_lambda"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.paired_up_lambda</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Det_streaming_state.replace"><code class="docutils literal notranslate"><span class="pre">Det_streaming_state.replace()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data"><code class="docutils literal notranslate"><span class="pre">Geminal_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Geminal_data.accumulate_position_grad()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.ao_coefficients_dn"><code class="docutils literal notranslate"><span class="pre">Geminal_data.ao_coefficients_dn</span></code></a></li>
@@ -427,6 +459,7 @@
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_grad_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_grad_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_laplacian_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_laplacian_api</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_value_grad_lap_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_value_grad_lap_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.convert_from_AOs_to_MOs"><code class="docutils literal notranslate"><span class="pre">Geminal_data.convert_from_AOs_to_MOs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.convert_from_MOs_to_AOs"><code class="docutils literal notranslate"><span class="pre">Geminal_data.convert_from_MOs_to_AOs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.is_ao_representation"><code class="docutils literal notranslate"><span class="pre">Geminal_data.is_ao_representation</span></code></a></li>
@@ -520,6 +553,14 @@
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.structure_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.structure_data</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_streaming_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.grad_J1_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_streaming_state.grad_J1_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.grad_J1_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_streaming_state.grad_J1_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.lap_J1_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_streaming_state.lap_J1_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.lap_J1_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_streaming_state.lap_J1_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_streaming_state.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_streaming_state.replace()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.ao_coefficients"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.ao_coefficients</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.ao_exponents"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.ao_exponents</span></code></a></li>
@@ -536,12 +577,56 @@
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.with_updated_ao_exponents"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.with_updated_ao_exponents()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_T_aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.j3_mat_T_aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_T_aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.j3_mat_T_aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_T_aos_up_rowsum"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.j3_mat_T_aos_up_rowsum</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.j3_mat_aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_aos_dn_rowsum"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.j3_mat_aos_dn_rowsum</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.j3_mat_aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.j3_mat_aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_ratio_state.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_ratio_state.replace()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.g_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.g_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.g_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.g_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_J3_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.grad_J3_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_J3_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.grad_J3_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.grad_aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.grad_aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.grad_aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_T_aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.j3_mat_T_aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_T_aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.j3_mat_T_aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_T_aos_up_rowsum"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.j3_mat_T_aos_up_rowsum</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.j3_mat_aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_aos_dn_rowsum"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.j3_mat_aos_dn_rowsum</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.j3_mat_aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.j3_mat_aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_J3_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.lap_J3_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_J3_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.lap_J3_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_aos_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.lap_aos_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.lap_aos_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.lap_aos_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_streaming_state.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_streaming_state.replace()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.init_jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.init_jastrow_two_body_data()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.jastrow_2b_param"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.jastrow_2b_param</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.jastrow_2b_type"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.jastrow_2b_type</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.sanity_check()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.grad_J2_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.grad_J2_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.grad_J2_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.grad_J2_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.lap_J2_dn"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.lap_J2_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.lap_J2_up"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.lap_J2_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.r_dn_carts"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.r_dn_carts</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.r_up_carts"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.r_up_carts</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_streaming_state.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_streaming_state.replace()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow"><code class="docutils literal notranslate"><span class="pre">NNJastrow</span></code></a><ul>
@@ -697,6 +782,7 @@
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.compute_MOs"><code class="docutils literal notranslate"><span class="pre">compute_MOs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.compute_MOs_grad"><code class="docutils literal notranslate"><span class="pre">compute_MOs_grad()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.compute_MOs_laplacian"><code class="docutils literal notranslate"><span class="pre">compute_MOs_laplacian()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.compute_MOs_value_grad_lap"><code class="docutils literal notranslate"><span class="pre">compute_MOs_value_grad_lap()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.structure">jqmc.structure module</a><ul>
@@ -738,6 +824,16 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.wavefunction">jqmc.wavefunction module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.det_state"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.det_state</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.j1_state"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.j1_state</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.j2_state"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.j2_state</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.j3_state"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.j3_state</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.ke_dn"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.ke_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.ke_up"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.ke_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Kinetic_streaming_state.replace"><code class="docutils literal notranslate"><span class="pre">Kinetic_streaming_state.replace()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.apply_update"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.apply_update()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.name"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.name</span></code></a></li>

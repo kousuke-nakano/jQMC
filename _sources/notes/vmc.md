@@ -64,9 +64,9 @@ This constitutes the Variational Monte Carlo (VMC) framework.
 
 The optimization of $\boldsymbol{\alpha}$ is challenging due to a complex energy landscape with statistical noise.  jQMC leverages JAX automatic differentiation to compute energy derivatives and employs the **stochastic reconfiguration** method\~\cite{1998SOR,2007SOR} for efficient parameter updates.
 
-### MCMC Sampling and Metropolis–Hastings
+### MCMC Sampling and Metropolis-Hastings
 
-jQMC uses a generalized Metropolis–Hastings algorithm to sample $\pi(\mathbf{x})$.  A proposed move from $\vec{x}$ to $\vec{x}'$ is accepted with probability:
+jQMC uses a generalized Metropolis-Hastings algorithm to sample $\pi(\mathbf{x})$.  A proposed move from $\vec{x}$ to $\vec{x}'$ is accepted with probability:
 
 ```{math}
 P(\vec{x}\to\vec{x}') = \min\Bigl[1, \frac{|\Psi_T(\vec{x}')|^2}{|\Psi_T(\vec{x})|^2} \frac{T(\vec{x}'\to\vec{x})}{T(\vec{x}\to\vec{x}')},\Bigr]
@@ -99,7 +99,7 @@ and similarly for $T(\vec{x}'\to\vec{x})$, giving the ratio:
 
 ### Reweighting and AS Regularization
 
-jQMC implements the Attaccalite–Sorella (AS) reweighting to handle divergences near nodal surfaces\~\cite{2008ATT}.  One samples a guiding distribution $\Pi_G$ defined by:
+jQMC implements the Attaccalite-Sorella (AS) reweighting to handle divergences near nodal surfaces\~\cite{2008ATT}.  One samples a guiding distribution $\Pi_G$ defined by:
 
 ```{math}
 \Psi_G(\mathbf{x}) = \frac{R^\varepsilon(\mathbf{x})}{R(\mathbf{x})}\Psi_T(\mathbf{x})
@@ -134,7 +134,7 @@ The parameter $\varepsilon$ is chosen so that the average weight $\langle\mathca
 
 ### AO Basis Exponent and Coefficient Optimization
 
-In addition to optimizing the Jastrow and geminal (lambda) matrix parameters, jQMC supports variational optimization of the Gaussian-type orbital (GTO) basis set parameters — specifically the **exponents** $Z_\alpha$ and **contraction coefficients** $c_\alpha$ of the primitive GTOs that enter both the three-body Jastrow factor and the geminal pairing function.
+In addition to optimizing the Jastrow and geminal (lambda) matrix parameters, jQMC supports variational optimization of the Gaussian-type orbital (GTO) basis set parameters -- specifically the **exponents** $Z_\alpha$ and **contraction coefficients** $c_\alpha$ of the primitive GTOs that enter both the three-body Jastrow factor and the geminal pairing function.
 
 #### Variational derivatives
 
@@ -155,10 +155,10 @@ Within a given atom, a single *shell* (same nucleus, same angular momentum $l$, 
 
 To preserve this physical constraint during optimization, jQMC enforces that **all primitives belonging to the same shell are updated identically**.  This is implemented via the same `symmetrize_metric` mechanism used for the J3 and lambda matrix symmetry:
 
-1. **Gradient symmetrization** — Before the SR solve, the signal-to-noise ratio of the force vector $f_k$ is averaged within each shell group.  This ensures that all shell-mates receive the same effective gradient.
-2. **Update enforcement** — After the additive parameter update, `apply_block_update` averages the updated values within each shell group, guaranteeing that shell-mates remain exactly equal even in the presence of floating-point rounding.
+1. **Gradient symmetrization** -- Before the SR solve, the signal-to-noise ratio of the force vector $f_k$ is averaged within each shell group.  This ensures that all shell-mates receive the same effective gradient.
+2. **Update enforcement** -- After the additive parameter update, `apply_block_update` averages the updated values within each shell group, guaranteeing that shell-mates remain exactly equal even in the presence of floating-point rounding.
 
-This approach is size-preserving: the optimizer always works with the full per-primitive parameter vector (no dimension reduction), which keeps the SR matrix construction identical to other variational blocks.  All basis parameters are optimized simultaneously — there is no SN-ratio filter or parameter-count selection.
+This approach is size-preserving: the optimizer always works with the full per-primitive parameter vector (no dimension reduction), which keeps the SR matrix construction identical to other variational blocks.  All basis parameters are optimized simultaneously -- there is no SN-ratio filter or parameter-count selection.
 
 #### Restrictions
 

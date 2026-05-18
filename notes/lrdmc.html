@@ -168,6 +168,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -348,7 +349,7 @@
 <section id="practical-points">
 <h2>Practical points<a class="headerlink" href="#practical-points" title="Link to this heading">#</a></h2>
 <ol class="arabic simple">
-<li><p>No time-step error: unlike standard DMC, LRDMC does not rely on a Suzuki–Trotter decomposition. Instead, a systematic bias comes from the finite lattice spacing <span class="math notranslate nohighlight">\(a\)</span><a class="footnote-reference brackets" href="#id14" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>. To obtain an unbiased fixed-node (FN) energy, extrapolate results to <span class="math notranslate nohighlight">\(a \to 0\)</span> using several lattice spacings; the <span class="math notranslate nohighlight">\(a \to 0\)</span> extrapolation is typically smooth and well captured by low-order polynomial fits.</p></li>
+<li><p>No time-step error: unlike standard DMC, LRDMC does not rely on a Suzuki-Trotter decomposition. Instead, a systematic bias comes from the finite lattice spacing <span class="math notranslate nohighlight">\(a\)</span><a class="footnote-reference brackets" href="#id14" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>. To obtain an unbiased fixed-node (FN) energy, extrapolate results to <span class="math notranslate nohighlight">\(a \to 0\)</span> using several lattice spacings; the <span class="math notranslate nohighlight">\(a \to 0\)</span> extrapolation is typically smooth and well captured by low-order polynomial fits.</p></li>
 <li><p>Consistency with DMC: after removing the controllable <span class="math notranslate nohighlight">\(a \to 0\)</span> extrapolation, FN energies from LRDMC agree with standard DMC calculations<a class="footnote-reference brackets" href="#id18" id="id6" role="doc-noteref"><span class="fn-bracket">[</span>5<span class="fn-bracket">]</span></a>.</p></li>
 <li><p>Multiple mesh sizes: LRDMC can introduce two mesh sizes (<span class="math notranslate nohighlight">\(a\)</span> and <span class="math notranslate nohighlight">\(a'\)</span>) so that regions near nuclei and valence regions are diffused appropriately<a class="footnote-reference brackets" href="#id14" id="id7" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id19" id="id8" role="doc-noteref"><span class="fn-bracket">[</span>6<span class="fn-bracket">]</span></a>. This will be introduced into <code class="docutils literal notranslate"><span class="pre">jQMC</span></code> in future.</p></li>
 <li><p>Variational principle with ECPs: LRDMC retains the variational principle even in the presence of effective core potentials, analogous to the T-move treatment in standard DMC<a class="footnote-reference brackets" href="#id14" id="id9" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id20" id="id10" role="doc-noteref"><span class="fn-bracket">[</span>7<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id21" id="id11" role="doc-noteref"><span class="fn-bracket">[</span>8<span class="fn-bracket">]</span></a>.</p></li>
@@ -386,7 +387,7 @@
 </aside>
 <aside class="footnote brackets" id="id20" role="doc-footnote">
 <span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">7</a><span class="fn-bracket">]</span></span>
-<p>K. Nakano, S. Sorella, D. Alfè, A. Zen, J. Chem. Theory Comput. 20, 4591-4604 (2024). DOI: <a class="reference external" href="https://doi.org/10.1021/acs.jctc.4c00139">10.1021/acs.jctc.4c00139</a></p>
+<p>K. Nakano, S. Sorella, D. Alfe, A. Zen, J. Chem. Theory Comput. 20, 4591-4604 (2024). DOI: <a class="reference external" href="https://doi.org/10.1021/acs.jctc.4c00139">10.1021/acs.jctc.4c00139</a></p>
 </aside>
 <aside class="footnote brackets" id="id21" role="doc-footnote">
 <span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">8</a><span class="fn-bracket">]</span></span>

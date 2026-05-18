@@ -1039,18 +1039,18 @@ The directory structure will look like:
 
 ```
 water_dimer_qmc/
-├── 01_S22_water_monomer_1/   # monomer 1
-│   └── 01DFT/
-├── 02_S22_water_monomer_2/   # monomer 2
-│   └── 01DFT/
-└── 03_S22_water_dimer/       # dimer
-    ├── 01DFT/
-    ├── 02vmc_JSD/
-    ├── 03mcmc_JSD/
-    ├── 04lrdmc_JSD/
-    ├── 05vmc_JAGP/
-    ├── 06mcmc_JAGP/
-    └── 07lrdmc_JAGP/
+--- 01_S22_water_monomer_1/   # monomer 1
+-   --- 01DFT/
+--- 02_S22_water_monomer_2/   # monomer 2
+-   --- 01DFT/
+--- 03_S22_water_dimer/       # dimer
+    --- 01DFT/
+    --- 02vmc_JSD/
+    --- 03mcmc_JSD/
+    --- 04lrdmc_JSD/
+    --- 05vmc_JAGP/
+    --- 06mcmc_JAGP/
+    --- 07lrdmc_JAGP/
 ```
 
 ### Generate trial WFs (DFT)
@@ -2477,17 +2477,17 @@ After running the pipeline, each bond length has the following structure:
 
 ```
 R_0.74/
-├── 00_pyscf/          # pySCF DFT calculation
-│   ├── run_pyscf.py
-│   ├── H2_R_0.74.h5   # TREXIO file
-│   └── H2_R_0.74.out  # pySCF output
-├── 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_20.h5
-├── 03_mcmc/           # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
+--- 00_pyscf/          # pySCF DFT calculation
+-   --- run_pyscf.py
+-   --- H2_R_0.74.h5   # TREXIO file
+-   --- H2_R_0.74.out  # pySCF output
+--- 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
+-   --- hamiltonian_data_opt_step_1.h5
+-   --- ...
+-   --- hamiltonian_data_opt_step_20.h5
+--- 03_mcmc/           # MCMC_Workflow: production sampling + forces
+--- 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
 ```
 
 ### Workflow DAG
@@ -2495,8 +2495,8 @@ R_0.74/
 For each R, the dependency graph is:
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC
-                   └─--> LRDMC (a=0.2)
+pySCF --> WF --> VMC -----> MCMC
+                   ----> LRDMC (a=0.2)
 ```
 
 All 20 R values are independent and execute in parallel via `Launcher`.
@@ -2543,7 +2543,7 @@ The script prints a summary table after all calculations complete:
 
 ### Results
 
-![H2 PES — MCMC and LRDMC](../examples/jqmc-workflow-example01/H2_PES_mcmc_lrdmc.png)
+![H2 PES -- MCMC and LRDMC](../examples/jqmc-workflow-example01/H2_PES_mcmc_lrdmc.png)
 
 ### References
 
@@ -2698,35 +2698,35 @@ After running the pipeline:
 
 ```
 jqmc-workflow-example02/
-├── run_pipelines.py         # Main script
-├── run_pyscf.py             # Standalone pySCF script (reference)
-├── water_trexio.hdf5        # TREXIO file (pySCF output)
-├── jqmc_setting_local/      # Machine configuration
-├── 01_wf/                   # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/                  # VMC_Workflow: Jastrow optimization
-├── 03_mcmc/                 # MCMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
-├── 04_lrdmc/                # LRDMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
+--- run_pipelines.py         # Main script
+--- run_pyscf.py             # Standalone pySCF script (reference)
+--- water_trexio.hdf5        # TREXIO file (pySCF output)
+--- jqmc_setting_local/      # Machine configuration
+--- 01_wf/                   # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/                  # VMC_Workflow: Jastrow optimization
+--- 03_mcmc/                 # MCMC production (per walker count)
+-   --- w00008/
+-   --- w00016/
+-   --- ...
+-   --- w08192/
+--- 04_lrdmc/                # LRDMC production (per walker count)
+-   --- w00008/
+-   --- w00016/
+-   --- ...
+-   --- w08192/
 ```
 
 ### Workflow DAG
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC  (w8)    ─┐
-                   ├─--> MCMC  (w16)    │
-                   ├─--> ...            ├─--> Summary table
-                   ├─--> MCMC  (w8192)  │
-                   ├─--> LRDMC (w8)     │
-                   ├─--> LRDMC (w16)    │
-                   ├─--> ...            │
-                   └─--> LRDMC (w8192)  ─┘
+pySCF --> WF --> VMC -----> MCMC  (w8)    --
+                   ----> MCMC  (w16)    -
+                   ----> ...            ----> Summary table
+                   ----> MCMC  (w8192)  -
+                   ----> LRDMC (w8)     -
+                   ----> LRDMC (w16)    -
+                   ----> ...            -
+                   ----> LRDMC (w8192)  --
 ```
 
 ### Machine configuration
@@ -2735,8 +2735,8 @@ This example assumes a cluster where each node has 4 NVIDIA GPUs. The benchmark 
 
 | Component | Specification |
 |-----------|---------------|
-| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90–3.50 GHz) × 2 sockets |
-| GPU       | NVIDIA H100 (Hopper) × 4 sockets |
+| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90-3.50 GHz) x 2 sockets |
+| GPU       | NVIDIA H100 (Hopper) x 4 sockets |
 
 To run on a different cluster, change `SERVER`, `QUEUE_LABEL_s`, and `QUEUE_LABEL_l` in `run_pipelines.py` and provide the appropriate machine configuration in `jqmc_setting_local/`.
 
@@ -2913,21 +2913,21 @@ After running the pipeline:
 
 ```
 jqmc-workflow-example03/
-├── run_pipelines.py          # Main script
-├── 01_wf/                    # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_100.h5
-├── 03_mcmc/                  # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
+--- run_pipelines.py          # Main script
+--- 01_wf/                    # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
+-   --- hamiltonian_data_opt_step_1.h5
+-   --- ...
+-   --- hamiltonian_data_opt_step_100.h5
+--- 03_mcmc/                  # MCMC_Workflow: production sampling + forces
+--- 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
 ```
 
 ### Workflow DAG
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC  (energy + force)
-                   └─--> LRDMC (energy + force)
+pySCF --> WF --> VMC -----> MCMC  (energy + force)
+                   ----> LRDMC (energy + force)
 ```
 
 ### Machine configuration

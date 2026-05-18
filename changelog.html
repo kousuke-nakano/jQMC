@@ -167,6 +167,7 @@
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="notes/mixed_precision.html">Mixed Precision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -325,24 +326,32 @@
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-24-2026-v0-2-1a2">Apr-24-2026: v0.2.1a2</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#may-18-2026-v0-2-2a1">May-18-2026: v0.2.2a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#new-features">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-memory">Performance &amp; memory</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bug-fixes">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-jqmc-workflow">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#tests-infrastructure">Tests &amp; infrastructure</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-24-2026-v0-2-1a2">Apr-24-2026: v0.2.1a2</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bug fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-16-2026-v0-2-1a1">Apr-16-2026: v0.2.1a1</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">New features</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-memory">Performance &amp; memory</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bug fixes</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-jqmc-workflow">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Performance &amp; memory</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#breaking-changes">Breaking changes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mar-10-2026-v0-2-0a1">Mar-10-2026: v0.2.0a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance">Performance</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optimization">Optimization</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">New features</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id7">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id8">Bug fixes</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#infrastructure">Infrastructure</a></li>
 </ul>
 </li>
@@ -355,12 +364,12 @@
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id9">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id10">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>
@@ -377,18 +386,61 @@
                   
   <section class="tex2jax_ignore mathjax_ignore" id="change-log">
 <span id="changelog"></span><h1>Change Log<a class="headerlink" href="#change-log" title="Link to this heading">#</a></h1>
+<section id="may-18-2026-v0-2-2a1">
+<h2>May-18-2026: v0.2.2a1<a class="headerlink" href="#may-18-2026-v0-2-2a1" title="Link to this heading">#</a></h2>
+<p>This release brings configurable mixed-precision support, deep kernel-level performance work (AOs, Jastrow, det/Jastrow ratios, GFMC), on-GPU VMC optimization, and a project-wide lint/cleanup.</p>
+<section id="new-features">
+<h3>New features<a class="headerlink" href="#new-features" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Mixed precision support</strong>: Added a configurable precision system with per-zone dtype control (fp64 by default; fp32 in selected zones in <code class="docutils literal notranslate"><span class="pre">&quot;mixed&quot;</span></code> mode). Refactored as selectable-precision modules with three explicit design principles. The geminal/AGP/SD path remains in fp64 to prevent fp32 amplification of <code class="docutils literal notranslate"><span class="pre">log|det|</span></code>, and electron-nucleus <code class="docutils literal notranslate"><span class="pre">r</span> <span class="pre">-</span> <span class="pre">R</span></code> differences are computed in fp64 before downcasting to avoid catastrophic cancellation. <code class="docutils literal notranslate"><span class="pre">ao_grad_lap</span></code> and <code class="docutils literal notranslate"><span class="pre">mo_grad_lap</span></code> precision zones are split for finer-grained control. The public API is reduced to a single mode selector: <code class="docutils literal notranslate"><span class="pre">&quot;full&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;mixed&quot;</span></code>.</p></li>
+<li><p><strong>On-GPU VMC optimization</strong>: VMC parameter optimization can now run entirely on GPU. Added <code class="docutils literal notranslate"><span class="pre">use_device_collectives</span></code> (auto-selected by the JAX backend: GPU=<code class="docutils literal notranslate"><span class="pre">True</span></code>, otherwise <code class="docutils literal notranslate"><span class="pre">False</span></code>) with an MPI/JAX consistency check, along with matching CLI/TOML options. Multi-GPU <code class="docutils literal notranslate"><span class="pre">run_optimize</span></code> is supported.</p></li>
+<li><p><strong>Ruff lint pipeline</strong>: Added <code class="docutils literal notranslate"><span class="pre">jqmc-lint-ruff.yml</span></code> GitHub Action and updated <code class="docutils literal notranslate"><span class="pre">.pre-commit-config.yaml</span></code>. Applied auto-fixes and manual cleanups across the codebase, and removed non-ASCII characters from code and docstrings.</p></li>
+</ul>
+</section>
+<section id="performance-memory">
+<h3>Performance &amp; memory<a class="headerlink" href="#performance-memory" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>AO module (HLO-level)</strong>: Reduced L1/L2/DRAM traffics. Replaced <code class="docutils literal notranslate"><span class="pre">segment_sum</span></code> with a bucketed reduce+gather scheme (including <code class="docutils literal notranslate"><span class="pre">V_l</span></code>). Unrolled <code class="docutils literal notranslate"><span class="pre">(8Z)**l</span></code> in the Cartesian kernels to avoid XLA <code class="docutils literal notranslate"><span class="pre">while</span></code> loops. Removed <code class="docutils literal notranslate"><span class="pre">eps</span></code> from Cartesian GTOs. Fused AO/MO value/grad/lap into a single dispatch on hot paths.</p></li>
+<li><p><strong>Streaming caches on hot paths</strong>: Stream cached AO and paired tables into every det-ratio / jas-ratio hot paths. Improved the J3 streaming cache in <code class="docutils literal notranslate"><span class="pre">jastrow_factor.py</span></code>. Reused J3 streaming-state AOs in LRDMC mesh / ECP non-local ratios. Improved the K state carry in <code class="docutils literal notranslate"><span class="pre">jqmc/wavefunction.py</span></code>.</p></li>
+<li><p><strong>Jastrow ratios</strong>: Optimized J2 ratio from an <code class="docutils literal notranslate"><span class="pre">O(N^2)</span></code> baseline to <code class="docutils literal notranslate"><span class="pre">O(N</span> <span class="pre">*</span> <span class="pre">N_grid)</span></code> per-grid sums. Introduced a slim J3 state carry in the MCMC wavefunction update. Polished Jastrow with a dense <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">N)</span></code> up-up / dn-dn pair reduction and removed scatter-add <code class="docutils literal notranslate"><span class="pre">while</span></code> loops.</p></li>
+<li><p><strong>GFMC_t</strong>: Added a streaming kinetic-state path (parity with GFMC_n) and replaced a Python <code class="docutils literal notranslate"><span class="pre">while</span></code> loop with <code class="docutils literal notranslate"><span class="pre">lax.while_loop</span></code> in the projection.</p></li>
+<li><p><strong>Misc</strong>: Vectorized the electron-configuration generator and PRNG key initialization. Switched the jackknife standard deviation to a two-pass centered sum-of-squares for better numerical stability. Replaced <code class="docutils literal notranslate"><span class="pre">hessian()</span></code> with <code class="docutils literal notranslate"><span class="pre">jvp(grad)</span></code> for the NN-Jastrow Laplacian.</p></li>
+</ul>
+</section>
+<section id="bug-fixes">
+<h3>Bug fixes<a class="headerlink" href="#bug-fixes" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>GFMC/MCMC logging</strong>: Improved loggers in <code class="docutils literal notranslate"><span class="pre">jqmc/jqmc_gfmc.py</span></code> and <code class="docutils literal notranslate"><span class="pre">jqmc/jqmc_mcmc.py</span></code>.</p></li>
+</ul>
+</section>
+<section id="workflow-jqmc-workflow">
+<h3>Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)<a class="headerlink" href="#workflow-jqmc-workflow" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Refactored workflow modules (<code class="docutils literal notranslate"><span class="pre">vmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">mcmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc_ext_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">workflow.py</span></code>, and the <code class="docutils literal notranslate"><span class="pre">_*.py</span></code> helpers) for readability, with no behavior change.</p></li>
+</ul>
+</section>
+<section id="tests-infrastructure">
+<h3>Tests &amp; infrastructure<a class="headerlink" href="#tests-infrastructure" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Polished tolerance control across the test suite; introduced a medium tolerance for numerical-Laplacian tests and removed the separate autodiff tolerance.</p></li>
+<li><p>Removed <code class="docutils literal notranslate"><span class="pre">test_kinetic_energy_analytic_and_numerical</span></code> and <code class="docutils literal notranslate"><span class="pre">test_numerial_and_auto_grads_and_laplacians_ln_Det</span></code> because the numerical references are intrinsically unstable; analytical versions are already validated against JAX autograd.</p></li>
+<li><p>Shortened <code class="docutils literal notranslate"><span class="pre">jqmc-run-full-pytest.yml</span></code> and updated GitHub Actions.</p></li>
+<li><p>Made the numerical-Laplacian debug functions more stable.</p></li>
+</ul>
+</section>
+</section>
 <section id="apr-24-2026-v0-2-1a2">
 <h2>Apr-24-2026: v0.2.1a2<a class="headerlink" href="#apr-24-2026-v0-2-1a2" title="Link to this heading">#</a></h2>
 <p>Minor update focusing on workflow improvements, bug fixes, and new benchmark infrastructure.</p>
-<section id="new-features">
-<h3>New features<a class="headerlink" href="#new-features" title="Link to this heading">#</a></h3>
+<section id="id1">
+<h3>New features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Kernel benchmark suite</strong>: Added benchmark modules and tests for profiling kernel performance.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code> option</strong>: Added a <code class="docutils literal notranslate"><span class="pre">cleanup_patterns</span></code> configuration option to <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> for automatic post-run file cleanup, with support for recursive matching in subdirectories.</p></li>
 </ul>
 </section>
-<section id="bug-fixes">
-<h3>Bug fixes<a class="headerlink" href="#bug-fixes" title="Link to this heading">#</a></h3>
+<section id="id2">
+<h3>Bug fixes<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>MPI deadlock in <code class="docutils literal notranslate"><span class="pre">max_time</span></code> / <code class="docutils literal notranslate"><span class="pre">stop_flag</span></code></strong>: Fixed a deadlock that could occur during <code class="docutils literal notranslate"><span class="pre">max_time</span></code> and <code class="docutils literal notranslate"><span class="pre">stop_flag</span></code> checks in MPI runs.</p></li>
 </ul>
@@ -397,8 +449,8 @@
 <section id="apr-16-2026-v0-2-1a1">
 <h2>Apr-16-2026: v0.2.1a1<a class="headerlink" href="#apr-16-2026-v0-2-1a1" title="Link to this heading">#</a></h2>
 <p>This release focuses on a major update of the VMC optimizer (Linear Method), extended AO basis optimization, memory/performance improvements of the <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> kernel package, and substantial hardening of the <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> automation package.</p>
-<section id="id1">
-<h3>New features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<section id="id3">
+<h3>New features<a class="headerlink" href="#id3" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Linear Method (LM) optimizer</strong>: Implemented the Linear Method optimizer that solves the generalized eigenvalue problem <span class="math notranslate nohighlight">\(\bar{H} v = E \bar{S} v\)</span> for optimal parameter updates, providing a powerful alternative to the naive Stochastic Reconfiguration (SR). The optimization is robust and fast.</p>
 <ul>
@@ -432,8 +484,8 @@
 <li><p><strong>Shape assertions</strong>: Added rigorous shape assertions (using <code class="docutils literal notranslate"><span class="pre">mcmc_counter</span></code>, <code class="docutils literal notranslate"><span class="pre">num_walkers</span></code>, <code class="docutils literal notranslate"><span class="pre">n_atoms</span></code>) to <code class="docutils literal notranslate"><span class="pre">get_E</span></code>, <code class="docutils literal notranslate"><span class="pre">get_aF</span></code>, <code class="docutils literal notranslate"><span class="pre">get_gF</span></code>, <code class="docutils literal notranslate"><span class="pre">get_aH</span></code> in MCMC, GFMC_t, GFMC_n, and their debug counterparts.</p></li>
 </ul>
 </section>
-<section id="performance-memory">
-<h3>Performance &amp; memory<a class="headerlink" href="#performance-memory" title="Link to this heading">#</a></h3>
+<section id="id4">
+<h3>Performance &amp; memory<a class="headerlink" href="#id4" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Buffer-based MPI reduce in SR</strong>: Eliminated <code class="docutils literal notranslate"><span class="pre">list()</span></code> round-trips and switched to buffer-based MPI reduce in the SR optimizer for lower overhead.</p></li>
 <li><p><strong>Pre-compute collective observable</strong>: Compute <span class="math notranslate nohighlight">\(O_\mathrm{SR} = \delta O \cdot g\)</span> while the full <span class="math notranslate nohighlight">\(O\)</span>-matrix is still in memory during the SR solve, avoiding a redundant <code class="docutils literal notranslate"><span class="pre">get_dln_WF</span></code> call in the LM path.</p></li>
@@ -445,21 +497,21 @@
 <li><p><strong>Better memory management</strong>: Improved memory handling in <code class="docutils literal notranslate"><span class="pre">jqmc_gfmc.py</span></code> and <code class="docutils literal notranslate"><span class="pre">jqmc_mcmc.py</span></code>.</p></li>
 </ul>
 </section>
-<section id="id2">
-<h3>Bug fixes<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
+<section id="id5">
+<h3>Bug fixes<a class="headerlink" href="#id5" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>GFMC_n / GFMC_t spin-polarized MPI bug</strong>: Fixed a critical bug for systems where <code class="docutils literal notranslate"><span class="pre">n_up</span> <span class="pre">!=</span> <span class="pre">n_dn</span></code> and <code class="docutils literal notranslate"><span class="pre">n_dn</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> with MPI &gt;= 2 processes.</p></li>
 <li><p><strong>GFMC_t projection averaging</strong>: Fixed incorrect averaging of the number of projections across MPI ranks in GFMC_t.</p></li>
 <li><p><strong>SR with <code class="docutils literal notranslate"><span class="pre">num_params</span> <span class="pre">&gt;=</span> <span class="pre">num_samples</span></code></strong>: Fixed MPI bug when the number of optimizable parameters exceeds the number of samples.</p></li>
 <li><p><strong>MPI <code class="docutils literal notranslate"><span class="pre">Allreduce</span></code> for scalars</strong>: Replaced <code class="docutils literal notranslate"><span class="pre">Allreduce</span></code> with <code class="docutils literal notranslate"><span class="pre">allreduce</span></code> for scalar <code class="docutils literal notranslate"><span class="pre">int</span></code> and <code class="docutils literal notranslate"><span class="pre">float</span></code> values in <code class="docutils literal notranslate"><span class="pre">jqmc_mcmc.py</span></code> and <code class="docutils literal notranslate"><span class="pre">jqmc_gfmc.py</span></code>, as <code class="docutils literal notranslate"><span class="pre">Allreduce</span></code> for scalars exhibits implementation-dependent behavior.</p></li>
-<li><p><strong>Optimizer step estimation</strong>: Fixed <code class="docutils literal notranslate"><span class="pre">estimate_required_steps</span></code> — removed incorrect <code class="docutils literal notranslate"><span class="pre">ceil</span></code> rounding and <code class="docutils literal notranslate"><span class="pre">max</span></code> clamp that ignored <code class="docutils literal notranslate"><span class="pre">walker_ratio</span></code>; added <code class="docutils literal notranslate"><span class="pre">min_steps</span></code> parameter.</p></li>
+<li><p><strong>Optimizer step estimation</strong>: Fixed <code class="docutils literal notranslate"><span class="pre">estimate_required_steps</span></code> – removed incorrect <code class="docutils literal notranslate"><span class="pre">ceil</span></code> rounding and <code class="docutils literal notranslate"><span class="pre">max</span></code> clamp that ignored <code class="docutils literal notranslate"><span class="pre">walker_ratio</span></code>; added <code class="docutils literal notranslate"><span class="pre">min_steps</span></code> parameter.</p></li>
 <li><p><strong>SR stability near convergence</strong>: Improved stability of SR with adaptive learning rate in the vicinity of convergence.</p></li>
 <li><p><strong>Pytree inconsistency</strong>: Fixed a JAX pytree structural mismatch.</p></li>
-<li><p><strong>S/N ratio diagnostics</strong>: Fixed averaging (last S/N ratio → averaged S/N ratios) and trivial output bugs.</p></li>
+<li><p><strong>S/N ratio diagnostics</strong>: Fixed averaging (last S/N ratio -&gt; averaged S/N ratios) and trivial output bugs.</p></li>
 </ul>
 </section>
-<section id="workflow-jqmc-workflow">
-<h3>Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)<a class="headerlink" href="#workflow-jqmc-workflow" title="Link to this heading">#</a></h3>
+<section id="id6">
+<h3>Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)<a class="headerlink" href="#id6" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Major refactoring</strong>: Comprehensive overhaul of all workflow modules (<code class="docutils literal notranslate"><span class="pre">vmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">mcmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc_workflow.py</span></code>, <code class="docutils literal notranslate"><span class="pre">workflow.py</span></code>) with improved robustness, cleaner code structure, and new <code class="docutils literal notranslate"><span class="pre">_phase.py</span></code> module for phase management.</p></li>
 <li><p><strong>SSH / file-descriptor leak fixes</strong>: Fixed SSH connection hangs and leaks; consolidated <code class="docutils literal notranslate"><span class="pre">Machine</span></code> objects to prevent resource exhaustion.</p></li>
@@ -506,20 +558,20 @@
 <li><p><strong>Geminal AO -&gt; MO projection</strong>: Implemented AO overlap matrix computation and geminal AO -&gt; MO projection for constrained optimization.</p></li>
 </ul>
 </section>
-<section id="id3">
-<h3>New features<a class="headerlink" href="#id3" title="Link to this heading">#</a></h3>
+<section id="id7">
+<h3>New features<a class="headerlink" href="#id7" title="Link to this heading">#</a></h3>
 <ul class="simple">
-<li><p><strong>LRDMC force calculations</strong>: Implemented LRDMC atomic forces with the Pathak–Wagner regularization.</p></li>
+<li><p><strong>LRDMC force calculations</strong>: Implemented LRDMC atomic forces with the Pathak-Wagner regularization.</p></li>
 <li><p><strong>Jastrow functions</strong>: Added <code class="docutils literal notranslate"><span class="pre">jastrow_1b_type</span></code> (<code class="docutils literal notranslate"><span class="pre">'exp'</span></code> / <code class="docutils literal notranslate"><span class="pre">'pade'</span></code>) and <code class="docutils literal notranslate"><span class="pre">jastrow_2b_type</span></code> (<code class="docutils literal notranslate"><span class="pre">'pade'</span></code> / <code class="docutils literal notranslate"><span class="pre">'exp'</span></code>) fields to <code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data</span></code> and <code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code>, enabling runtime selection of the one-body and two-body Jastrow functional forms.</p>
 <ul>
 <li><p>Exponential form: <span class="math notranslate nohighlight">\(u(r) = \frac{1}{2b}(1 - e^{-br})\)</span></p></li>
-<li><p>Padé form: <span class="math notranslate nohighlight">\(u(r) = \frac{r}{2(1 + br)}\)</span></p></li>
+<li><p>Pade form: <span class="math notranslate nohighlight">\(u(r) = \frac{r}{2(1 + br)}\)</span></p></li>
 </ul>
 </li>
 </ul>
 </section>
-<section id="id4">
-<h3>Bug fixes<a class="headerlink" href="#id4" title="Link to this heading">#</a></h3>
+<section id="id8">
+<h3>Bug fixes<a class="headerlink" href="#id8" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p>Fixed force calculations producing NaN values; added NaN checks in all tests.</p></li>
 <li><p>Fixed MCMC memory overflow caused by storing <code class="docutils literal notranslate"><span class="pre">r_up_history</span></code> / <code class="docutils literal notranslate"><span class="pre">r_dn_history</span></code>.</p></li>
@@ -531,10 +583,10 @@
 <h3>Infrastructure<a class="headerlink" href="#infrastructure" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Restart file format change</strong>: Switched restart files from pickle-based <code class="docutils literal notranslate"><span class="pre">*.chk</span></code> to HDF5-based <code class="docutils literal notranslate"><span class="pre">*.h5</span></code>. <strong>Note:</strong> backward compatibility with old <code class="docutils literal notranslate"><span class="pre">*.chk</span></code> files is <em>not</em> maintained.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> package</strong>: Introduced the <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> automation package for orchestrating multi-stage QMC pipelines (WF conversion → VMC optimization → MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> package</strong>: Introduced the <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> automation package for orchestrating multi-stage QMC pipelines (WF conversion -&gt; VMC optimization -&gt; MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.</p></li>
 <li><p><strong>Removed <code class="docutils literal notranslate"><span class="pre">SWCT_data</span></code></strong>: Cleaned up legacy <code class="docutils literal notranslate"><span class="pre">SWCT_data</span></code> class as part of codebase refactoring.</p></li>
 <li><p><strong>More comprehensive tests</strong>: Substantially expanded the test suite to cover the new features and improve overall reliability.</p></li>
-<li><p><strong>Expanded examples</strong>: Reorganized and enriched the <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory with 11 end-to-end tutorials (<code class="docutils literal notranslate"><span class="pre">jqmc-example01</span></code>–<code class="docutils literal notranslate"><span class="pre">jqmc-example08</span></code>, <code class="docutils literal notranslate"><span class="pre">jqmc-workflow-example01</span></code>–<code class="docutils literal notranslate"><span class="pre">jqmc-workflow-example03</span></code>) covering single-point VMC/LRDMC, force calculations, GPU walker-scaling benchmarks, interaction-energy workflows, and PES scans with automated <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> pipelines.</p></li>
+<li><p><strong>Expanded examples</strong>: Reorganized and enriched the <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory with 11 end-to-end tutorials (<code class="docutils literal notranslate"><span class="pre">jqmc-example01</span></code>-<code class="docutils literal notranslate"><span class="pre">jqmc-example08</span></code>, <code class="docutils literal notranslate"><span class="pre">jqmc-workflow-example01</span></code>-<code class="docutils literal notranslate"><span class="pre">jqmc-workflow-example03</span></code>) covering single-point VMC/LRDMC, force calculations, GPU walker-scaling benchmarks, interaction-energy workflows, and PES scans with automated <code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code> pipelines.</p></li>
 </ul>
 </section>
 </section>
@@ -583,8 +635,8 @@
 <ul class="simple">
 <li><p>Release of the second alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
-<section id="id5">
-<h3>Key Features<a class="headerlink" href="#id5" title="Link to this heading">#</a></h3>
+<section id="id9">
+<h3>Key Features<a class="headerlink" href="#id9" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Neural Network Jastrow</strong>:</p>
 <ul>
@@ -614,8 +666,8 @@
 <li><p>Release of the first alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
 <p>We are pleased to announce the first alpha release of <strong>jQMC</strong>, a Python-based Quantum Monte Carlo package built on <strong>JAX</strong>.</p>
-<section id="id6">
-<h3>Key Features<a class="headerlink" href="#id6" title="Link to this heading">#</a></h3>
+<section id="id10">
+<h3>Key Features<a class="headerlink" href="#id10" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>JAX-based Core</strong>: Fully utilizes JAX’s Just-In-Time (JIT) compilation and automatic vectorization (<code class="docutils literal notranslate"><span class="pre">vmap</span></code>) for high-performance simulations on GPUs and TPUs.</p></li>
 <li><p><strong>Algorithms</strong>:</p>
@@ -698,24 +750,32 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-24-2026-v0-2-1a2">Apr-24-2026: v0.2.1a2</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#may-18-2026-v0-2-2a1">May-18-2026: v0.2.2a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#new-features">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-memory">Performance &amp; memory</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bug-fixes">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-jqmc-workflow">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#tests-infrastructure">Tests &amp; infrastructure</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-24-2026-v0-2-1a2">Apr-24-2026: v0.2.1a2</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bug fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#apr-16-2026-v0-2-1a1">Apr-16-2026: v0.2.1a1</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">New features</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance-memory">Performance &amp; memory</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Bug fixes</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#workflow-jqmc-workflow">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Performance &amp; memory</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6">Workflow (<code class="docutils literal notranslate"><span class="pre">jqmc_workflow</span></code>)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#breaking-changes">Breaking changes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mar-10-2026-v0-2-0a1">Mar-10-2026: v0.2.0a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#performance">Performance</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optimization">Optimization</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">New features</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">Bug fixes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id7">New features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id8">Bug fixes</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#infrastructure">Infrastructure</a></li>
 </ul>
 </li>
@@ -728,12 +788,12 @@
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id9">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id10">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>
