@@ -1,4 +1,11 @@
-"""QMC module."""
+"""QMC module (VMC / MCMC).
+
+Precision Zones:
+    - ``mcmc``: sampling, Sherman--Morrison updates, accept/reject, statistics.
+    - ``optimization``: SR matrix construction and parameter updates (run_optimize).
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -48,22 +55,26 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax.scipy.linalg import lu_factor, lu_solve  # noqa: F401  (kept for external callers / _MCMC_debug)
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
-from ._jqmc_utility import _generate_init_electron_configurations
+from ._jqmc_utility import _generate_init_electron_configurations, check_mpi4py_jax_distribution_consistency
 from ._setting import (
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
-    EPS_rcond_SVD,
     EPS_zero_division,
     atol_consistency,
+    get_eps,
     min_S_diag_abs,
 )
 from .atomic_orbital import compute_overlap_matrix
 from .determinant import (
+    Det_ratio_streaming_state,
     Geminal_data,
+    _advance_det_ratio_streaming_state,
+    _compute_u_dn_move_from_det_ratio_state,
+    _compute_v_up_move_from_det_ratio_state,
+    _init_det_ratio_streaming_state,
     compute_AS_regularization_factor,
     compute_AS_regularization_factor_fast_update,
     compute_det_geminal_all_elements,
@@ -76,7 +87,12 @@ from .hamiltonians import (
     compute_local_energy,
     compute_local_energy_fast,
 )
-from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
+from .jastrow_factor import (
+    _advance_jastrow_ratio_state,
+    _compute_ratio_Jastrow_part_rank1_update,
+    _init_jastrow_ratio_state,
+    compute_Jastrow_part,
+)
 from .structure import _find_nearest_index_jnp
 from .swct import evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import evaluate_ln_wavefunction, evaluate_ln_wavefunction_fast
@@ -110,10 +126,226 @@ mpi_rank = mpi_comm.Get_rank()
 mpi_size = mpi_comm.Get_size()
 
 
+# ---------------------------------------------------------------------------
+# Device-resident SR solvers (JAX-native, sharding + psum / all_gather)
+#
+# Implements the four SR solve paths from ``optimizer_on_gpu.md``:
+#   - wide + direct : (X X^T + eps I) y = X F       via psum
+#   - wide + CG     :  same system, conjugate gradient with psum'd matvec
+#   - tall + direct : (X^T X + eps I) z = F, theta = X z   via all_gather
+#   - tall + CG     :  same system, conjugate gradient on replicated inputs
+#
+# Compiled kernels are cached at module level so the JIT cost is paid once
+# per process. The same code path runs on:
+#   - single-process CPU       (psum is trivial; mesh has 1 device)
+#   - multi-process CPU + Gloo (after ``jax.distributed.initialize``)
+#   - GPU (single or multi process; psum maps to NVLink / NCCL)
+# ---------------------------------------------------------------------------
+def _get_sr_mesh():
+    """Lazy-built 1-D ``Mesh`` over all visible JAX devices, axis name 'rank'."""
+    cached = getattr(_get_sr_mesh, "_cached", None)
+    if cached is not None:
+        return cached
+    from jax.sharding import Mesh
+
+    mesh = Mesh(np.array(jax.devices()), axis_names=("rank",))
+    _get_sr_mesh._cached = mesh
+    return mesh
+
+
+def _cg_while_loop(b, apply_A, x0, max_iter, tol, dtype):
+    """Plain CG with break-on-breakdown, packed into ``jax.lax.while_loop``.
+
+    Returns ``(x, sqrt(rs), num_iter)`` matching the NumPy reference's
+    return signature. ``apply_A`` may close over ``psum`` collectives so
+    this helper is only safe to call from inside a ``shard_map``.
+    """
+    tiny = jnp.asarray(jnp.finfo(dtype).tiny, dtype=dtype)
+    tol_sq = tol * tol
+
+    r0 = b - apply_A(x0)
+    rs0 = jnp.dot(r0, r0)
+    state0 = (
+        x0,
+        r0,
+        r0,  # p
+        rs0,
+        jnp.int32(0),
+        jnp.bool_(False),  # breakdown
+    )
+
+    def cond(state):
+        _x, _r, _p, rs, k, breakdown = state
+        return (k < max_iter) & (rs > tol_sq) & jnp.logical_not(breakdown)
+
+    def body(state):
+        x, r, p, rs_old, k, breakdown = state
+        Ap = apply_A(p)
+        denom = jnp.dot(p, Ap)
+        new_breakdown = breakdown | jnp.logical_not(jnp.isfinite(denom)) | (jnp.abs(denom) <= tiny)
+        safe_denom = jnp.where(new_breakdown, jnp.asarray(1.0, dtype=dtype), denom)
+        alpha = rs_old / safe_denom
+        x_new = jnp.where(new_breakdown, x, x + alpha * p)
+        r_new = jnp.where(new_breakdown, r, r - alpha * Ap)
+        rs_new_real = jnp.dot(r_new, r_new)
+        rs_new = jnp.where(new_breakdown, rs_old, rs_new_real)
+        safe_rs_old = jnp.where(rs_old > 0, rs_old, jnp.asarray(1.0, dtype=dtype))
+        beta = rs_new / safe_rs_old
+        p_new = jnp.where(new_breakdown, p, r_new + beta * p)
+        return (x_new, r_new, p_new, rs_new, k + 1, new_breakdown)
+
+    x_f, _r_f, _p_f, rs_f, k_f, _bk_f = jax.lax.while_loop(cond, body, state0)
+    return x_f, jnp.sqrt(rs_f), k_f
+
+
+def _get_sr_wide_direct_kernel():
+    """Wide-matrix direct SR solve: ``theta = (X X^T + eps I)^{-1} (X F)``.
+
+    Inputs sharded along sample axis 'rank'. Output replicated on every rank.
+    """
+    cached = getattr(_get_sr_wide_direct_kernel, "_cached", None)
+    if cached is not None:
+        return cached
+    from jax.sharding import PartitionSpec as PSpec
+
+    mesh = _get_sr_mesh()
+
+    @partial(
+        jax.shard_map,
+        mesh=mesh,
+        in_specs=(PSpec(None, "rank"), PSpec("rank"), PSpec()),
+        out_specs=PSpec(),
+    )
+    def _solve(X, F, epsilon):
+        XXT_local = X @ X.T
+        XF_local = X @ F
+        XXT = jax.lax.psum(XXT_local, "rank")
+        XF = jax.lax.psum(XF_local, "rank")
+        XXT = XXT + epsilon * jnp.eye(XXT.shape[0], dtype=XXT.dtype)
+        return jnp.linalg.solve(XXT, XF)
+
+    _get_sr_wide_direct_kernel._cached = _solve
+    return _solve
+
+
+def _get_sr_wide_cg_kernel():
+    """Wide-matrix CG SR solve. Returns ``(theta, sqrt(rs), num_iter)``."""
+    cached = getattr(_get_sr_wide_cg_kernel, "_cached", None)
+    if cached is not None:
+        return cached
+    from jax.sharding import PartitionSpec as PSpec
+
+    mesh = _get_sr_mesh()
+
+    @partial(
+        jax.shard_map,
+        mesh=mesh,
+        in_specs=(
+            PSpec(None, "rank"),  # X (P, N_local)
+            PSpec("rank"),  # F (N_local,)
+            PSpec(),  # epsilon scalar
+            PSpec(),  # max_iter scalar
+            PSpec(),  # tol scalar
+            PSpec(),  # x0 (P,) replicated
+        ),
+        out_specs=(PSpec(), PSpec(), PSpec()),
+    )
+    def _solve(X, F, epsilon, max_iter, tol, x0):
+        # b = psum(X F)
+        b = jax.lax.psum(X @ F, "rank")  # (P,)
+
+        def apply_A(v):
+            # v replicated across ranks; X.T @ v is local; X @ ... is local.
+            local = X @ (X.T @ v)
+            return jax.lax.psum(local, "rank") + epsilon * v
+
+        return _cg_while_loop(b, apply_A, x0, max_iter, tol, X.dtype)
+
+    _get_sr_wide_cg_kernel._cached = _solve
+    return _solve
+
+
+def _get_sr_tall_direct_kernel():
+    """Tall-matrix direct SR solve via push-through identity.
+
+    Solves ``(X^T X + eps I) y = F`` (smaller system in sample space) and
+    returns ``theta = X y`` replicated across ranks.
+    """
+    cached = getattr(_get_sr_tall_direct_kernel, "_cached", None)
+    if cached is not None:
+        return cached
+    from jax.sharding import PartitionSpec as PSpec
+
+    mesh = _get_sr_mesh()
+
+    @partial(
+        jax.shard_map,
+        mesh=mesh,
+        in_specs=(PSpec(None, "rank"), PSpec("rank"), PSpec()),
+        out_specs=PSpec(),
+        # all_gather produces values that are replicated by construction but
+        # JAX cannot statically prove this on a 1-axis mesh; disable the check.
+        check_vma=False,
+    )
+    def _solve(X, F, epsilon):
+        # Gather all sample columns onto every rank. In the tall regime
+        # ``num_samples_total`` is small by construction, so the replicated
+        # ``(P, N_total)`` matrix is affordable; the solve over ``N_total``
+        # is the cheap dimension.
+        X_full = jax.lax.all_gather(X, "rank", axis=1, tiled=True)  # (P, N_total)
+        F_full = jax.lax.all_gather(F, "rank", tiled=True)  # (N_total,)
+        XTX = X_full.T @ X_full
+        XTX = XTX + epsilon * jnp.eye(XTX.shape[0], dtype=XTX.dtype)
+        y = jnp.linalg.solve(XTX, F_full)
+        return X_full @ y
+
+    _get_sr_tall_direct_kernel._cached = _solve
+    return _solve
+
+
+def _get_sr_tall_cg_kernel():
+    """Tall-matrix CG SR solve via push-through identity."""
+    cached = getattr(_get_sr_tall_cg_kernel, "_cached", None)
+    if cached is not None:
+        return cached
+    from jax.sharding import PartitionSpec as PSpec
+
+    mesh = _get_sr_mesh()
+
+    @partial(
+        jax.shard_map,
+        mesh=mesh,
+        in_specs=(
+            PSpec(None, "rank"),  # X (P, N_local)
+            PSpec("rank"),  # F (N_local,)
+            PSpec(),  # epsilon
+            PSpec(),  # max_iter
+            PSpec(),  # tol
+            PSpec(),  # x0 (N_total,) replicated
+        ),
+        out_specs=(PSpec(), PSpec(), PSpec(), PSpec()),
+        check_vma=False,  # all_gather output is replicated but not statically inferrable
+    )
+    def _solve(X, F, epsilon, max_iter, tol, x0):
+        X_full = jax.lax.all_gather(X, "rank", axis=1, tiled=True)
+        F_full = jax.lax.all_gather(F, "rank", tiled=True)
+
+        def apply_A(v):
+            return X_full.T @ (X_full @ v) + epsilon * v
+
+        y, residual, num_iter = _cg_while_loop(F_full, apply_A, x0, max_iter, tol, X.dtype)
+        # Return y (sample-space CG solution) too so the caller can persist
+        # it as a warm-start for the next optimization step.
+        return X_full @ y, y, residual, num_iter
+
+    _get_sr_tall_cg_kernel._cached = _solve
+    return _solve
+
+
 class MCMC:
     """Production VMC/MCMC driver with multiple walkers.
 
-    This class drives Metropolis–Hastings sampling for many independent walkers in parallel
+    This class drives Metropolis-Hastings sampling for many independent walkers in parallel
     (vectorized with ``jax.vmap``) and stores all observables needed by downstream analysis
     and optimization. All public methods are part of the supported API; private helpers are
     internal and subject to change.
@@ -183,7 +415,11 @@ class MCMC:
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list = jnp.array([jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
+        # Use jax.random.split to obtain ``num_walkers`` independent PRNGKeys in
+        # one batched call; replaces the previous ``[fold_in(..., nw) for nw ...]``
+        # Python-loop, which scaled linearly with num_walkers and dominated init
+        # time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
 
         # initialize random seed
         np.random.seed(self.__mpi_seed)
@@ -214,18 +450,22 @@ class MCMC:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -254,23 +494,26 @@ class MCMC:
         nw = self.__num_walkers
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
+        # mcmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
+
         # stored weight (w_L)
-        self.__stored_w_L = np.zeros((0, nw))
+        self.__stored_w_L = np.zeros((0, nw), dtype=dtype_np)
 
         # stored local energy (e_L)
-        self.__stored_e_L = np.zeros((0, nw))
+        self.__stored_e_L = np.zeros((0, nw), dtype=dtype_np)
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = np.zeros((0, nw))
+        self.__stored_e_L2 = np.zeros((0, nw), dtype=dtype_np)
 
         # stored force_HF per walker (HF force = de_L/dR + Omega . de_L/dr)
-        self.__stored_force_HF = np.zeros((0, nw, n_atoms, 3))
+        self.__stored_force_HF = np.zeros((0, nw, n_atoms, 3), dtype=dtype_np)
 
         # stored force_PP per walker (Pulay force = dln_Psi/dR + Omega . dln_Psi/dr + 1/2 * d_omega/dr)
-        self.__stored_force_PP = np.zeros((0, nw, n_atoms, 3))
+        self.__stored_force_PP = np.zeros((0, nw, n_atoms, 3), dtype=dtype_np)
 
         # stored E_L * force_PP per walker (for covariance in Pulay force)
-        self.__stored_E_L_force_PP = np.zeros((0, nw, n_atoms, 3))
+        self.__stored_E_L_force_PP = np.zeros((0, nw, n_atoms, 3), dtype=dtype_np)
 
         # stored parameter gradients keyed by block name
         self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
@@ -428,7 +671,7 @@ class MCMC:
         }
 
     def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
-        """Execute Metropolis–Hastings sampling for all walkers.
+        """Execute Metropolis-Hastings sampling for all walkers.
 
         Args:
             num_mcmc_steps (int, optional): Metropolis updates per walker; values <= 0 are no-ops. Defaults to 0.
@@ -439,6 +682,8 @@ class MCMC:
             - Accumulates energies, weights, forces, and wavefunction gradients into public buffers (``w_L``, ``e_L``, ``dln_Psi_*`` etc.).
             - Logs timing statistics and acceptance ratios at the end of the run.
         """
+        check_mpi4py_jax_distribution_consistency()
+
         # timer_counter
         timer_mcmc_total = 0.0
         timer_mcmc_update_init = 0.0
@@ -486,7 +731,31 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
-        RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
+        # Warm-up slim state for the JIT trace. The real chain-entry init
+        # is rebuilt below in the run body; this throwaway value only exists
+        # to compile the update functions with the new argument shape.
+        det_ratio_state_warmup = _jit_vmap_init_det_ratio_state(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        # Same throwaway-for-trace pattern for the J3 streaming state; ``None``
+        # when no three-body Jastrow component is present (Python-static
+        # dispatch keeps the trace consistent with the chain-entry value below).
+        _j3d_warmup = self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data
+        if _j3d_warmup is not None:
+            j3_state_warmup = _jit_vmap_init_j3_state(
+                _j3d_warmup,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+        else:
+            j3_state_warmup = None
+
+        dtype_jnp = jnp.float64
+        dtype_np = np.float64
+
+        RTs = jnp.broadcast_to(jnp.eye(3, dtype=dtype_jnp), (len(self.__jax_PRNG_key_list), 3, 3))
 
         # Warm-up compilation: trigger JIT tracing on the first run() call
         # so that the MCMC loop does not stall on the first step.
@@ -505,6 +774,8 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state_warmup,
+                    j3_state_warmup,
                 )
             else:
                 _ = _jit_vmap_update(
@@ -517,9 +788,16 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state_warmup,
+                    j3_state_warmup,
                 )
             _ = _jit_vmap_e_L_fast(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
+                geminal_inv,
+                det_ratio_state_warmup,
             )
             _ = _jit_vmap_as_reg(
                 self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -607,11 +885,6 @@ class MCMC:
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         num_mcmc_done = 0
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        mcmc_total_current = time.perf_counter()
-        logger.info(
-            f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
-        )
         mcmc_interval = max(1, int(num_mcmc_steps / 100))  # %
 
         # adjust_epsilon_AS = self.__adjust_epsilon_AS
@@ -620,14 +893,18 @@ class MCMC:
         nw = self.__num_walkers
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
-        self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw))])
-        self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw))])
-        self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw))])
+        self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw), dtype=dtype_np)])
+        self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw), dtype=dtype_np)])
+        self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw), dtype=dtype_np)])
         if self.__comput_position_deriv:
-            self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
-            self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
+            self.__stored_force_HF = np.concatenate(
+                [self.__stored_force_HF, np.zeros((num_mcmc_steps, nw, n_atoms, 3), dtype=dtype_np)]
+            )
+            self.__stored_force_PP = np.concatenate(
+                [self.__stored_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3), dtype=dtype_np)]
+            )
             self.__stored_E_L_force_PP = np.concatenate(
-                [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
+                [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3), dtype=dtype_np)]
             )
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
@@ -636,12 +913,40 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
+        # Slim AO + paired streaming state for ratio kernels. Built once at
+        # MCMC chain entry and advanced via
+        # ``_advance_det_ratio_streaming_state`` on every accepted move
+        # inside the fori_loop body. Lifecycle matches ``geminal_inv``:
+        # carried throughout the entire MCMC run, no periodic rebuild.
+        det_ratio_state = _jit_vmap_init_det_ratio_state(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+
+        # J3 streaming state: skip the O(n_ao^2 * N_e) matmul rebuild of
+        # ``W_up/W_dn = j3_mat @ aos_*`` and ``U_up/U_dn = j3_mat.T @ aos_*``
+        # on every MCMC ratio call by maintaining the rank-1-updatable cache
+        # alongside ``det_ratio_state``. Only constructed when a three-body
+        # Jastrow component is present; otherwise pass-through ``None`` keeps
+        # the rank-1 ratio path on its existing (no-cache) trace.
+        _j3d = self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data
+        if _j3d is not None:
+            j3_state = _jit_vmap_init_j3_state(
+                _j3d,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+        else:
+            j3_state = None
+
+        mcmc_loop_start = time.perf_counter()
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 mcmc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_loop_start):.1f} sec."
                 )
 
             # electron positions are goint to be updated!
@@ -655,6 +960,8 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
+                    j3_state,
                 ) = _jit_vmap_update_up(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -665,6 +972,8 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
+                    j3_state,
                 )
             else:
                 (
@@ -675,6 +984,8 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
+                    j3_state,
                 ) = _jit_vmap_update(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -685,6 +996,8 @@ class MCMC:
                     self.__epsilon_AS,
                     geminal_inv,
                     geminal,
+                    det_ratio_state,
+                    j3_state,
                 )
             self.__latest_r_up_carts.block_until_ready()
             self.__latest_r_dn_carts.block_until_ready()
@@ -699,13 +1012,18 @@ class MCMC:
             if self.__random_discretized_mesh:
                 RTs = _jit_vmap_generate_RTs(self.__jax_PRNG_key_list)
             else:
-                RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
+                RTs = jnp.broadcast_to(jnp.eye(3, dtype=dtype_jnp), (len(self.__jax_PRNG_key_list), 3, 3))
 
             # Evaluate observables each MCMC cycle
             start = time.perf_counter()
             # logger.debug("    Evaluating e_L ...")
             e_L_step = _jit_vmap_e_L_fast(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
+                geminal_inv,
+                det_ratio_state,
             )
             e_L_step.block_until_ready()
             end = time.perf_counter()
@@ -787,10 +1105,10 @@ class MCMC:
                 else:
                     n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-                    omega_up_step = jnp.zeros((nw, n_atoms, n_up))
-                    omega_dn_step = jnp.zeros((nw, n_atoms, n_dn))
-                    grad_omega_dr_up_step = jnp.zeros((nw, n_atoms, 3))
-                    grad_omega_dr_dn_step = jnp.zeros((nw, n_atoms, 3))
+                    omega_up_step = jnp.zeros((nw, n_atoms, n_up), dtype=dtype_jnp)
+                    omega_dn_step = jnp.zeros((nw, n_atoms, n_dn), dtype=dtype_jnp)
+                    grad_omega_dr_up_step = jnp.zeros((nw, n_atoms, 3), dtype=dtype_jnp)
+                    grad_omega_dr_dn_step = jnp.zeros((nw, n_atoms, 3), dtype=dtype_jnp)
 
                 # Compute per-walker force products preserving cross-correlations
                 _grad_e_L_r_up_np = np.array(grad_e_L_r_up_step)  # (nw, n_up, 3)
@@ -875,7 +1193,7 @@ class MCMC:
                         f"    min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
                     )
                 else:
-                    logger.devel(f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} (empty — no down-spin electrons)")
+                    logger.devel(f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} (empty -- no down-spin electrons)")
                 logger.devel(f"    [de_L/dc] RTs: shape={_RTs.shape} non-finite={_nan_RTs}/{_RTs.size}")
 
                 grad_e_L_h_step = _jit_vmap_grad_e_L_h(
@@ -911,23 +1229,41 @@ class MCMC:
             num_mcmc_done += 1
 
             # check max time
+            # Use rank 0's decision and broadcast to all ranks to prevent
+            # MPI deadlock caused by different ranks disagreeing on whether
+            # to break (due to slight differences in mcmc_total_start).
             mcmc_current = time.perf_counter()
-            if max_time < mcmc_current - mcmc_total_start:
+            should_stop = bool(max_time < mcmc_current - mcmc_total_start) if mpi_rank == 0 else False
+            should_stop = mpi_comm.bcast(should_stop, root=0)
+            if should_stop:
                 logger.info(f"  Stopping... max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the mcmc loop.")
                 break
 
             # check toml file (stop flag)
-            if os.path.isfile(toml_filename):
-                dict_toml = toml.load(open(toml_filename))
-                try:
-                    stop_flag = dict_toml["external_control"]["stop"]
-                except KeyError:
+            # Only rank 0 reads the file to avoid filesystem cache inconsistencies.
+            if mpi_rank == 0:
+                if os.path.isfile(toml_filename):
+                    dict_toml = toml.load(open(toml_filename))
+                    try:
+                        stop_flag = dict_toml["external_control"]["stop"]
+                    except KeyError:
+                        stop_flag = False
+                else:
                     stop_flag = False
-                if stop_flag:
-                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
-                    logger.info("  Break the mcmc loop.")
-                    break
+            else:
+                stop_flag = False
+            stop_flag = mpi_comm.bcast(stop_flag, root=0)
+            if stop_flag:
+                logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                logger.info("  Break the mcmc loop.")
+                break
+
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        mcmc_total_current = time.perf_counter()
+        logger.info(
+            f"  Progress: MCMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_loop_start):.1f} sec."
+        )
 
         # Barrier after MCMC operation
         start = time.perf_counter()
@@ -1125,28 +1461,25 @@ class MCMC:
 
         Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-        # E: jackknife mean and std
-        sum_E_local = np.sum(E_jackknife_binned_local)
-        sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+        # Two-pass jackknife std (centered sum of squares) to avoid catastrophic
+        # cancellation in <x^2> - <x>^2 when M_total grows large (many walkers).
 
-        # E: global sums
-        sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
-        sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
-
+        # E: 1st pass -- global mean
+        sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
         E_mean = sum_E_global / M_total
-        E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+
+        # E: 2nd pass -- centered sum of squares (numerically stable)
+        sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
+        E_var = sumsq_centered_E_global / M_total
         E_std = np.sqrt((M_total - 1) * E_var)
 
-        # Var: jackknife mean and std
-        sum_Var_local = np.sum(Var_jackknife_binned_local)
-        sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-        # Var: global sums
-        sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
-        sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-
+        # Var: 1st pass -- global mean
+        sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
         Var_mean = sum_Var_global / M_total
-        Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+
+        # Var: 2nd pass -- centered sum of squares
+        sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
+        Var_var = sumsq_centered_Var_global / M_total
         Var_std = np.sqrt((M_total - 1) * Var_var)
 
         logger.devel(f"E = {E_mean} +- {E_std} Ha.")
@@ -1159,7 +1492,7 @@ class MCMC:
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
     ):
-        """Compute Hellmann–Feynman + Pulay forces with jackknife statistics.
+        """Compute Hellmann-Feynman + Pulay forces with jackknife statistics.
 
         Args:
             num_mcmc_warmup_steps (int, optional): Samples to drop for warmup. Defaults to 50.
@@ -1310,18 +1643,20 @@ class MCMC:
         )
         force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
+        # Two-pass jackknife std (centered sum of squares) to avoid catastrophic
+        # cancellation in <x^2> - <x>^2 when M_total grows large.
+
+        # 1st pass -- global mean
         sum_force_local = np.sum(force_jn_local, axis=0)
-        sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
         sum_force_global = np.empty_like(sum_force_local)
-        sumsq_force_global = np.empty_like(sumsq_force_local)
-
         mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
-        mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
-
-        ## mean and var = E[x^2] - (E[x])^2
         mean_force_global = sum_force_global / M_total
-        var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+        # 2nd pass -- centered sum of squares (numerically stable)
+        sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
+        sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
+        mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
+        var_force_global = sumsq_centered_force_global / M_total
 
         ## mean and std
         force_mean = mean_force_global
@@ -1369,7 +1704,7 @@ class MCMC:
         # here, the third index indicates the flattened variational parameter index.
         O_matrix = np.empty((self.mcmc_counter, self.num_walkers, 0))
 
-        for dln_Psi_dc, block in zip(dln_Psi_dc_list, matched_blocks):
+        for dln_Psi_dc, _ in zip(dln_Psi_dc_list, matched_blocks):
             logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
             if dln_Psi_dc.ndim == 2:  # scalar variational param.
                 dln_Psi_dc_reshaped = dln_Psi_dc.reshape(dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], 1)
@@ -1391,7 +1726,7 @@ class MCMC:
         #
         # Uses orthogonal-basis projectors to avoid oblique-projection amplification:
         #   1. Transform O_k to S^{-1/2}-orthogonalized basis
-        #   2. Apply orthogonal projection:  Õ' = O' - (I-L') O' (I-R')
+        #   2. Apply orthogonal projection:  O_tilde' = O' - (I-L') O' (I-R')
         #      where L' = S^{1/2} C_up C_up^T S^{1/2},  R' = S^{1/2} C_dn C_dn^T S^{1/2}
         #   3. Keep O' in orthogonal basis (theta will be back-transformed later)
         if lambda_projectors is not None and num_orb_projection is not None:
@@ -1410,7 +1745,7 @@ class MCMC:
                     # Transform paired O_k to orthogonal basis: O' = S^{-1/2}_up @ O @ S^{-1/2}_dn
                     # Use @ with broadcasting over (m, w) batch dims instead of einsum for BLAS speed.
                     paired_orth = inv_sqrt_overlap_up @ paired_block @ inv_sqrt_overlap_dn
-                    # Apply orthogonal projection: Õ' = O' - (I-L') O' (I-R')
+                    # Apply orthogonal projection: O_tilde' = O' - (I-L') O' (I-R')
                     comp_L = identity - left_projector
                     comp_R = identity - right_projector
                     correction = comp_L @ paired_orth @ comp_R
@@ -1626,18 +1961,21 @@ class MCMC:
         bar_eL_bar_O_jn_local = np.einsum("i,ij->ij", eL_jn_local, O_jn_local)
 
         force_local = -2.0 * (eL_O_jn_local - bar_eL_bar_O_jn_local)  # (M_local, D)
+
+        # Two-pass jackknife std (centered sum of squares) to avoid catastrophic
+        # cancellation in <x^2> - <x>^2 when M_total grows large.
+
+        # 1st pass -- global mean
         sum_local = np.sum(force_local, axis=0)  # shape (D,)
-        sumsq_local = np.sum(force_local**2, axis=0)  # shape (D,)
-
         sum_global = np.empty_like(sum_local)
-        sumsq_global = np.empty_like(sumsq_local)
-
         mpi_comm.Allreduce([sum_local, MPI.DOUBLE], [sum_global, MPI.DOUBLE], op=MPI.SUM)
-        mpi_comm.Allreduce([sumsq_local, MPI.DOUBLE], [sumsq_global, MPI.DOUBLE], op=MPI.SUM)
-
-        ## mean and var = E[x^2] - (E[x])^2
         mean_global = sum_global / M_total
-        var_global = (sumsq_global / M_total) - (sum_global / M_total) ** 2
+
+        # 2nd pass -- centered sum of squares (numerically stable)
+        sumsq_centered_local = np.sum((force_local - mean_global) ** 2, axis=0)  # shape (D,)
+        sumsq_centered_global = np.empty_like(sumsq_centered_local)
+        mpi_comm.Allreduce([sumsq_centered_local, MPI.DOUBLE], [sumsq_centered_global, MPI.DOUBLE], op=MPI.SUM)
+        var_global = sumsq_centered_global / M_total
 
         ## mean and std
         generalized_force_mean = mean_global
@@ -1709,7 +2047,7 @@ class MCMC:
 
         where :math:`\\delta\\alpha = \\gamma g` and :math:`g = S^{-1}f`.
 
-        Returns ``(H_0, H_1, H_2, S_2)`` — scalars for aSR gamma optimization.
+        Returns ``(H_0, H_1, H_2, S_2)`` -- scalars for aSR gamma optimization.
         Requires ``g`` (natural gradient direction).
 
         **LM mode** (``return_matrices=True``):
@@ -1845,11 +2183,9 @@ class MCMC:
         _need_full_dE = return_matrices and g is not None and collective_obs is not None
         if _need_full_dE:
             pass  # keep full dE_matrix; will slice after computing dE_SR
-        elif _cpi_for_dln is not None:
+        elif _cpi_for_dln is not None or (chosen_param_index is not None and not (return_matrices and g is not None)):
             dE_matrix = dE_matrix[:, :, chosen_param_index]
-        elif chosen_param_index is not None and not (return_matrices and g is not None):
-            dE_matrix = dE_matrix[:, :, chosen_param_index]
-        # else: LM fallback (no collective_obs) — keep full dE_matrix, slice later
+        # else: LM fallback (no collective_obs) -- keep full dE_matrix, slice later
 
         # Diagnostics: dE_matrix
         dE_matrix_stats = self._safe_stats(dE_matrix, "dE_matrix")
@@ -1878,7 +2214,7 @@ class MCMC:
             assert collective_obs.shape == (N,), f"collective_obs shape {collective_obs.shape} != ({N},)"
             assert K_dE >= K, f"dE must be full when collective_obs is used: K_dE={K_dE} < K={K}"
         else:
-            assert K == K_dE, f"O and dE dimension mismatch: K={K} != K_dE={K_dE}"
+            assert K_dE == K, f"O and dE dimension mismatch: K={K} != K_dE={K_dE}"
         if g is not None:
             assert g.shape[0] == K_dE, f"g dimension {g.shape[0]} != K_dE={K_dE}"
 
@@ -1957,7 +2293,7 @@ class MCMC:
                     # Memory-efficient path: O_SR pre-computed during SR solve.
                     # dO_flat is already subspace-only (fetched with chosen_param_index).
                     O_SR = collective_obs  # (N_local,)
-                    # dE_SR needs full ddE — ddE_flat is full K_full here because
+                    # dE_SR needs full ddE -- ddE_flat is full K_full here because
                     # dE_matrix was NOT sliced by _cpi_for_dln (see else branch below).
                     dE_SR = ddE_flat @ g  # (N,)
                     # Slice ddE to subspace (dO_flat is already subspace)
@@ -2178,10 +2514,11 @@ class MCMC:
         # ==================================================================
 
         # ---- Step 1: Remove parameters with near-zero diag(S) ----
+        dtype_mcmc_np = np.float64
         diag_S = np.diag(S_matrix)
         max_diag_S = np.max(np.abs(diag_S))
         # parcut2 ~ machine_precision^2, effectively only removes exact zeros
-        parcut2 = np.finfo(np.float64).eps ** 2
+        parcut2 = np.finfo(dtype_mcmc_np).eps ** 2
         alive = np.abs(diag_S) > parcut2 * max_diag_S
         n_removed_step1 = p - int(np.count_nonzero(alive))
         if n_removed_step1 > 0:
@@ -2189,11 +2526,11 @@ class MCMC:
 
         if not np.any(alive):
             logger.warning("  LM dgelscut: all parameters removed in Step 1; returning zero update.")
-            return np.zeros(p), H_0
+            return np.zeros(p, dtype=dtype_mcmc_np), H_0
 
         # ---- Step 2: Build correlation matrix for alive parameters ----
         alive_idx = np.where(alive)[0]
-        D_inv_sqrt = np.zeros(p)
+        D_inv_sqrt = np.zeros(p, dtype=dtype_mcmc_np)
         D_inv_sqrt[alive_idx] = 1.0 / np.sqrt(np.abs(diag_S[alive_idx]))
 
         # ---- Step 3: Iteratively remove parameters until well-conditioned ----
@@ -2202,7 +2539,7 @@ class MCMC:
             n_alive = len(idx)
             if n_alive == 0:
                 logger.warning("  LM dgelscut: all parameters removed; returning zero update.")
-                return np.zeros(p), H_0
+                return np.zeros(p, dtype=dtype_mcmc_np), H_0
 
             # Build correlation matrix for current alive set
             D_sub = D_inv_sqrt[idx]  # (n_alive,)
@@ -2252,7 +2589,7 @@ class MCMC:
         H_alive = H_matrix[np.ix_(idx, idx)]
         f_alive = f_vec[idx]
 
-        # ---- S-orthonormalization: S = U Λ U^T, P = U Λ^{-1/2} ----
+        # ---- S-orthonormalization: S = U Lambda U^T, P = U Lambda^{-1/2} ----
         eigvals_S, eigvecs_S = np.linalg.eigh(S_alive)
         # After dgelscut, all eigenvalues should be positive, but clip for safety
         pos_mask = eigvals_S > 0
@@ -2262,20 +2599,20 @@ class MCMC:
 
         if p_prime == 0:
             logger.warning("  LM: no positive S eigenvalues after dgelscut; returning zero update.")
-            return np.zeros(p), H_0
+            return np.zeros(p, dtype=dtype_mcmc_np), H_0
 
-        # P = U Λ^{-1/2} (S-orthonormal basis)
+        # P = U Lambda^{-1/2} (S-orthonormal basis)
         inv_sqrt_Lambda = 1.0 / np.sqrt(Lambda)
         P = U * inv_sqrt_Lambda[np.newaxis, :]  # (n_alive, p')
 
         # Transform H and f to S-orthonormal basis
-        H_new = P.T @ H_alive @ P  # (p', p') — should be near-identity S
+        H_new = P.T @ H_alive @ P  # (p', p') -- should be near-identity S
         f_new = P.T @ f_alive  # (p',)
 
         # ---- Build extended matrices (p'+1) x (p'+1) ----
         dim = p_prime + 1
-        H_bar = np.zeros((dim, dim))
-        S_bar = np.eye(dim)  # identity (S-orthonormal basis)
+        H_bar = np.zeros((dim, dim), dtype=dtype_mcmc_np)
+        # S_bar = np.eye(dim, dtype=dtype_mcmc_np)  # identity (S-orthonormal basis)
 
         H_bar[0, 0] = H_0
         H_bar[0, 1:] = -0.5 * f_new
@@ -2310,9 +2647,9 @@ class MCMC:
         w0 = w[0]
         c_new = w[1:] / w0  # (p',) in S-orthonormal basis
 
-        # ---- Back-transform: P @ c_new → alive parameter space → full space ----
+        # ---- Back-transform: P @ c_new -> alive parameter space -> full space ----
         c_alive = P @ c_new  # (n_alive,)
-        c_vec = np.zeros(p)
+        c_vec = np.zeros(p, dtype=dtype_mcmc_np)
         c_vec[idx] = c_alive
 
         logger.info(
@@ -2324,6 +2661,131 @@ class MCMC:
         )
 
         return c_vec, E_lm
+
+    @staticmethod
+    def _shard_X_F(X_local: npt.NDArray, F_local: npt.NDArray):
+        """Convert host-local NumPy ``(X, F)`` into shard_map-ready ``jax.Array`` s.
+
+        ``X_local`` is sharded along axis 1 (samples), ``F_local`` along axis 0.
+        Single-process: returns plain ``jnp.array`` (1-rank mesh = identity).
+        Multi-process: stitches host-local slices into a global ``jax.Array``.
+        """
+        X_jnp = jnp.asarray(X_local)
+        F_jnp = jnp.asarray(F_local)
+        if jax.process_count() <= 1:
+            return X_jnp, F_jnp
+
+        from jax.sharding import NamedSharding
+        from jax.sharding import PartitionSpec as PSpec
+
+        mesh = _get_sr_mesh()
+        X_global = jax.make_array_from_process_local_data(NamedSharding(mesh, PSpec(None, "rank")), X_jnp)
+        F_global = jax.make_array_from_process_local_data(NamedSharding(mesh, PSpec("rank")), F_jnp)
+        return X_global, F_global
+
+    @staticmethod
+    def _replicated_jax_array(arr: npt.NDArray):
+        """Wrap a host-local NumPy array as a replicated ``jax.Array`` across ranks.
+
+        For multi-process runs the ``arr`` must be identical on every rank (e.g.
+        a CG warm-start state that was psum'd before being persisted).
+        """
+        jnp_arr = jnp.asarray(arr)
+        if jax.process_count() <= 1:
+            return jnp_arr
+
+        from jax.sharding import NamedSharding
+        from jax.sharding import PartitionSpec as PSpec
+
+        mesh = _get_sr_mesh()
+        return jax.make_array_from_process_local_data(NamedSharding(mesh, PSpec()), jnp_arr)
+
+    def _sr_solve_wide_direct_device(
+        self,
+        X_local: npt.NDArray,
+        F_local: npt.NDArray,
+        epsilon: float,
+    ) -> npt.NDArray:
+        """Wide-matrix direct SR solve via shard_map + psum + ``jnp.linalg.solve``.
+
+        Args:
+            X_local: Local (diag_S-normalized) design matrix ``(P, N_local)``.
+            F_local: Local right-hand-side ``(N_local,)``.
+            epsilon: Tikhonov regularization scalar.
+
+        Returns:
+            ``theta = (X X^T + eps I)^{-1} (X F)`` of shape ``(P,)``,
+            identical on every rank.
+        """
+        solver = _get_sr_wide_direct_kernel()
+        X_g, F_g = self._shard_X_F(X_local, F_local)
+        eps_jnp = jnp.asarray(epsilon, dtype=X_g.dtype)
+        theta = solver(X_g, F_g, eps_jnp)
+        theta.block_until_ready()
+        return np.asarray(theta)
+
+    def _sr_solve_wide_cg_device(
+        self,
+        X_local: npt.NDArray,
+        F_local: npt.NDArray,
+        epsilon: float,
+        max_iter: int,
+        tol: float,
+        x0: npt.NDArray,
+    ) -> tuple[npt.NDArray, float, int]:
+        """Wide-matrix CG SR solve. Returns ``(theta, residual, num_iter)``.
+
+        ``x0`` must be ``(P,)`` and identical on every rank (warm-start carried
+        across optimization iterations).
+        """
+        solver = _get_sr_wide_cg_kernel()
+        X_g, F_g = self._shard_X_F(X_local, F_local)
+        x0_g = self._replicated_jax_array(np.asarray(x0, dtype=X_local.dtype))
+        eps_jnp = jnp.asarray(epsilon, dtype=X_g.dtype)
+        max_iter_jnp = jnp.asarray(int(max_iter), dtype=jnp.int32)
+        tol_jnp = jnp.asarray(tol, dtype=X_g.dtype)
+        theta, residual, num_iter = solver(X_g, F_g, eps_jnp, max_iter_jnp, tol_jnp, x0_g)
+        theta.block_until_ready()
+        return np.asarray(theta), float(residual), int(num_iter)
+
+    def _sr_solve_tall_direct_device(
+        self,
+        X_local: npt.NDArray,
+        F_local: npt.NDArray,
+        epsilon: float,
+    ) -> npt.NDArray:
+        """Tall-matrix direct SR solve (push-through identity)."""
+        solver = _get_sr_tall_direct_kernel()
+        X_g, F_g = self._shard_X_F(X_local, F_local)
+        eps_jnp = jnp.asarray(epsilon, dtype=X_g.dtype)
+        theta = solver(X_g, F_g, eps_jnp)
+        theta.block_until_ready()
+        return np.asarray(theta)
+
+    def _sr_solve_tall_cg_device(
+        self,
+        X_local: npt.NDArray,
+        F_local: npt.NDArray,
+        epsilon: float,
+        max_iter: int,
+        tol: float,
+        x0: npt.NDArray,
+    ) -> tuple[npt.NDArray, npt.NDArray, float, int]:
+        """Tall-matrix CG SR solve. Returns ``(theta, y, residual, num_iter)``.
+
+        ``x0`` and ``y`` live in the sample space, shape ``(N_total,)``;
+        ``y`` is the CG solution (suitable as warm-start next iteration).
+        ``theta = X y`` lives in parameter space, shape ``(P,)``.
+        """
+        solver = _get_sr_tall_cg_kernel()
+        X_g, F_g = self._shard_X_F(X_local, F_local)
+        x0_g = self._replicated_jax_array(np.asarray(x0, dtype=X_local.dtype))
+        eps_jnp = jnp.asarray(epsilon, dtype=X_g.dtype)
+        max_iter_jnp = jnp.asarray(int(max_iter), dtype=jnp.int32)
+        tol_jnp = jnp.asarray(tol, dtype=X_g.dtype)
+        theta, y, residual, num_iter = solver(X_g, F_g, eps_jnp, max_iter_jnp, tol_jnp, x0_g)
+        theta.block_until_ready()
+        return np.asarray(theta), np.asarray(y), float(residual), int(num_iter)
 
     def run_optimize(
         self,
@@ -2344,6 +2806,7 @@ class MCMC:
         opt_lambda_basis_exp: bool = False,
         opt_lambda_basis_coeff: bool = False,
         optimizer_kwargs: dict | None = None,
+        use_device_collectives: bool = True,
     ):
         """Optimize wavefunction parameters using SR or optax.
 
@@ -2377,6 +2840,21 @@ class MCMC:
                 ``use_lm=True`` enables LM with keys (``lm_subspace_dim``, ``lm_cond``);
                 other ``method`` names are optax constructors (e.g., ``"adam"``) and
                 receive remaining keys.
+            use_device_collectives (bool, optional): If True (default), run
+                the SR cross-rank reductions and linear solve via
+                ``jax.shard_map`` + ``jax.lax.psum`` / ``all_gather`` (NCCL on
+                multi-process GPU, Gloo on multi-process CPU, trivial on
+                single-process). If False, fall back to ``mpi_comm.Reduce`` /
+                ``Allreduce`` / ``Alltoallv`` + ``scipy.linalg.solve`` (legacy
+                mpi4py + SciPy path).
+
+                When True under ``mpirun -n N>=2``, ``jax.distributed.initialize(
+                cluster_detection_method="mpi4py")`` must have been called
+                before ``run_optimize``; otherwise the device path silently
+                produces per-rank-local results that don't match the global
+                solution. ``run_optimize`` raises ``RuntimeError`` if it
+                detects ``mpi_size != jax.process_count()`` to surface this
+                misconfiguration.
 
         Notes:
             - Persists optax optimizer state across calls when method and hyperparameters match.
@@ -2420,6 +2898,8 @@ class MCMC:
                 raise RuntimeError("use_lm requires compute_log_WF_param_deriv=True.")
             if not self.__comput_e_L_param_deriv:
                 raise RuntimeError("use_lm requires comput_e_L_param_deriv=True.")
+
+        check_mpi4py_jax_distribution_consistency()
 
         optax_kwargs = {
             k: v
@@ -2528,9 +3008,10 @@ class MCMC:
             max_iter: int,
             tol: float,
         ) -> tuple[npt.NDArray[np.float64], float, int]:
-            x = np.array(x0, dtype=np.float64, copy=True)
-            r = np.array(b, dtype=np.float64, copy=False) - apply_A(x)
-            p = np.array(r, dtype=np.float64, copy=True)
+            dtype_mcmc_np = np.float64
+            x = np.array(x0, dtype=dtype_mcmc_np, copy=True)
+            r = np.array(b, dtype=dtype_mcmc_np, copy=False) - apply_A(x)
+            p = np.array(r, dtype=dtype_mcmc_np, copy=True)
             rs_old = float(np.dot(r, r))
 
             if not np.isfinite(rs_old):
@@ -2539,7 +3020,7 @@ class MCMC:
             if np.sqrt(rs_old) <= tol:
                 return x, np.sqrt(rs_old), 0
 
-            tiny = np.finfo(np.float64).tiny
+            tiny = np.finfo(dtype_mcmc_np).tiny
             num_iter = 0
             for i in range(int(max_iter)):
                 Ap = apply_A(p)
@@ -2665,6 +3146,9 @@ class MCMC:
             logger.info(f"Bin blocks = {num_mcmc_bin_blocks}.")
             logger.info("")
 
+            dtype_mcmc_jnp = jnp.float64
+            dtype_mcmc_np = np.float64
+
             lambda_projectors = None
             num_orb_projection = None
             if opt_with_projected_MOs:
@@ -2672,10 +3156,14 @@ class MCMC:
                 geminal_mo_current = wavefunction_data_step.geminal_data
                 num_orb_projection = int(geminal_mo_current.num_electron_dn)
 
-                mo_coefficients_up = np.asarray(geminal_mo_current.orb_data_up_spin.mo_coefficients, dtype=np.float64)
-                mo_coefficients_dn = np.asarray(geminal_mo_current.orb_data_dn_spin.mo_coefficients, dtype=np.float64)
-                overlap_up = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_up_spin.aos_data), dtype=np.float64)
-                overlap_dn = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_dn_spin.aos_data), dtype=np.float64)
+                mo_coefficients_up = np.asarray(geminal_mo_current.orb_data_up_spin.mo_coefficients, dtype=dtype_mcmc_np)
+                mo_coefficients_dn = np.asarray(geminal_mo_current.orb_data_dn_spin.mo_coefficients, dtype=dtype_mcmc_np)
+                overlap_up = np.asarray(
+                    compute_overlap_matrix(geminal_mo_current.orb_data_up_spin.aos_data), dtype=dtype_mcmc_np
+                )
+                overlap_dn = np.asarray(
+                    compute_overlap_matrix(geminal_mo_current.orb_data_dn_spin.aos_data), dtype=dtype_mcmc_np
+                )
                 overlap_up = 0.5 * (overlap_up + overlap_up.T)
                 overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
 
@@ -2711,9 +3199,9 @@ class MCMC:
                 # ------------------------------------------------------------------
                 # DEVEL: orthogonal complement-projector diagnostics  (I - L') and (I - R')
                 # ------------------------------------------------------------------
-                _I = np.eye(left_projector.shape[0], dtype=np.float64)
-                _comp_L = _I - left_projector  # (I - L')  — symmetric
-                _comp_R = _I - right_projector  # (I - R')  — symmetric
+                _I = np.eye(left_projector.shape[0], dtype=dtype_mcmc_np)
+                _comp_L = _I - left_projector  # (I - L')  -- symmetric
+                _comp_R = _I - right_projector  # (I - R')  -- symmetric
 
                 # basic statistics
                 logger.devel(
@@ -2797,7 +3285,7 @@ class MCMC:
             logger.info("-" * num_sep_line)
             logger.info("")
 
-            # Abort optimization if energy is NaN/Inf — the wavefunction is
+            # Abort optimization if energy is NaN/Inf -- the wavefunction is
             # corrupted and further updates would be meaningless.
             if not np.isfinite(E):
                 logger.error(
@@ -2831,13 +3319,15 @@ class MCMC:
 
             if not (use_sr or use_lm):
                 if blocks:
-                    flat_param_vector = np.concatenate([np.ravel(np.array(block.values, dtype=np.float64)) for block in blocks])
+                    flat_param_vector = np.concatenate(
+                        [np.ravel(np.array(block.values, dtype=dtype_mcmc_np)) for block in blocks]
+                    )
                 else:
-                    flat_param_vector = np.array([], dtype=np.float64)
+                    flat_param_vector = np.array([], dtype=dtype_mcmc_np)
 
                 if optax_state is None:
                     optax_param_size = flat_param_vector.size
-                    optax_state = optax_tx.init(jnp.array(flat_param_vector))
+                    optax_state = optax_tx.init(jnp.asarray(flat_param_vector, dtype=dtype_mcmc_jnp))
                 elif flat_param_vector.size != optax_param_size:
                     raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
 
@@ -2864,7 +3354,7 @@ class MCMC:
                 logger.info("-" * num_sep_line)
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
 
-                # S/N symmetrization is no longer needed — O_k is symmetrized
+                # S/N symmetrization is no longer needed -- O_k is symmetrized
                 # at source in get_dln_WF, so f and f_std are already symmetric.
 
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
@@ -2992,7 +3482,7 @@ class MCMC:
 
                 # compute X_w@F
                 X_F_local = X_local @ F_local  # shape (num_param, )
-                X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                X_F = np.empty(X_F_local.shape, dtype=dtype_mcmc_np)
                 mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
                 # compute f_argmax (index in reduced space)
@@ -3011,10 +3501,21 @@ class MCMC:
                 logger.info(f"The number of total samples is {num_samples_total}.")
                 logger.info(f"SR matrix dimension: {num_params} x {num_params}.")
 
+                # Announce which SR solve path will be used for this iteration.
+                _sr_regime = "wide" if num_params < num_samples_total else "tall"
+                _sr_method = "CG" if sr_cg_flag else "direct"
+                _sr_backend = "device (jax.shard_map + psum/all_gather)" if use_device_collectives else "CPU (mpi4py + scipy)"
+                logger.debug(
+                    "SR solver path: regime=%s, method=%s, backend=%s",
+                    _sr_regime,
+                    _sr_method,
+                    _sr_backend,
+                )
+
                 # make the SR matrix scale-invariant (i.e., normalize)
                 ## compute X_w@X.T
                 diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
-                diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
+                diag_S = np.empty(diag_S_local.shape, dtype=dtype_mcmc_np)
                 mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
                 logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
                 # ------------------------------------------------------------------
@@ -3066,240 +3567,341 @@ class MCMC:
                     logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
                     logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
                     if not sr_cg_flag:
-                        logger.info("Using the direct solver for the inverse of S.")
-                        logger.debug(
-                            f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
-                        )
-                        # compute local sum of X * X^T
-                        X_X_T_local = X_local @ X_local.T
-                        logger.devel(f"X_X_T_local.shape = {X_X_T_local.shape}.")
-                        # compute global sum of X * X^T
-                        if mpi_rank == 0:
-                            X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                        if use_device_collectives:
+                            logger.info("Using the direct solver for the inverse of S (device-resident, shard_map + psum).")
+                            logger.debug(
+                                f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
+                            )
+                            theta_all = self._sr_solve_wide_direct_device(
+                                X_local=X_local,
+                                F_local=F_local,
+                                epsilon=epsilon,
+                            )
+                            logger.devel(f"[device] theta_all (w/o the push through identity) = {theta_all}.")
+                            logger.devel(
+                                f"[device] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
                         else:
-                            X_X_T = None
-                        mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
-                        # compute local sum of X @ F
-                        X_F_local = X_local @ F_local  # shape (num_param, )
-                        logger.devel(f"X_F_local.shape = {X_F_local.shape}.")
-                        # compute global sum of X @ F
-                        if mpi_rank == 0:
-                            X_F = np.empty(X_F_local.shape, dtype=np.float64)
-                        else:
-                            X_F = None
-                        mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
-                        # compute theta
-                        if mpi_rank == 0:
-                            logger.devel(f"X @ X.T.shape = {X_X_T.shape}.")
-                            logger.devel(f"X @ F.shape = {X_F.shape}.")
-                            # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
-                            X_X_T[np.diag_indices_from(X_X_T)] += epsilon
+                            logger.info("Using the direct solver for the inverse of S.")
+                            logger.debug(
+                                f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
+                            )
+                            # compute local sum of X * X^T
+                            X_X_T_local = X_local @ X_local.T
+                            logger.devel(f"X_X_T_local.shape = {X_X_T_local.shape}.")
+                            # compute global sum of X * X^T
+                            if mpi_rank == 0:
+                                X_X_T = np.empty(X_X_T_local.shape, dtype=dtype_mcmc_np)
+                            else:
+                                X_X_T = None
+                            mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
+                            # compute local sum of X @ F
+                            X_F_local = X_local @ F_local  # shape (num_param, )
+                            logger.devel(f"X_F_local.shape = {X_F_local.shape}.")
+                            # compute global sum of X @ F
+                            if mpi_rank == 0:
+                                X_F = np.empty(X_F_local.shape, dtype=dtype_mcmc_np)
+                            else:
+                                X_F = None
+                            mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
+                            # compute theta
+                            if mpi_rank == 0:
+                                logger.devel(f"X @ X.T.shape = {X_X_T.shape}.")
+                                logger.devel(f"X @ F.shape = {X_F.shape}.")
+                                # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
+                                X_X_T[np.diag_indices_from(X_X_T)] += epsilon
 
-                            X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
-                            # theta = (X_w X^T + eps*I)^{-1} X_w F
-                            theta_all = X_X_T_inv_X_F
-                        else:
-                            theta_all = None
-                        # Broadcast theta_all to all ranks
-                        theta_all = mpi_comm.bcast(theta_all, root=0)
-                        logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.devel(
-                            f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                        )
+                                X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
+                                # theta = (X_w X^T + eps*I)^{-1} X_w F
+                                theta_all = X_X_T_inv_X_F
+                            else:
+                                theta_all = None
+                            # Broadcast theta_all to all ranks
+                            theta_all = mpi_comm.bcast(theta_all, root=0)
+                            logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+                            logger.devel(
+                                f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
                     else:
-                        logger.info("Using conjugate gradient for the inverse of S.")
-                        logger.info(f"  [CG] threshold {sr_cg_tol}.")
-                        logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
-                        # conjugate gradient solver
-                        # Compute b = X @ F (distributed)
-                        X_F_local = X_local @ F_local  # shape (num_param, )
-                        X_F = np.zeros_like(X_F_local)
-                        mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
-
-                        def apply_S_primal_numpy(v):
-                            XTv_local = X_local.T @ v
-                            XXTv_local = X_local @ XTv_local
-                            XXTv_global = np.empty_like(XXTv_local)
-                            mpi_comm.Allreduce(XXTv_local, XXTv_global, op=MPI.SUM)
-                            return XXTv_global + epsilon * v
-
-                        if sr_cg_warm_start_primal is not None and sr_cg_warm_start_primal.shape == X_F.shape:
-                            x0 = sr_cg_warm_start_primal
+                        if use_device_collectives:
+                            logger.info("Using conjugate gradient for the inverse of S (device-resident, shard_map + psum).")
+                            logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                            logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
+                            num_params_local = X_local.shape[0]
+                            if sr_cg_warm_start_primal is not None and sr_cg_warm_start_primal.shape == (num_params_local,):
+                                x0 = sr_cg_warm_start_primal
+                            else:
+                                x0 = np.zeros(num_params_local, dtype=dtype_mcmc_np)
+                            theta_all, final_residual, num_steps = self._sr_solve_wide_cg_device(
+                                X_local=X_local,
+                                F_local=F_local,
+                                epsilon=epsilon,
+                                max_iter=sr_cg_max_iter,
+                                tol=sr_cg_tol,
+                                x0=x0,
+                            )
+                            sr_cg_warm_start_primal = np.array(theta_all, copy=True)
+                            logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
+                            logger.info(f"  [CG] Converged in {num_steps} steps")
+                            if num_steps == sr_cg_max_iter:
+                                logger.info("  [CG] Conjugate gradient did not converge!!")
+                            logger.devel(f"[device/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                            logger.devel(f"[device/cg] theta_all: min, max = {np.min(theta_all)}, {np.max(theta_all)}.")
                         else:
-                            x0 = np.zeros_like(X_F)
+                            logger.info("Using conjugate gradient for the inverse of S.")
+                            logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                            logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
+                            # conjugate gradient solver
+                            # Compute b = X @ F (distributed)
+                            X_F_local = X_local @ F_local  # shape (num_param, )
+                            X_F = np.zeros_like(X_F_local)
+                            mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-                        theta_all, final_residual, num_steps = _conjugate_gradient_numpy(
-                            np.asarray(X_F, dtype=np.float64),
-                            apply_S_primal_numpy,
-                            np.asarray(x0, dtype=np.float64),
-                            sr_cg_max_iter,
-                            sr_cg_tol,
-                        )
-                        sr_cg_warm_start_primal = np.array(theta_all, copy=True)
-                        logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
-                        logger.info(f"  [CG] Converged in {num_steps} steps")
-                        if num_steps == sr_cg_max_iter:
-                            logger.info("  [CG] Conjugate gradient did not converge!!")
-                        logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.devel(
-                            f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                        )
+                            def apply_S_primal_numpy(v):
+                                XTv_local = X_local.T @ v
+                                XXTv_local = X_local @ XTv_local
+                                XXTv_global = np.empty_like(XXTv_local)
+                                mpi_comm.Allreduce(XXTv_local, XXTv_global, op=MPI.SUM)
+                                return XXTv_global + epsilon * v
+
+                            if sr_cg_warm_start_primal is not None and sr_cg_warm_start_primal.shape == X_F.shape:
+                                x0 = sr_cg_warm_start_primal
+                            else:
+                                x0 = np.zeros_like(X_F)
+
+                            theta_all, final_residual, num_steps = _conjugate_gradient_numpy(
+                                np.asarray(X_F, dtype=dtype_mcmc_np),
+                                apply_S_primal_numpy,
+                                np.asarray(x0, dtype=dtype_mcmc_np),
+                                sr_cg_max_iter,
+                                sr_cg_tol,
+                            )
+                            sr_cg_warm_start_primal = np.array(theta_all, copy=True)
+                            logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
+                            logger.info(f"  [CG] Converged in {num_steps} steps")
+                            if num_steps == sr_cg_max_iter:
+                                logger.info("  [CG] Conjugate gradient did not converge!!")
+                            logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                            logger.devel(
+                                f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
 
                 else:  # num_params >= num_samples:
                     # if True:
                     logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
                     logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
 
-                    # Get local shapes
-                    N, M = X_local.shape
-                    P = mpi_size  # number of ranks
-
-                    # Compute how many rows each rank should own (distribute the remainder)
-                    counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
-
-                    # Compute starting row index for each rank in the original array
-                    displs = [sum(counts[:i]) for i in range(P)]
-                    N_local = counts[mpi_rank]  # number of rows this rank will receive
-
-                    # Build send buffers by slicing X and Xw into P row‑chunks
-                    # Each chunk is flattened so we can send in one go.
-                    sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
-
-                    # Prepare sendcounts and displacements in units of elements
-                    sendcounts = [counts[i] * M for i in range(P)]
-                    sdispls = [sum(sendcounts[:i]) for i in range(P)]
-
-                    # Prepare recvcounts and displacements:
-                    # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
-                    recvcounts = [counts[mpi_rank] * M] * P
-                    rdispls = [i * counts[mpi_rank] * M for i in range(P)]
-
-                    # Allocate receive buffers
-                    recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
-
-                    # Perform the all‑to‑all variable‑sized exchange
-                    mpi_comm.Alltoallv(
-                        [sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE]
-                    )
-
-                    # Reshape the flat receive buffer into a 3D array
-                    #    shape = (P sources, N_local rows, M cols)
-                    buf_X = recvbuf_X.reshape(P, N_local, M)
-
-                    # Rearrange into final 2D arrays of shape (N_local, M * P)
-                    #    by stacking each source’s M columns side by side
-                    X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
-                    logger.devel(f"X_re_local.shape = {X_re_local.shape}.")
-
-                    if not sr_cg_flag:
-                        logger.info("Using the direct solver for the inverse of S.")
-                        logger.devel(
-                            f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
-                        )
-                        # compute local sum of X^T * X
-                        X_T_X_local = X_re_local.T @ X_re_local
-                        logger.devel(f"X_T_X_local.shape = {X_T_X_local.shape}.")
-                        # compute global sum of X^T * X
-                        if mpi_rank == 0:
-                            X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
+                    if use_device_collectives:
+                        # Device path: shard_map + all_gather handles redistribution
+                        # internally; no Alltoallv prep on host.
+                        if not sr_cg_flag:
+                            logger.info(
+                                "Using the direct solver for the inverse of S "
+                                "(device-resident, shard_map + all_gather, push-through identity)."
+                            )
+                            theta_all = self._sr_solve_tall_direct_device(
+                                X_local=X_local,
+                                F_local=F_local,
+                                epsilon=epsilon,
+                            )
+                            logger.devel(
+                                f"[device] theta_all (w/ the push through identity): "
+                                f"min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
                         else:
-                            X_T_X = None
-                        mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
-                        # gather F_local from all ranks (concatenation, not element-wise sum)
-                        F_local_count = F_local.shape[0]
-                        F_recvcounts = mpi_comm.gather(F_local_count, root=0)
-                        if mpi_rank == 0:
-                            F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
-                            F = np.empty(sum(F_recvcounts), dtype=np.float64)
-                        else:
-                            F_displs = None
-                            F = None
-                        mpi_comm.Gatherv(
-                            [F_local, MPI.DOUBLE],
-                            [F, (F_recvcounts, F_displs), MPI.DOUBLE] if mpi_rank == 0 else [F, None],
-                            root=0,
-                        )
-                        if mpi_rank == 0:
-                            logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
-                            logger.devel(f"F.shape = {F.shape}.")
-                            X_T_X[np.diag_indices_from(X_T_X)] += epsilon
-                            # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                            X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
-                            K = X_T_X_inv_F.shape[0] // mpi_size
-                        else:
-                            X_T_X_inv_F = None
-                            K = None
-                        # Broadcast K to all ranks so they know how big each chunk is
-                        K = mpi_comm.bcast(K, root=0)
-
-                        X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
-
-                        mpi_comm.Scatter(
-                            [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
-                            X_T_X_inv_F_local,  # receive buffer (on each rank)
-                            root=0,
-                        )
-                        # theta = X_w (X^T X_w + eps*I)^{-1} F
-                        theta_all_local = X_local @ X_T_X_inv_F_local
-                        theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
-                        mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
-                        logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
-                        logger.devel(
-                            f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                        )
+                            logger.info(
+                                "Using conjugate gradient for the inverse of S "
+                                "(device-resident, shard_map + all_gather, push-through identity)."
+                            )
+                            logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                            logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
+                            num_samples_total_local = int(F_local.shape[0]) * mpi_size
+                            if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == (num_samples_total_local,):
+                                x0 = sr_cg_warm_start_dual
+                            else:
+                                x0 = np.zeros(num_samples_total_local, dtype=dtype_mcmc_np)
+                            theta_all, y_sample, final_residual, num_steps = self._sr_solve_tall_cg_device(
+                                X_local=X_local,
+                                F_local=F_local,
+                                epsilon=epsilon,
+                                max_iter=sr_cg_max_iter,
+                                tol=sr_cg_tol,
+                                x0=x0,
+                            )
+                            # Persist sample-space CG solution as warm-start for the
+                            # next opt iteration (matches CPU branch's behavior).
+                            sr_cg_warm_start_dual = np.array(y_sample, copy=True)
+                            logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
+                            logger.info(f"  [CG] Converged in {num_steps} steps")
+                            if num_steps == sr_cg_max_iter:
+                                logger.info("  [CG] Conjugate gradient did not converge!!")
+                            logger.devel(
+                                f"[device/cg] theta_all (w/ the push through identity): "
+                                f"min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
+                        # Skip the rest of the legacy CPU tall block.
+                        # Fall through to the shared scale-back below.
+                        # (Sentinel handled by Python control flow: the CPU branch's
+                        # remaining code lives inside the same `else:` arm; we mirror
+                        # by jumping past it via early-continuation pattern below.)
+                        _device_tall_done = True
                     else:
-                        logger.info("Using conjugate gradient for the inverse of S.")
-                        logger.info(f"  [CG] threshold {sr_cg_tol}.")
-                        logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
+                        _device_tall_done = False
 
-                        def apply_dual_S_numpy(v):
-                            Xv_local = X_re_local @ v
-                            XTXv_local = X_re_local.T @ Xv_local
-                            XTXv_global = np.empty_like(XTXv_local)
-                            mpi_comm.Allreduce(XTXv_local, XTXv_global, op=MPI.SUM)
-                            return XTXv_global + epsilon * v
+                    if _device_tall_done:
+                        pass  # device path produced theta_all already
+                    else:
+                        # Legacy CPU path: redistribute X via Alltoallv, then solve.
+                        # Get local shapes
+                        N, M = X_local.shape
+                        P = mpi_size  # number of ranks
 
-                        # Gather F_local from all ranks (concatenation) to form F_total of length M*P
-                        F_local_count = F_local.shape[0]
-                        F_recvcounts = mpi_comm.allgather(F_local_count)
-                        F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
-                        F_total = np.empty(sum(F_recvcounts), dtype=np.float64)
-                        mpi_comm.Allgatherv(
-                            [F_local, MPI.DOUBLE],
-                            [F_total, (F_recvcounts, F_displs), MPI.DOUBLE],
+                        # Compute how many rows each rank should own (distribute the remainder)
+                        counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
+
+                        # Compute starting row index for each rank in the original array
+                        displs = [sum(counts[:i]) for i in range(P)]
+                        N_local = counts[mpi_rank]  # number of rows this rank will receive
+
+                        # Build send buffers by slicing X and Xw into P row-chunks
+                        # Each chunk is flattened so we can send in one go.
+                        sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
+
+                        # Prepare sendcounts and displacements in units of elements
+                        sendcounts = [counts[i] * M for i in range(P)]
+                        sdispls = [sum(sendcounts[:i]) for i in range(P)]
+
+                        # Prepare recvcounts and displacements:
+                        # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
+                        recvcounts = [counts[mpi_rank] * M] * P
+                        rdispls = [i * counts[mpi_rank] * M for i in range(P)]
+
+                        # Allocate receive buffers
+                        recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
+
+                        # Perform the all-to-all variable-sized exchange
+                        mpi_comm.Alltoallv(
+                            [sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE]
                         )
-                        if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
-                            x0 = sr_cg_warm_start_dual
+
+                        # Reshape the flat receive buffer into a 3D array
+                        #    shape = (P sources, N_local rows, M cols)
+                        buf_X = recvbuf_X.reshape(P, N_local, M)
+
+                        # Rearrange into final 2D arrays of shape (N_local, M * P)
+                        #    by stacking each source's M columns side by side
+                        X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
+                        logger.devel(f"X_re_local.shape = {X_re_local.shape}.")
+
+                        if not sr_cg_flag:
+                            logger.info("Using the direct solver for the inverse of S.")
+                            logger.devel(
+                                f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
+                            )
+                            # compute local sum of X^T * X
+                            X_T_X_local = X_re_local.T @ X_re_local
+                            logger.devel(f"X_T_X_local.shape = {X_T_X_local.shape}.")
+                            # compute global sum of X^T * X
+                            if mpi_rank == 0:
+                                X_T_X = np.empty(X_T_X_local.shape, dtype=dtype_mcmc_np)
+                            else:
+                                X_T_X = None
+                            mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
+                            # gather F_local from all ranks (concatenation, not element-wise sum)
+                            F_local_count = F_local.shape[0]
+                            F_recvcounts = mpi_comm.gather(F_local_count, root=0)
+                            if mpi_rank == 0:
+                                F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
+                                F = np.empty(sum(F_recvcounts), dtype=dtype_mcmc_np)
+                            else:
+                                F_displs = None
+                                F = None
+                            mpi_comm.Gatherv(
+                                [F_local, MPI.DOUBLE],
+                                [F, (F_recvcounts, F_displs), MPI.DOUBLE] if mpi_rank == 0 else [F, None],
+                                root=0,
+                            )
+                            if mpi_rank == 0:
+                                logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
+                                logger.devel(f"F.shape = {F.shape}.")
+                                X_T_X[np.diag_indices_from(X_T_X)] += epsilon
+                                # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                                X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
+                                K = X_T_X_inv_F.shape[0] // mpi_size
+                            else:
+                                X_T_X_inv_F = None
+                                K = None
+                            # Broadcast K to all ranks so they know how big each chunk is
+                            K = mpi_comm.bcast(K, root=0)
+
+                            X_T_X_inv_F_local = np.empty(K, dtype=dtype_mcmc_np)
+
+                            mpi_comm.Scatter(
+                                [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
+                                X_T_X_inv_F_local,  # receive buffer (on each rank)
+                                root=0,
+                            )
+                            # theta = X_w (X^T X_w + eps*I)^{-1} F
+                            theta_all_local = X_local @ X_T_X_inv_F_local
+                            theta_all = np.empty(theta_all_local.shape, dtype=dtype_mcmc_np)
+                            mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
+                            logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+                            logger.devel(
+                                f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
                         else:
-                            x0 = np.zeros_like(F_total)
-                        x_sol, final_residual, num_steps = _conjugate_gradient_numpy(
-                            F_total,
-                            apply_dual_S_numpy,
-                            np.asarray(x0, dtype=np.float64),
-                            sr_cg_max_iter,
-                            sr_cg_tol,
-                        )
-                        sr_cg_warm_start_dual = np.array(x_sol, copy=True)
+                            logger.info("Using conjugate gradient for the inverse of S.")
+                            logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                            logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
 
-                        # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
-                        theta_local = X_re_local @ x_sol  # shape (N_local,)
-                        theta_local = np.asarray(theta_local)
-                        N_local = theta_local.shape[0]
+                            def apply_dual_S_numpy(v):
+                                Xv_local = X_re_local @ v
+                                XTXv_local = X_re_local.T @ Xv_local
+                                XTXv_global = np.empty_like(XTXv_local)
+                                mpi_comm.Allreduce(XTXv_local, XTXv_global, op=MPI.SUM)
+                                return XTXv_global + epsilon * v
 
-                        recvcounts = mpi_comm.allgather(N_local)
-                        displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
+                            # Gather F_local from all ranks (concatenation) to form F_total of length M*P
+                            F_local_count = F_local.shape[0]
+                            F_recvcounts = mpi_comm.allgather(F_local_count)
+                            F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
+                            F_total = np.empty(sum(F_recvcounts), dtype=dtype_mcmc_np)
+                            mpi_comm.Allgatherv(
+                                [F_local, MPI.DOUBLE],
+                                [F_total, (F_recvcounts, F_displs), MPI.DOUBLE],
+                            )
+                            if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
+                                x0 = sr_cg_warm_start_dual
+                            else:
+                                x0 = np.zeros_like(F_total)
+                            x_sol, final_residual, num_steps = _conjugate_gradient_numpy(
+                                F_total,
+                                apply_dual_S_numpy,
+                                np.asarray(x0, dtype=dtype_mcmc_np),
+                                sr_cg_max_iter,
+                                sr_cg_tol,
+                            )
+                            sr_cg_warm_start_dual = np.array(x_sol, copy=True)
 
-                        theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
-                        mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
+                            # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
+                            theta_local = X_re_local @ x_sol  # shape (N_local,)
+                            theta_local = np.asarray(theta_local)
+                            N_local = theta_local.shape[0]
 
-                        logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
-                        logger.info(f"  [CG] Converged in {num_steps} steps")
-                        if num_steps == sr_cg_max_iter:
-                            logger.logger("  [CG] Conjugate gradient did not converge!")
-                        logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.devel(
-                            f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                        )
+                            recvcounts = mpi_comm.allgather(N_local)
+                            displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
+
+                            theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
+                            mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
+
+                            logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
+                            logger.info(f"  [CG] Converged in {num_steps} steps")
+                            if num_steps == sr_cg_max_iter:
+                                logger.logger("  [CG] Conjugate gradient did not converge!")
+                            logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                            logger.devel(
+                                f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                            )
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
@@ -3312,7 +3914,7 @@ class MCMC:
                     theta_all[_sr_frozen_mask] = 0.0
 
                 # ------------------------------------------------------------------
-                # DEVEL: theta_all after scale-back — key NaN diagnosis point
+                # DEVEL: theta_all after scale-back -- key NaN diagnosis point
                 # ------------------------------------------------------------------
                 _t_nan = int(np.sum(~np.isfinite(theta_all)))
                 _t_fin = theta_all[np.isfinite(theta_all)]
@@ -3356,7 +3958,7 @@ class MCMC:
                 _lm_collective_obs = None
                 if use_lm and lm_subspace_dim != 0:
                     dO_local = O_matrix_local - O_bar[np.newaxis, :]  # (N_local, K_full)
-                    _lm_collective_obs = dO_local @ theta_all  # (N_local,) = Ō_SR per sample
+                    _lm_collective_obs = dO_local @ theta_all  # (N_local,) = O_bar_SR per sample
                     del dO_local  # free immediately
 
                 # Free SR-solve temporaries that are no longer needed
@@ -3366,10 +3968,10 @@ class MCMC:
             # optax optimizer
             #############################
             else:
-                params = jnp.array(flat_param_vector)
-                grads = -jnp.array(f)
+                params = jnp.asarray(flat_param_vector, dtype=dtype_mcmc_jnp)
+                grads = -jnp.asarray(f, dtype=dtype_mcmc_jnp)
                 updates, optax_state = optax_tx.update(grads, optax_state, params)
-                theta_all = np.array(updates, dtype=np.float64)
+                theta_all = np.array(updates, dtype=dtype_mcmc_np)
                 if optax_param_size is None:
                     optax_param_size = flat_param_vector.size
                 self.__set_optimizer_runtime(
@@ -3386,11 +3988,11 @@ class MCMC:
             # 1) Expand theta_all to full parameter space.
             # ------------------------------------------------------------------
             if use_sr:
-                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta = np.zeros(total_num_params, dtype=dtype_mcmc_np)
                 theta[:] = theta_all
             else:
                 # optax
-                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta = np.zeros(total_num_params, dtype=dtype_mcmc_np)
                 theta[:] = theta_all
 
             # ------------------------------------------------------------------
@@ -3472,8 +4074,8 @@ class MCMC:
                     )
                     theta = 0.1 * g_sr
                 else:
-                    # Back-transform: c_vec[0] = c₀ (SR direction), c_vec[1:] = c_k (individual params)
-                    theta = np.zeros(total_num_params, dtype=np.float64)
+                    # Back-transform: c_vec[0] = c_0 (SR direction), c_vec[1:] = c_k (individual params)
+                    theta = np.zeros(total_num_params, dtype=dtype_mcmc_np)
                     theta[:] += c_vec[0] * g_sr  # SR collective variable (affects all params)
                     if lm_subspace_dim == -1 or lm_subspace_dim >= total_num_params:
                         theta[:] += c_vec[1:]
@@ -3520,7 +4122,7 @@ class MCMC:
             # ------------------------------------------------------------------
             if use_sr and lambda_projectors is not None and len(lambda_projectors) == 4:
                 _left_proj, _right_proj, _, _ = lambda_projectors
-                _identity_proj = np.eye(_left_proj.shape[0], dtype=np.float64)
+                _identity_proj = np.eye(_left_proj.shape[0], dtype=dtype_mcmc_np)
                 _comp_L = _identity_proj - _left_proj
                 _comp_R = _identity_proj - _right_proj
                 for _blk, _s, _e in offsets:
@@ -3567,8 +4169,8 @@ class MCMC:
             # ------------------------------------------------------------------
             # 2) Back-transform theta from orthogonal basis to AO basis
             #    for the lambda_matrix block.
-            #      paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
-            #      unpaired: θ_AO = S^{-1/2}_up @ θ'_orth
+            #      paired:   theta_AO = S^{-1/2}_up @ theta'_orth @ S^{-1/2}_dn
+            #      unpaired: theta_AO = S^{-1/2}_up @ theta'_orth
             # ------------------------------------------------------------------
             if lambda_projectors is not None and len(lambda_projectors) == 4:
                 _, _, _inv_sqrt_up, _inv_sqrt_dn = lambda_projectors
@@ -3639,7 +4241,7 @@ class MCMC:
                 block_theta = theta[start:end]
                 if not np.any(block_theta):
                     logger.info(
-                        "  [%s update] – block=%s size=%d  theta=ALL ZERO (no update)",
+                        "  [%s update] - block=%s size=%d  theta=ALL ZERO (no update)",
                         _log_label,
                         block.name,
                         block.size,
@@ -3649,7 +4251,7 @@ class MCMC:
                 block_max = float(np.max(np.abs(block_theta)))
                 block_delta_max = float(_log_delta * block_max)
                 logger.info(
-                    "  [%s update] – block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
+                    "  [%s update] - block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
                     _log_label,
                     block.name,
                     block.size,
@@ -4005,7 +4607,7 @@ class MCMC:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._MCMC__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._MCMC__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -4177,7 +4779,8 @@ class MCMC:
 
 @jit
 def _generate_rotation_matrix(jax_PRNG_key):
-    """Sample a random 3×3 rotation matrix (Euler angles)."""
+    """Sample a random 3x3 rotation matrix (Euler angles)."""
+    dtype_jnp = jnp.float64
     _, subkey = jax.random.split(jax_PRNG_key)
     alpha, beta, gamma = jax.random.uniform(subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi)
     cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
@@ -4188,7 +4791,8 @@ def _generate_rotation_matrix(jax_PRNG_key):
             [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
             [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
             [-sin_b, cos_b * sin_a, cos_a * cos_b],
-        ]
+        ],
+        dtype=dtype_jnp,
     )
     return R.T
 
@@ -4196,13 +4800,15 @@ def _generate_rotation_matrix(jax_PRNG_key):
 @jit
 def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
     """Build G and invert via SVD-based pseudoinverse (single sample)."""
+    dtype_jnp = jnp.float64
+    eps_rcond = get_eps("rcond_svd", dtype_jnp)
     G = compute_geminal_all_elements(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
     U, s, Vt = jnp.linalg.svd(G, full_matrices=False)
-    s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+    s_inv = jnp.where(s > eps_rcond * s[0], 1.0 / s, 0.0)
     Ginv = (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
     return G, Ginv, jnp.zeros_like(G), jnp.zeros(G.shape[0], dtype=jnp.int32)
 
@@ -4210,8 +4816,9 @@ def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
 @jit
 def _geminal_inv_batched(geminal_data, r_up_batch, r_dn_batch):
     """Batched geminal inverse over walkers."""
+    dtype_jnp = jnp.float64
     N_up = r_up_batch.shape[-2]
-    I = jnp.eye(N_up)
+    I = jnp.eye(N_up, dtype=dtype_jnp)
     G_b, Ginv_b, lu_b, piv_b = vmap(
         _geminal_inv_single,
         in_axes=(None, None, 0, 0),
@@ -4231,6 +4838,8 @@ def _update_electron_positions(
     epsilon_AS,
     geminal_inv_init,
     geminal_init,
+    det_ratio_state_init,
+    j3_state_init,
 ):
     """Update electron positions based on the MH method.
 
@@ -4242,6 +4851,24 @@ def _update_electron_positions(
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data.
         Dt (float): the step size in the MH method.
         epsilon_AS (float): the exponent of the AS regularization.
+        geminal_inv_init: Sherman-Morrison running inverse for the geminal at
+            ``(init_r_up_carts, init_r_dn_carts)``.
+        geminal_init: Geminal matrix at ``(init_r_up_carts, init_r_dn_carts)``.
+        det_ratio_state_init: ``Det_ratio_streaming_state`` consistent with
+            ``(init_r_up_carts, init_r_dn_carts)``. Built once at the MCMC
+            chain entry by :func:`_init_det_ratio_streaming_state` and
+            advanced via :func:`_advance_det_ratio_streaming_state` on accept.
+        j3_state_init: Optional ``Jastrow_three_body_ratio_state`` consistent
+            with ``(init_r_up_carts, init_r_dn_carts)``. When ``jastrow_three_body_data``
+            is present, built once at the MCMC chain entry and advanced via
+            :func:`_advance_jastrow_ratio_state` on accept; passing it to
+            ``_compute_ratio_Jastrow_part_rank1_update`` avoids the per-step
+            ``O(n_ao^2 * N_e)`` matmul rebuild. ``None`` when no three-body
+            Jastrow component exists. The slim ratio-state mirrors the
+            ``Det_ratio_streaming_state`` pattern: only the 8 fields the ratio
+            kernel reads (aos_*, j3_mat_aos_*, j3_mat_T_aos_*, rowsums) are
+            carried through the ``fori_loop``, avoiding the grad/lap plumbing
+            cost the full LRDMC-kinetic state would impose.
 
     Returns:
         jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
@@ -4250,15 +4877,28 @@ def _update_electron_positions(
         updated_r_up_cart (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
         updated_r_dn_cart (jnpt.ArrayLike): down electron position. dim: (N_e^down, 3)
     """
+    dtype_jnp = jnp.float64
     accepted_moves = 0
     rejected_moves = 0
-    r_up_carts = init_r_up_carts
-    r_dn_carts = init_r_dn_carts
+    r_up_carts = jnp.asarray(init_r_up_carts, dtype=dtype_jnp)
+    r_dn_carts = jnp.asarray(init_r_dn_carts, dtype=dtype_jnp)
     geminal = geminal_init
     geminal_inv = geminal_inv_init
+    det_ratio_state = det_ratio_state_init
+    j3_state = j3_state_init
 
     def body_fun(_, carry):
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = carry
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        ) = carry
         total_electrons = len(r_up_carts) + len(r_dn_carts)
         num_up_electrons = len(r_up_carts)
 
@@ -4267,7 +4907,7 @@ def _update_electron_positions(
         rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=total_electrons)
 
         # boolen: "up" or "dn"
-        # is_up == True -> up、False -> dn
+        # is_up == True -> up,False -> dn
         is_up = rand_num < len(r_up_carts)
 
         # an index chosen from up electons
@@ -4311,7 +4951,7 @@ def _update_electron_positions(
         random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 
         # plug g into g_vector
-        g_vector = jnp.zeros(3)
+        g_vector = jnp.zeros(3, dtype=dtype_jnp)
         g_vector = g_vector.at[random_index].set(g)
 
         new_r_cart = old_r_cart + g_vector
@@ -4344,50 +4984,59 @@ def _update_electron_positions(
             * (1.0 / (2.0 * f_prime_l**2 * Dt**2) - 1.0 / (2.0 * f_l**2 * Dt**2))
         )
 
-        # Jastrow ratio via dedicated fast-update API (includes exp)
+        # Jastrow ratio via dedicated fast-update API (includes exp).
+        # ``j3_state`` (when not None) lets the J3 block reuse cached
+        # ``aos_*`` and ``j3_mat @ aos_*`` / ``j3_mat.T @ aos_*`` precontracts
+        # instead of recomputing the O(n_ao^2 * N_e) matmuls each step.
         J_ratio = _compute_ratio_Jastrow_part_rank1_update(
             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
             old_r_up_carts=r_up_carts,
             old_r_dn_carts=r_dn_carts,
             new_r_up_carts_arr=jnp.expand_dims(proposed_r_up_carts, axis=0),
             new_r_dn_carts_arr=jnp.expand_dims(proposed_r_dn_carts, axis=0),
+            j3_state=j3_state,
         )[0]
 
-        # Determinant part, fast update using the matrix determinant lemma
+        # Determinant part, fast update using the matrix determinant lemma.
+        # The v / u construction reuses the cached AO + paired matrices in
+        # ``det_ratio_state`` so the bulk-side AO eval and ``lambda @ ao_dn``
+        # GEMM are skipped.
+        # Consumer-zone explicit cast: cast both lax.cond branches to the
+        # local mcmc zone dtype so the branches agree under mixed precision
+        # (one_hot defaults to fp32, slim helpers return det_ratio zone).
         v = lax.cond(
             is_up,
-            lambda _: (
-                compute_geminal_up_one_row_elements(
+            lambda _: jnp.asarray(
+                _compute_v_up_move_from_det_ratio_state(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    # inline "as_row3": force (1,3) even if source is (3,)
-                    r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
-                    r_dn_carts=r_dn_carts,
-                )
-                - compute_geminal_up_one_row_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
-                    r_dn_carts=r_dn_carts,
-                )
-            )[:, None],
-            lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+                    state=det_ratio_state,
+                    moved_index=selected_electron_index,
+                    r_up_carts_proposed=proposed_r_up_carts,
+                )[:, None],
+                dtype=dtype_jnp,
+            ),
+            lambda _: jnp.asarray(
+                jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+                dtype=dtype_jnp,
+            ),
             operand=None,
         )
 
         u = lax.cond(
             is_up,
-            lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
-            lambda _: (
-                compute_geminal_dn_one_column_elements(
+            lambda _: jnp.asarray(
+                jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
+                dtype=dtype_jnp,
+            ),
+            lambda _: jnp.asarray(
+                _compute_u_dn_move_from_det_ratio_state(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
-                )
-                - compute_geminal_dn_one_column_elements(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
-                )
-            )[:, None],  # -> (N_up, 1)
+                    state=det_ratio_state,
+                    moved_index=selected_electron_index,
+                    r_dn_carts_proposed=proposed_r_dn_carts,
+                )[:, None],
+                dtype=dtype_jnp,
+            ),
             operand=None,
         )
 
@@ -4402,9 +5051,9 @@ def _update_electron_positions(
 
         geminal_new = lax.cond(
             is_up,
-            # Row update: row[i, :] += Δrow_i  (v is (N_cols,1) -> squeeze last dim)
+            # Row update: row[i, :] += Deltarow_i  (v is (N_cols,1) -> squeeze last dim)
             lambda _: geminal.at[selected_electron_index, :].add(v.squeeze(-1)),
-            # Column update: col[:, j] += Δcol_j (u is (N_up,1) -> squeeze last dim)
+            # Column update: col[:, j] += Deltacol_j (u is (N_up,1) -> squeeze last dim)
             lambda _: geminal.at[:, selected_electron_index].add(u.squeeze(-1)),
             operand=None,
         )
@@ -4422,10 +5071,39 @@ def _update_electron_positions(
         # compute R_ratio
         R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
-        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
+        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio], dtype=dtype_jnp))
 
         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
         b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
+
+        # On accept, advance the slim ratio state to the new configuration.
+        # The advance refreshes one column of state.ao_{up,dn} and the
+        # corresponding row/column of state.paired_{up_lambda,dn} from a
+        # fresh single-electron AO eval (no rank-1 drift).
+        det_ratio_state_new = _advance_det_ratio_streaming_state(
+            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+            state=det_ratio_state,
+            moved_spin_is_up=is_up,
+            moved_index=selected_electron_index,
+            r_up_carts_new=proposed_r_up_carts,
+            r_dn_carts_new=proposed_r_dn_carts,
+        )
+
+        # On accept, advance the J3 streaming state to the new configuration.
+        # Python-static dispatch on ``jastrow_three_body_data is None`` -- when
+        # no J3 component exists ``j3_state`` is ``None`` and we just pass it
+        # through (also avoids tracing the advance kernel).
+        if hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+            j3_state_new = _advance_jastrow_ratio_state(
+                jastrow_three_body_data=hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data,
+                state=j3_state,
+                moved_spin_is_up=is_up,
+                moved_index=selected_electron_index,
+                r_up_carts_new=proposed_r_up_carts,
+                r_dn_carts_new=proposed_r_dn_carts,
+            )
+        else:
+            j3_state_new = j3_state
 
         def _accepted_fun(_):
             # Move accepted
@@ -4436,29 +5114,87 @@ def _update_electron_positions(
                 proposed_r_dn_carts,
                 geminal_inv_new,
                 geminal_new,
+                det_ratio_state_new,
+                j3_state_new,
             )
 
         def _rejected_fun(_):
             # Move rejected
-            return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts, geminal_inv, geminal)
+            return (
+                accepted_moves,
+                rejected_moves + 1,
+                r_up_carts,
+                r_dn_carts,
+                geminal_inv,
+                geminal,
+                det_ratio_state,
+                j3_state,
+            )
 
         # judge accept or reject the propsed move using jax.lax.cond
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, geminal_inv, geminal = lax.cond(
-            b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
-        )
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        ) = lax.cond(b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None)
 
-        carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+        carry = (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        )
         return carry
 
     # main MCMC loop
-    accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = jax.lax.fori_loop(
+    (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+        j3_state,
+    ) = jax.lax.fori_loop(
         0,
         num_mcmc_per_measurement,
         body_fun,
-        (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal),
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        ),
     )
 
-    return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+    return (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+        j3_state,
+    )
 
 
 @partial(jit, static_argnums=3)
@@ -4472,17 +5208,44 @@ def _update_electron_positions_only_up_electron(
     epsilon_AS,
     geminal_inv_init,
     geminal_init,
+    det_ratio_state_init,
+    j3_state_init,
 ):
-    """Update electron positions based on the MH method (up-spin electrons only)."""
+    """Update electron positions based on the MH method (up-spin electrons only).
+
+    See :func:`_update_electron_positions` for the slim state ``det_ratio_state_init``
+    contract; here only up-electrons move so ``state.ao_dn`` and ``state.paired_dn``
+    stay constant for the entire chain.
+
+    ``j3_state_init`` mirrors the signature of :func:`_update_electron_positions`
+    so the vmap wrappers stay symmetric, but this variant evaluates the Jastrow
+    factor via the legacy ``compute_Jastrow_part`` path rather than the
+    rank-1 ratio API, so the state is only carried through (never consumed
+    or advanced). A future refactor to the ratio path would also light up
+    the same J3 streaming-cache savings here.
+    """
+    dtype_jnp = jnp.float64
     accepted_moves = 0
     rejected_moves = 0
-    r_up_carts = init_r_up_carts
-    r_dn_carts = init_r_dn_carts
+    r_up_carts = jnp.asarray(init_r_up_carts, dtype=dtype_jnp)
+    r_dn_carts = jnp.asarray(init_r_dn_carts, dtype=dtype_jnp)
     geminal_inv = geminal_inv_init
     geminal = geminal_init
+    det_ratio_state = det_ratio_state_init
+    j3_state = j3_state_init
 
     def body_fun(_, carry):
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = carry
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        ) = carry
         num_up_electrons = len(r_up_carts)
 
         # dummy jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -4527,7 +5290,7 @@ def _update_electron_positions_only_up_electron(
         random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 
         # plug g into g_vector
-        g_vector = jnp.zeros(3)
+        g_vector = jnp.zeros(3, dtype=dtype_jnp)
         g_vector = g_vector.at[random_index].set(g)
 
         new_r_cart = old_r_cart + g_vector
@@ -4561,20 +5324,18 @@ def _update_electron_positions_only_up_electron(
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
+        Jastrow_T_p = jnp.asarray(Jastrow_T_p, dtype=dtype_jnp)
+        Jastrow_T_o = jnp.asarray(Jastrow_T_o, dtype=dtype_jnp)
 
-        # Determinant part, fast update using the matrix determinant lemma
-        v = (
-            compute_geminal_up_one_row_elements(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                # inline "as_row3": force (1,3) even if source is (3,)
-                r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
-                r_dn_carts=r_dn_carts,
-            )
-            - compute_geminal_up_one_row_elements(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
-                r_dn_carts=r_dn_carts,
-            )
+        # Determinant part, fast update using the matrix determinant lemma.
+        # v is built from the cached AO + paired_dn -- skips the
+        # lambda @ ao_dn GEMM and the bulk-side AO eval paid by the legacy
+        # ``compute_geminal_up_one_row_elements`` pattern.
+        v = _compute_v_up_move_from_det_ratio_state(
+            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+            state=det_ratio_state,
+            moved_index=selected_electron_index,
+            r_up_carts_proposed=proposed_r_up_carts,
         )[:, None]
 
         u = jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None]
@@ -4586,7 +5347,10 @@ def _update_electron_positions_only_up_electron(
         Det_T_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]  # scalar
 
         # (A+uv^T)^{-1} = A^{-1} - (A^{-1} u v^T A^{-1}) / (1 + v^T A^{-1} u)
-        geminal_inv_new = geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio
+        # Consumer-zone explicit cast: cast the rank-1 update to the local mcmc
+        # zone dtype so the result agrees with the rejected lax.cond branch and
+        # never depends on geminal_inv's upstream dtype.
+        geminal_inv_new = jnp.asarray(geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio, dtype=dtype_jnp)
 
         geminal_new = geminal.at[selected_electron_index, :].add(v.squeeze(-1))
 
@@ -4599,18 +5363,33 @@ def _update_electron_positions_only_up_electron(
 
         # modified trial WFs
         R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
+        Det_T_ratio = jnp.asarray(Det_T_ratio, dtype=dtype_jnp)
         WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_ratio)
 
         # compute R_ratio
         R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
-        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
+        acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio], dtype=dtype_jnp))
 
         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
         b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
 
+        # On accept, advance the slim ratio state (always up-move in this
+        # variant -- state.ao_dn / state.paired_dn stay constant).
+        det_ratio_state_new = _advance_det_ratio_streaming_state(
+            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+            state=det_ratio_state,
+            moved_spin_is_up=jnp.bool_(True),
+            moved_index=selected_electron_index,
+            r_up_carts_new=proposed_r_up_carts,
+            r_dn_carts_new=proposed_r_dn_carts,
+        )
+
         def _accepted_fun(_):
-            # Move accepted
+            # Move accepted. ``j3_state`` is carried through unchanged: this
+            # variant uses the legacy full-Jastrow path (``compute_Jastrow_part``)
+            # rather than the rank-1 ratio API, so the J3 streaming cache is
+            # not consumed or advanced here.
             return (
                 accepted_moves + 1,
                 rejected_moves,
@@ -4618,43 +5397,107 @@ def _update_electron_positions_only_up_electron(
                 proposed_r_dn_carts,
                 geminal_inv_new,
                 geminal_new,
+                det_ratio_state_new,
+                j3_state,
             )
 
         def _rejected_fun(_):
             # Move rejected
-            return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts, geminal_inv, geminal)
+            return (
+                accepted_moves,
+                rejected_moves + 1,
+                r_up_carts,
+                r_dn_carts,
+                geminal_inv,
+                geminal,
+                det_ratio_state,
+                j3_state,
+            )
 
         # judge accept or reject the propsed move using jax.lax.cond
-        accepted_moves, rejected_moves, r_up_carts, r_dn_carts, geminal_inv, geminal = lax.cond(
-            b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
-        )
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        ) = lax.cond(b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None)
 
-        carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+        carry = (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        )
         return carry
 
     # main MCMC loop
-    accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal = jax.lax.fori_loop(
+    (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+        j3_state,
+    ) = jax.lax.fori_loop(
         0,
         num_mcmc_per_measurement,
         body_fun,
-        (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal),
+        (
+            accepted_moves,
+            rejected_moves,
+            r_up_carts,
+            r_dn_carts,
+            jax_PRNG_key,
+            geminal_inv,
+            geminal,
+            det_ratio_state,
+            j3_state,
+        ),
     )
 
-    return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv, geminal)
+    return (
+        accepted_moves,
+        rejected_moves,
+        r_up_carts,
+        r_dn_carts,
+        jax_PRNG_key,
+        geminal_inv,
+        geminal,
+        det_ratio_state,
+        j3_state,
+    )
 
 
 # Module-level vmap/jit wrappers for MCMC kernels.
 # Created once at import time so subsequent MCMC.run() calls reuse
 # the same Python function objects and hit JAX's compilation cache.
 _jit_vmap_update = jit(
-    vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+    vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0, 0)),
     static_argnums=3,
 )
 _jit_vmap_update_up = jit(
-    vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+    vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0, 0, 0)),
     static_argnums=3,
 )
-_jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0)))
+_jit_vmap_init_det_ratio_state = jit(
+    vmap(_init_det_ratio_streaming_state, in_axes=(None, 0, 0)),
+)
+_jit_vmap_init_j3_state = jit(
+    vmap(_init_jastrow_ratio_state, in_axes=(None, 0, 0)),
+)
+_jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0, 0)))
 _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
 _jit_vmap_generate_RTs = jit(vmap(_generate_rotation_matrix, in_axes=0))
 _jit_vmap_as_reg_fast = jit(vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0)))
@@ -4721,7 +5564,9 @@ class _MCMC_debug:
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list = jnp.array([jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
+        # Use jax.random.split (batched) to match the production MCMC class so
+        # MCMC <-> _MCMC_debug parity tests stay aligned.
+        self.__jax_PRNG_key_list = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
 
         # initialize random seed
         np.random.seed(self.__mpi_seed)
@@ -4751,18 +5596,20 @@ class _MCMC_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed (see MCMC.__init__ for rationale).
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -4847,18 +5694,19 @@ class _MCMC_debug:
         logger.info("This is a debugging class! It supposed to be very slow.")
         logger.info("")
 
+        dtype_jnp = jnp.float64
+        dtype_np = np.float64
+
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         num_mcmc_done = 0
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %"
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %"
                 )
 
             accepted_moves_nw = np.zeros(self.__num_walkers, dtype=np.int32)
@@ -4887,7 +5735,7 @@ class _MCMC_debug:
                     rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=total_electrons)
 
                     # boolen: "up" or "dn"
-                    # is_up == True -> up、False -> dn
+                    # is_up == True -> up,False -> dn
                     is_up = rand_num < len(r_up_carts)
 
                     # an index chosen from up electons
@@ -4933,7 +5781,7 @@ class _MCMC_debug:
                     random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
 
                     # plug g into g_vector
-                    g_vector = np.zeros(3)
+                    g_vector = np.zeros(3, dtype=dtype_np)
                     g_vector[random_index] = g
 
                     new_r_cart = old_r_cart + g_vector
@@ -5009,7 +5857,7 @@ class _MCMC_debug:
                     R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
                     logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
-                    acceptance_ratio = np.min(jnp.array([1.0, R_ratio * T_ratio]))
+                    acceptance_ratio = np.min(jnp.array([1.0, R_ratio * T_ratio], dtype=dtype_jnp))
                     logger.devel(f"acceptance_ratio = {acceptance_ratio}")
 
                     jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -5031,8 +5879,8 @@ class _MCMC_debug:
             # store vmapped outcomes
             self.__accepted_moves = self.__accepted_moves + np.sum(accepted_moves_nw)
             self.__rejected_moves = self.__rejected_moves + np.sum(rejected_moves_nw)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts, dtype=dtype_jnp)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts, dtype=dtype_jnp)
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)
 
             # generate rotation matrices (for non-local ECPs)
@@ -5053,11 +5901,12 @@ class _MCMC_debug:
                             [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                             [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                             [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                        ]
+                        ],
+                        dtype=dtype_jnp,
                     )
                     RTs.append(R.T)
                 else:
-                    RTs.append(jnp.eye(3))
+                    RTs.append(jnp.eye(3, dtype=dtype_jnp))
             RTs = jnp.array(RTs)
 
             # evaluate observables
@@ -5155,10 +6004,10 @@ class _MCMC_debug:
                     n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, n_atoms, n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, n_atoms, n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, n_atoms, n_up), dtype=dtype_jnp)
+                    omega_dn = jnp.zeros((self.__num_walkers, n_atoms, n_dn), dtype=dtype_jnp)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, n_atoms, 3), dtype=dtype_jnp)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, n_atoms, 3), dtype=dtype_jnp)
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
@@ -5211,6 +6060,11 @@ class _MCMC_debug:
                     self.__stored_e_L_param_grads[name].append(grad_val)
 
             num_mcmc_done += 1
+
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(
+            f"  Progress: MCMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %"
+        )
 
         logger.info("End MCMC")
         logger.info("")
@@ -5647,14 +6501,14 @@ class _MCMC_debug:
             return_matrices: If True, raise NotImplementedError (LM not supported in debug).
 
         Returns:
-            (H_0, H_1, H_2, S_2) — aSR mode only.
+            (H_0, H_1, H_2, S_2) -- aSR mode only.
         """
         if not self.__comput_log_WF_param_deriv:
             raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
         if not self.__comput_e_L_param_deriv:
             raise RuntimeError("get_aH requires comput_e_L_param_deriv=True.")
 
-        # ── Step 1: Raw samples after warmup ──────────────────────────────────
+        # -- Step 1: Raw samples after warmup ----------------------------------
         # e_L_2d, w_L_2d have shape (M_steps, num_walkers).
         e_L_2d = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
         w_L_2d = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
@@ -5671,7 +6525,7 @@ class _MCMC_debug:
         e_L = e_L_2d.ravel()  # (N,)
         w = w_L_2d.ravel()  # (N,)
 
-        # ── Step 2: Build O_matrix  (d ln Psi / dc)  shape (N, K) ────────────
+        # -- Step 2: Build O_matrix  (d ln Psi / dc)  shape (N, K) ------------
         # dln_Psi_dc is a dict  block_name -> array (M, nw, ...).
         # We gather blocks in the same order as `blocks` and flatten the
         # parameter dimensions to get a single (N, K) matrix.
@@ -5700,7 +6554,7 @@ class _MCMC_debug:
                 O_matrix[:, _sym_start:_sym_end] = block.symmetrize_metric(O_matrix[:, _sym_start:_sym_end])
             _sym_start = _sym_end
 
-        # ── Step 3: Build dE_matrix  (de_L / dc)  shape (N, K) ───────────────
+        # -- Step 3: Build dE_matrix  (de_L / dc)  shape (N, K) ---------------
         de_L_dc_map = self.de_L_dc
         dE_cols = []
         for block in blocks:
@@ -5730,7 +6584,7 @@ class _MCMC_debug:
         if g is not None:
             assert g.shape == (K_sub,), f"g shape {g.shape} != ({K_sub},)"
 
-        # ── Step 4: MPI-aware weighted averages ────────────────────────────────
+        # -- Step 4: MPI-aware weighted averages --------------------------------
         W_local = float(np.sum(w))
         W = mpi_comm.allreduce(W_local, op=MPI.SUM)
 
@@ -5749,21 +6603,21 @@ class _MCMC_debug:
         mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
         dE_bar = wdE_global / W
 
-        # ── Step 5: H_0  (current energy estimate) ──────────────────────────
+        # -- Step 5: H_0  (current energy estimate) --------------------------
         H_0 = E_bar
 
-        # ── Step 6: Centered observables ──────────────────────────────────────
+        # -- Step 6: Centered observables --------------------------------------
         dO = O_matrix - O_bar[np.newaxis, :]  # (N, K)  O_k(i) - <O_k>
         ddE = dE_matrix - dE_bar[np.newaxis, :]  # (N, K)  dE_k(i) - <dE_k>
 
-        # ── Step 7: Generalized force  f_k = -2/W sum_i w_i (e_L_i - E_bar) dO_{i,k}
+        # -- Step 7: Generalized force  f_k = -2/W sum_i w_i (e_L_i - E_bar) dO_{i,k}
         de = e_L - E_bar  # (N,)  local energy fluctuation
         f_local = -2.0 * (w * de) @ dO  # (K,)
         f_global = np.empty(K_sub)
         mpi_comm.Allreduce([f_local, MPI.DOUBLE], [f_global, MPI.DOUBLE], op=MPI.SUM)
         f_vec = f_global / W
 
-        # ── LM mode: build full matrices ─────────────────────────────────────
+        # -- LM mode: build full matrices -------------------------------------
         if return_matrices:
             # If g (SR direction) is provided, prepend collective variable
             if g is not None:
@@ -5801,13 +6655,13 @@ class _MCMC_debug:
 
             return H_0, f_vec, S_matrix, K_matrix, B_matrix
 
-        # ── aSR mode: scalar projections along g ─────────────────────────────
+        # -- aSR mode: scalar projections along g -----------------------------
         assert g is not None, "g is required for aSR mode (return_matrices=False)"
 
-        # ── Step 8: H_1 = -1/2 * g^T f ──────────────────────────────────────
+        # -- Step 8: H_1 = -1/2 * g^T f --------------------------------------
         H_1 = -0.5 * float(np.dot(g, f_vec))
 
-        # ── Step 9: S_2 = g^T S g = <w (g^T dO)^2>_w  (exact, computed from samples) ──
+        # -- Step 9: S_2 = g^T S g = <w (g^T dO)^2>_w  (exact, computed from samples) --
         # Do NOT use S_2 = g^T f (= -2*H_1).  The SR solved
         # (S_scaled + sr_epsilon*I) g_scaled = b, so
         #   g^T f = g^T S g + sr_epsilon * ||g_scaled||^2.
@@ -5817,7 +6671,7 @@ class _MCMC_debug:
         S_2_local = float(np.dot(w, gdO**2))
         S_2 = mpi_comm.allreduce(S_2_local, op=MPI.SUM) / W
 
-        # ── Step 10: K matrix contribution  g^T K g ─────────────────────────
+        # -- Step 10: K matrix contribution  g^T K g -------------------------
         #
         #   K_{k,k'} = 1/W sum_i  w_i * e_L_i * dO_{i,k} * dO_{i,k'}
         #
@@ -5825,7 +6679,7 @@ class _MCMC_debug:
         gKg_local = float(np.dot(w * e_L * gdO, gdO))
         gKg = mpi_comm.allreduce(gKg_local, op=MPI.SUM) / W
 
-        # ── Step 11: B matrix contribution  g^T B g ─────────────────────────
+        # -- Step 11: B matrix contribution  g^T B g -------------------------
         #
         #   B_{k,k'} = 1/W sum_i  w_i * dO_{i,k} * ddE_{i,k'}
         #   (B is generally not symmetric)
@@ -5835,7 +6689,7 @@ class _MCMC_debug:
         gBg_local = float(np.dot(w * gdO, gdE))
         gBg = mpi_comm.allreduce(gBg_local, op=MPI.SUM) / W
 
-        # ── Step 12: H_2 = g^T (B + K) g ────────────────────────────────────
+        # -- Step 12: H_2 = g^T (B + K) g ------------------------------------
         H_2 = gBg + gKg
 
         return H_0, H_1, H_2, S_2
@@ -5866,7 +6720,7 @@ class _MCMC_debug:
         Returns:
             (c_vec, E_lm): parameter update in original space and selected eigenvalue.
         """
-        # Delegate to MCMC.solve_linear_method — the production version uses
+        # Delegate to MCMC.solve_linear_method -- the production version uses
         # the same dgelscut + S-orthonormalization + standard eigenvalue problem.
         # Duplicating the dgelscut loop in explicit form adds no clarity;
         # the debug value comes from get_aH (matrix construction), not the solver.

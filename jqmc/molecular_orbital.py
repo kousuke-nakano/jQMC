@@ -1,4 +1,17 @@
-"""Molecular Orbital module."""
+"""Molecular Orbital module.
+
+Precision Zones:
+    - ``mo_eval``: forward MO evaluation (compute_MOs).
+    - ``mo_grad``: MO gradient (compute_MOs_grad).
+    - ``mo_lap``: MO Laplacian (compute_MOs_laplacian).
+
+The fused :func:`compute_MOs_value_grad_lap` API returns all three at
+once and casts each output into its corresponding zone at the matmul
+use site. Use it when value, gradient, and Laplacian are all needed at
+the same call site; otherwise prefer the standalone APIs.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -43,9 +56,10 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit
-from jax import typing as jnpt
+
 
 # myqmc module
+from ._precision import get_dtype_jnp
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -57,8 +71,8 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_AOs_value_grad_lap,
 )
-from ._jqmc_utility import _cart_to_spherical_matrix, _spherical_to_cart_matrix  # noqa: F401
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -78,8 +92,8 @@ class MOs_data:
         num_mo (int): Number of molecular orbitals.
         aos_data (AOs_sphe_data | AOs_cart_data): AO definition supplying centers, exponents/coefficients,
             angular data, and contraction mapping.
-        mo_coefficients (npt.NDArray | jax.Array): Coefficient matrix of shape ``(num_mo, num_ao)``. Rows
-            correspond to MOs; columns correspond to contracted AOs.
+        mo_coefficients (npt.NDArray[np.float64]): Coefficient matrix of shape ``(num_mo, num_ao)``. Rows
+            correspond to MOs; columns correspond to contracted AOs. dtype: float64.
 
     Examples:
         Minimal runnable setup (2 AOs -> 1 MO)::
@@ -119,8 +133,10 @@ class MOs_data:
     num_mo: int = struct.field(pytree_node=False, default=0)
     #: AO definition supplying centers, exponents/coefficients, angular data, and contraction mapping.
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    #: MO coefficient matrix, shape ``(num_mo, num_ao)``.
-    mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    #: MO coefficient matrix, shape ``(num_mo, num_ao)``. dtype: float64.
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64)
+    )
 
     def sanity_check(self) -> None:
         """Validate internal consistency.
@@ -164,6 +180,13 @@ class MOs_data:
         """Return the number of orbitals."""
         return self.num_mo
 
+    @property
+    def _mo_coefficients_jnp(self) -> jax.Array:
+        """Return MO coefficients as a jax.Array (jnp view of the underlying numpy storage)."""
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        return jnp.asarray(self.mo_coefficients, dtype=jnp.float64)
+
     def to_cartesian(self) -> "MOs_data":
         """Convert spherical AOs to Cartesian AOs and transform MO coefficients.
 
@@ -180,8 +203,9 @@ class MOs_data:
             return self
         if not isinstance(self.aos_data, AOs_sphe_data):
             raise ValueError("Cartesian conversion is only available from spherical AOs.")
+        dtype_np = np.dtype(get_dtype_jnp("mo_eval"))
         aos_cart, transform_matrix = _aos_sphe_to_cart(self.aos_data)
-        cart_coeffs = np.asarray(self.mo_coefficients, dtype=np.float64) @ transform_matrix
+        cart_coeffs = np.asarray(self.mo_coefficients, dtype=dtype_np) @ transform_matrix
         cart_coeffs = cart_coeffs.astype(np.asarray(self.mo_coefficients).dtype, copy=False)
 
         return MOs_data(num_mo=self.num_mo, aos_data=aos_cart, mo_coefficients=cart_coeffs)
@@ -190,7 +214,7 @@ class MOs_data:
         """Convert Cartesian AOs to spherical AOs and transform MO coefficients.
 
         Returns a new ``MOs_data`` whose ``aos_data`` is ``AOs_sphe_data``. The molecular
-        orbital functions are preserved by applying the analytic Cartesian→spherical
+        orbital functions are preserved by applying the analytic Cartesian->spherical
         transformation per angular momentum shell. Only ``AOs_cart_data`` inputs are supported;
         for spherical inputs the instance is returned unchanged.
 
@@ -203,8 +227,9 @@ class MOs_data:
             return self
         if not isinstance(self.aos_data, AOs_cart_data):
             raise ValueError("Spherical conversion is only available from Cartesian AOs.")
+        dtype_np = np.dtype(get_dtype_jnp("mo_eval"))
         aos_sphe, transform_pinv = _aos_cart_to_sphe(self.aos_data)
-        sph_coeffs = np.asarray(self.mo_coefficients, dtype=np.float64) @ transform_pinv
+        sph_coeffs = np.asarray(self.mo_coefficients, dtype=dtype_np) @ transform_pinv
         sph_coeffs = sph_coeffs.astype(np.asarray(self.mo_coefficients).dtype, copy=False)
 
         return MOs_data(num_mo=self.num_mo, aos_data=aos_sphe, mo_coefficients=sph_coeffs)
@@ -222,10 +247,15 @@ def compute_MOs(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: MO values with shape ``(num_mo, N_e)``.
     """
-    answer = jnp.dot(
-        mos_data.mo_coefficients,
-        compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts),
-    )
+    # Heavy AO evaluation runs in ``ao_eval`` precision (e.g. fp32 in mixed mode),
+    # but the (small) MO matmul and the returned MO matrix are kept in the
+    # ``determinant`` precision (fp64 by default).  This avoids amplifying fp32
+    # round-off through downstream determinant / kinetic / energy paths while
+    # preserving the speed of the AO kernels.
+    out_dtype = get_dtype_jnp("mo_eval")
+    aos = compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts).astype(out_dtype)
+    mo_coefficients = mos_data._mo_coefficients_jnp.astype(out_dtype)
+    answer = jnp.dot(mo_coefficients, aos)
 
     return answer
 
@@ -243,7 +273,7 @@ def _compute_MOs_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> 
 def _compute_MOs_laplacian_autodiff(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """See _api method."""
     mo_matrix_laplacian = jnp.dot(
-        mos_data.mo_coefficients,
+        mos_data._mo_coefficients_jnp,
         _compute_AOs_laplacian_autodiff(mos_data.aos_data, r_carts),
     )
 
@@ -261,44 +291,39 @@ def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
     Returns:
         jax.Array: Laplacians of each MO, shape ``(num_mo, N_e)``.
     """
+    dtype_jnp = get_dtype_jnp("mo_lap")
+    mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
-    return jnp.dot(mos_data.mo_coefficients, ao_lap)
+    # ao_lap lives in the ao_grad_lap zone; cast to mo_lap at the use site
+    # (Principle 3b -- cast operands to this function's own zone immediately
+    # before consuming them as arithmetic operands).
+    return jnp.dot(mo_coefficients, ao_lap.astype(dtype_jnp))
 
 
 def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     """See _api method."""
-    # Laplacians of AOs (numerical)
-    diff_h = 1.0e-5
+    # Laplacians of MOs (numerical, 4th-order central FD)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
+    # Larger h is viable with the 4th-order stencil (O(h^4) truncation).
+    diff_h = 1.0e-3
 
     mo_matrix = compute_MOs(mos_data, r_carts)
 
-    # laplacians x^2
-    diff_p_x_r_carts = r_carts.copy()
-    diff_p_x_r_carts[:, 0] += diff_h
-    mo_matrix_diff_p_x = compute_MOs(mos_data, diff_p_x_r_carts)
-    diff_m_x_r_carts = r_carts.copy()
-    diff_m_x_r_carts[:, 0] -= diff_h
-    mo_matrix_diff_m_x = compute_MOs(mos_data, diff_m_x_r_carts)
+    def _shifted(dim: int, mult: int):
+        rs = r_carts.copy()
+        rs[:, dim] += mult * diff_h
+        return compute_MOs(mos_data, rs)
 
-    # laplacians y^2
-    diff_p_y_r_carts = r_carts.copy()
-    diff_p_y_r_carts[:, 1] += diff_h
-    mo_matrix_diff_p_y = compute_MOs(mos_data, diff_p_y_r_carts)
-    diff_m_y_r_carts = r_carts.copy()
-    diff_m_y_r_carts[:, 1] -= diff_h
-    mo_matrix_diff_m_y = compute_MOs(mos_data, diff_m_y_r_carts)
+    def _grad2_along(dim: int):
+        f_p1 = _shifted(dim, +1)
+        f_p2 = _shifted(dim, +2)
+        f_m1 = _shifted(dim, -1)
+        f_m2 = _shifted(dim, -2)
+        return (-f_p2 + 16 * f_p1 - 30 * mo_matrix + 16 * f_m1 - f_m2) / (12 * diff_h**2)
 
-    # laplacians z^2
-    diff_p_z_r_carts = r_carts.copy()
-    diff_p_z_r_carts[:, 2] += diff_h
-    mo_matrix_diff_p_z = compute_MOs(mos_data, diff_p_z_r_carts)
-    diff_m_z_r_carts = r_carts.copy()
-    diff_m_z_r_carts[:, 2] -= diff_h
-    mo_matrix_diff_m_z = compute_MOs(mos_data, diff_m_z_r_carts)
-
-    mo_matrix_grad2_x = (mo_matrix_diff_p_x + mo_matrix_diff_m_x - 2 * mo_matrix) / (diff_h) ** 2
-    mo_matrix_grad2_y = (mo_matrix_diff_p_y + mo_matrix_diff_m_y - 2 * mo_matrix) / (diff_h) ** 2
-    mo_matrix_grad2_z = (mo_matrix_diff_p_z + mo_matrix_diff_m_z - 2 * mo_matrix) / (diff_h) ** 2
+    mo_matrix_grad2_x = _grad2_along(0)
+    mo_matrix_grad2_y = _grad2_along(1)
+    mo_matrix_grad2_z = _grad2_along(2)
 
     mo_matrix_laplacian = mo_matrix_grad2_x + mo_matrix_grad2_y + mo_matrix_grad2_z
 
@@ -323,12 +348,60 @@ def compute_MOs_grad(
         tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]: Gradients per component
         ``(grad_x, grad_y, grad_z)``, each of shape ``(num_mo, N_e)``.
     """
+    dtype_jnp = get_dtype_jnp("mo_grad")
+    mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
-    mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
-    mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
-    mo_matrix_grad_z = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_z)
+    # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad at the
+    # use site (Principle 3b -- cast operands to this function's own zone immediately
+    # before consuming them as arithmetic operands).
+    mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
+    mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y.astype(dtype_jnp))
+    mo_matrix_grad_z = jnp.dot(mo_coefficients, mo_matrix_grad_z.astype(dtype_jnp))
 
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
+
+
+@jit
+def compute_MOs_value_grad_lap(
+    mos_data: MOs_data, r_carts: jax.Array
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Fused evaluation of MO values, Cartesian gradients, and Laplacians.
+
+    Calls :func:`compute_AOs_value_grad_lap` once and applies
+    ``mo_coefficients @ *`` to each AO output. Each MO output is cast
+    into its own zone (Principle 3b) at the matmul use site:
+
+    * ``val`` -> ``mo_eval`` (fp32 in mixed mode, fp64 in full)
+    * ``gx`` / ``gy`` / ``gz`` -> ``mo_grad`` (fp64)
+    * ``lap`` -> ``mo_lap`` (fp64)
+
+    For value-only / grad-only / lap-only call sites, prefer the
+    standalone APIs (``compute_MOs`` / ``compute_MOs_grad`` /
+    ``compute_MOs_laplacian``) -- JAX DCE does not reliably eliminate
+    unused outputs across this function's ``@jit`` boundary.
+
+    Returns:
+        tuple: ``(val, gx, gy, gz, lap)``, each of shape ``(num_mo, N_e)``.
+    """
+    dtype_eval = get_dtype_jnp("mo_eval")
+    dtype_grad = get_dtype_jnp("mo_grad")
+    dtype_lap = get_dtype_jnp("mo_lap")
+
+    ao_val, ao_gx, ao_gy, ao_gz, ao_lap = compute_AOs_value_grad_lap(aos_data=mos_data.aos_data, r_carts=r_carts)
+    # AO outputs live in their own zones (ao_val: ao_eval; ao_g*/ao_lap: ao_grad_lap).
+    # Cast each into the matching MO zone at the matmul use site (Principle 3b).
+    C = mos_data._mo_coefficients_jnp
+    C_eval = C.astype(dtype_eval)
+    C_grad = C.astype(dtype_grad)
+    C_lap = C.astype(dtype_lap)
+
+    mo_val = jnp.dot(C_eval, ao_val.astype(dtype_eval))
+    mo_gx = jnp.dot(C_grad, ao_gx.astype(dtype_grad))
+    mo_gy = jnp.dot(C_grad, ao_gy.astype(dtype_grad))
+    mo_gz = jnp.dot(C_grad, ao_gz.astype(dtype_grad))
+    mo_lap = jnp.dot(C_lap, ao_lap.astype(dtype_lap))
+
+    return mo_val, mo_gx, mo_gy, mo_gz, mo_lap
 
 
 @jit
@@ -340,10 +413,14 @@ def _compute_MOs_grad_autodiff(
     npt.NDArray[np.float64],
 ]:
     """This method is for computing the gradients (x,y,z) of the given molecular orbital at r_carts."""
+    dtype_jnp = get_dtype_jnp("mo_grad")
+    mo_coefficients = mos_data._mo_coefficients_jnp.astype(dtype_jnp)
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = _compute_AOs_grad_autodiff(mos_data.aos_data, r_carts)
-    mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
-    mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
-    mo_matrix_grad_z = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_z)
+    # AO gradient outputs live in the ao_grad_lap zone; cast to mo_grad at the
+    # use site (Principle 3b).
+    mo_matrix_grad_x = jnp.dot(mo_coefficients, mo_matrix_grad_x.astype(dtype_jnp))
+    mo_matrix_grad_y = jnp.dot(mo_coefficients, mo_matrix_grad_y.astype(dtype_jnp))
+    mo_matrix_grad_z = jnp.dot(mo_coefficients, mo_matrix_grad_z.astype(dtype_jnp))
 
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 

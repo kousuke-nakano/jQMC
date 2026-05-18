@@ -28,3 +28,6 @@ opt_J3_basis_exp = true
 opt_J3_basis_coeff = true
 opt_lambda_basis_exp = false
 opt_lambda_basis_coeff = false
+
+# [precision]
+# mode = "full"  # "full" (default, all float64) or "mixed" (recommended mixed precision)

@@ -158,7 +158,7 @@ for suffix in suffix_list:
     assert max_row == max_col
     const_jas_orb_index = max_row
 
-    j1_matrix = np.zeros((jas_aos_data.num_ao))
+    j1_matrix = np.zeros(jas_aos_data.num_ao)
 
     for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
         if col == const_jas_orb_index and row != const_jas_orb_index:

@@ -62,7 +62,7 @@ jqmc-tool hamiltonian show-info <hamiltonian_data>
 ```
 
 ### `to-xyz`
-Export nuclear geometry to XYZ (Bohr -> Å).
+Export nuclear geometry to XYZ (Bohr -> A).
 
 ```
 jqmc-tool hamiltonian to-xyz <hamiltonian_data> [-o struct.xyz]
@@ -74,7 +74,7 @@ Convert wavefunction ansatz inside a Hamiltonian file.
 ```
 jqmc-tool hamiltonian conv-wf <hamiltonian_data> -c {jsd|jagp} [-o output.h5]
 ```
-- `-c, --convert-to`: `jagp` converts SD→AGP (AOs); `jsd` is not implemented.
+- `-c, --convert-to`: `jagp` converts SD->AGP (AOs); `jsd` is not implemented.
 
 ---
 
@@ -104,17 +104,17 @@ Jackknife estimator of VMC energy from an MCMC restart archive.
 ```
 jqmc-tool mcmc compute-energy <restart_chk> [-b N] [-w W]
 ```
-- `-b, --num_mcmc_bin_blocks` (int, default 1): Binning blocks per MPI × walker; total blocks = `b * mpi_size * walkers`. Must be ≥ `MCMC_MIN_BIN_BLOCKS`.
-- `-w, --num_mcmc_warmup_steps` (int, default 0): Discarded warmup measurements; must be ≥ `MCMC_MIN_WARMUP_STEPS`.
+- `-b, --num_mcmc_bin_blocks` (int, default 1): Binning blocks per MPI x walker; total blocks = `b * mpi_size * walkers`. Must be >= `MCMC_MIN_BIN_BLOCKS`.
+- `-w, --num_mcmc_warmup_steps` (int, default 0): Discarded warmup measurements; must be >= `MCMC_MIN_WARMUP_STEPS`.
 
 ### `compute-force`
-Jackknife estimator of VMC atomic forces (Hellmann–Feynman + Pulay) from an MCMC restart archive.  Requires that the MCMC run was performed with `atomic_force = true`.
+Jackknife estimator of VMC atomic forces (Hellmann-Feynman + Pulay) from an MCMC restart archive.  Requires that the MCMC run was performed with `atomic_force = true`.
 
 ```
 jqmc-tool mcmc compute-force <restart_chk> [-b N] [-w W]
 ```
-- `-b, --num_mcmc_bin_blocks` (int, default 1): Binning blocks per MPI × walker; total blocks = `b * mpi_size * walkers`. Must be ≥ `MCMC_MIN_BIN_BLOCKS`.
-- `-w, --num_mcmc_warmup_steps` (int, default 0): Discarded warmup measurements; must be ≥ `MCMC_MIN_WARMUP_STEPS`.
+- `-b, --num_mcmc_bin_blocks` (int, default 1): Binning blocks per MPI x walker; total blocks = `b * mpi_size * walkers`. Must be >= `MCMC_MIN_BIN_BLOCKS`.
+- `-w, --num_mcmc_warmup_steps` (int, default 0): Discarded warmup measurements; must be >= `MCMC_MIN_WARMUP_STEPS`.
 
 Outputs a per-atom force table in Ha/bohr with jackknife error bars.
 
@@ -135,19 +135,19 @@ Jackknife estimator of LRDMC energy from an LRDMC restart archive.
 ```
 jqmc-tool lrdmc compute-energy <restart_chk> [-b N] [-w W] [-c C]
 ```
-- `-b, --num_gfmc_bin_blocks` (int, default 5): Binning blocks per MPI × walker (note: total blocks = `b`, not multiplied by ranks × walkers). Must be ≥ `GFMC_MIN_BIN_BLOCKS`.
-- `-w, --num_gfmc_warmup_steps` (int, default 0): Discarded warmup steps; must be ≥ `GFMC_MIN_WARMUP_STEPS`.
-- `-c, --num_gfmc_collect_steps` (int, default 5): Pre-binning measurements used to collect weights; must be ≥ `GFMC_MIN_COLLECT_STEPS`.
+- `-b, --num_gfmc_bin_blocks` (int, default 5): Binning blocks per MPI x walker (note: total blocks = `b`, not multiplied by ranks x walkers). Must be >= `GFMC_MIN_BIN_BLOCKS`.
+- `-w, --num_gfmc_warmup_steps` (int, default 0): Discarded warmup steps; must be >= `GFMC_MIN_WARMUP_STEPS`.
+- `-c, --num_gfmc_collect_steps` (int, default 5): Pre-binning measurements used to collect weights; must be >= `GFMC_MIN_COLLECT_STEPS`.
 
 ### `compute-force`
-Jackknife estimator of LRDMC atomic forces (Hellmann–Feynman + Pulay) from an LRDMC restart archive.  Requires that the LRDMC run was performed with `atomic_force = true`.
+Jackknife estimator of LRDMC atomic forces (Hellmann-Feynman + Pulay) from an LRDMC restart archive.  Requires that the LRDMC run was performed with `atomic_force = true`.
 
 ```
 jqmc-tool lrdmc compute-force <restart_chk> [-b N] [-w W] [-c C]
 ```
-- `-b, --num_gfmc_bin_blocks` (int, default 5): Binning blocks per MPI × walker. Must be ≥ `GFMC_MIN_BIN_BLOCKS`.
-- `-w, --num_gfmc_warmup_steps` (int, default 0): Discarded warmup steps; must be ≥ `GFMC_MIN_WARMUP_STEPS`.
-- `-c, --num_gfmc_collect_steps` (int, default 5): Pre-binning measurements used to collect weights; must be ≥ `GFMC_MIN_COLLECT_STEPS`.
+- `-b, --num_gfmc_bin_blocks` (int, default 5): Binning blocks per MPI x walker. Must be >= `GFMC_MIN_BIN_BLOCKS`.
+- `-w, --num_gfmc_warmup_steps` (int, default 0): Discarded warmup steps; must be >= `GFMC_MIN_WARMUP_STEPS`.
+- `-c, --num_gfmc_collect_steps` (int, default 5): Pre-binning measurements used to collect weights; must be >= `GFMC_MIN_COLLECT_STEPS`.
 
 Outputs a per-atom force table in Ha/bohr with jackknife error bars.
 

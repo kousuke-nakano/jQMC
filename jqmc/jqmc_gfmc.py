@@ -1,4 +1,10 @@
-"""QMC module."""
+"""QMC module (GFMC).
+
+Precision Zones:
+    - ``gfmc``: all GFMC propagation functions.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -46,11 +52,11 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
-from jax.scipy import linalg as jsp_linalg  # noqa: F401  (kept for external callers)
 from mpi4py import MPI
 
 from ._diff_mask import DiffMask, apply_diff_mask
-from ._jqmc_utility import _generate_init_electron_configurations
+from ._jqmc_utility import _generate_init_electron_configurations, check_mpi4py_jax_distribution_consistency
+from ._precision import get_tolerance_min
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -58,8 +64,7 @@ from ._setting import (
     GFMC_ON_THE_FLY_BIN_BLOCKS,
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
-    EPS_rcond_SVD,
-    rtol_debug_vs_production,
+    get_eps,
 )
 from .coulomb_potential import (
     compute_bare_coulomb_potential_el_el,
@@ -72,6 +77,8 @@ from .coulomb_potential import (
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
 from .determinant import (
+    _compute_u_dn_move_from_det_ratio_state,
+    _compute_v_up_move_from_det_ratio_state,
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
@@ -86,6 +93,10 @@ from .jastrow_factor import (
 )
 from .swct import evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
+    Kinetic_streaming_state,
+    _advance_kinetic_energy_all_elements_streaming_state,
+    _init_kinetic_energy_all_elements_streaming_state,
+    _kinetic_energy_from_streaming_state,
     compute_discretized_kinetic_energy,
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy_all_elements,
@@ -236,9 +247,10 @@ class GFMC_t:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -263,18 +275,22 @@ class GFMC_t:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -311,22 +327,25 @@ class GFMC_t:
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
+        # gfmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
+
         # stored weight (w_L)
-        self.__stored_w_L = np.zeros((0, 1))
+        self.__stored_w_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L)
-        self.__stored_e_L = np.zeros((0, 1))
+        self.__stored_e_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = np.zeros((0, 1))
+        self.__stored_e_L2 = np.zeros((0, 1), dtype=dtype_np)
 
         # average projection counter
-        self.__stored_average_projection_counter = np.zeros((0,))
+        self.__stored_average_projection_counter = np.zeros((0,), dtype=dtype_np)
 
         # stored force products (per-walker cross-correlation preserved)
-        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
 
     def __validate_stored_shapes(self):
         """Assert that all stored observable arrays have consistent shapes."""
@@ -470,7 +489,7 @@ class GFMC_t:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._GFMC_t__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._GFMC_t__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -484,8 +503,9 @@ class GFMC_t:
         obj._GFMC_t__jax_PRNG_key_list_init = jnp.array(rng["jax_PRNG_key_list_init"])
 
         # -- Walker state --
-        obj._GFMC_t__latest_r_up_carts = jnp.array(ws["latest_r_up_carts"])
-        obj._GFMC_t__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
+        dtype_jnp = jnp.float64
+        obj._GFMC_t__latest_r_up_carts = jnp.asarray(ws["latest_r_up_carts"], dtype=dtype_jnp)
+        obj._GFMC_t__latest_r_dn_carts = jnp.asarray(ws["latest_r_dn_carts"], dtype=dtype_jnp)
 
         # -- Observables --
         def _load_obs(obs_arr, default):
@@ -631,6 +651,8 @@ class GFMC_t:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
+        check_mpi4py_jax_distribution_consistency()
+
         # set timer
         timer_projection_init = 0.0
         timer_projection_total = 0.0
@@ -660,6 +682,9 @@ class GFMC_t:
         np.random.seed(self.__mpi_seed)
 
         # precompute geminal inverses per walker for fast kinetic updates
+        dtype_jnp = jnp.float64
+        eps_rcond = get_eps("rcond_svd", dtype_jnp)
+
         def _compute_initial_A_inv_t(r_up_carts, r_dn_carts):
             geminal = compute_geminal_all_elements(
                 geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -667,7 +692,7 @@ class GFMC_t:
                 r_dn_carts=r_dn_carts,
             )
             U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
-            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+            s_inv = jnp.where(s > eps_rcond * s[0], 1.0 / s, 0.0)
             return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
@@ -688,13 +713,18 @@ class GFMC_t:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=jnp.float64,
             )
             return R
 
-        # Note: This jit drastically accelarates the computation!!
-        @partial(jit, static_argnums=(7, 8, 9))
-        def _projection_t(
+        # Shared core of legacy and streaming GFMC_t projection. Two thin
+        # wrappers (`_projection_t` legacy / `_projection_t_streaming`) below
+        # supply the per-electron continuum kinetic energy and the optional
+        # ``j3_state`` (None for legacy, ``kinetic_state.j3_state`` for
+        # streaming) and call this body. Mirrors the ``_body_step_core`` /
+        # ``_body_fun_n`` / ``_body_fun_n_streaming`` split in GFMC_n.
+        def _projection_t_core(
             projection_counter: int,
             tau_left: float,
             w_L: float,
@@ -702,37 +732,27 @@ class GFMC_t:
             r_dn_carts: jnpt.ArrayLike,
             A_old_inv: jnpt.ArrayLike,
             jax_PRNG_key: jnpt.ArrayLike,
+            diagonal_kinetic_continuum_elements_up: jnpt.ArrayLike,
+            diagonal_kinetic_continuum_elements_dn: jnpt.ArrayLike,
+            j3_state,
             random_discretized_mesh: bool,
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
+            det_ratio_state=None,
         ):
-            """Do projection, compatible with vmap.
+            """Single GFMC_t projection step, parameterized by per-electron continuum kinetic energy.
 
-            Do projection for a set of (r_up_cart, r_dn_cart).
+            Extracted from the original ``_projection_t`` so that legacy and
+            streaming wrappers can share the body. The caller is responsible
+            for supplying the continuum per-electron kinetic energies (legacy:
+            ``compute_kinetic_energy_all_elements_fast_update``; streaming:
+            ``_kinetic_energy_from_streaming_state``) and ``j3_state`` (legacy:
+            None; streaming: the maintained J3 sub-state).
 
-            Args:
-                projection_counter(int): the counter of projection steps
-                tau_left (float): left projection time
-                w_L (float): weight before projection
-                r_up_carts (N_e^up, 3) before projection
-                r_dn_carts (N_e^dn, 3) after projection
-                jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
-                random_discretized_mesh (bool): Flag for the random discretization mesh in the kinetic part and the non-local part of ECPs.
-                non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
-                alat (float): discretized grid length (bohr)
-                hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-
-            Returns:
-                e_L (float): e_L after the final projection.
-                projection_counter(int): the counter of projection steps
-                tau_left (float): left projection time
-                w_L (float): weight after the final projection
-                r_up_carts (N_e^up, 3) after the final projection
-                r_dn_carts (N_e^dn, 3) after the final projection
-                A_old_inv: cached inverse geminal matrix after the final projection
-                jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
-                R.T: rotation matrix used for the discretized mesh
+            Returns the same tuple as the legacy ``_projection_t`` plus three
+            extra fields (``has_up_move``, ``up_index``, ``dn_index``) that the
+            streaming wrapper uses to drive ``_advance_kinetic_energy_*``.
             """
             # projection counter
             projection_counter = lax.cond(
@@ -746,15 +766,9 @@ class GFMC_t:
             # compute diagonal elements, kinetic part
             diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
-            # compute continuum kinetic energy
-            diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_fast_update(
-                    wavefunction_data=hamiltonian_data.wavefunction_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                    geminal_inverse=A_old_inv,
-                )
-            )
+            # continuum kinetic energy is supplied by the wrapper (legacy:
+            # ``compute_kinetic_energy_all_elements_fast_update``; streaming:
+            # ``_kinetic_energy_from_streaming_state``).
 
             # generate a random rotation matrix
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -775,6 +789,8 @@ class GFMC_t:
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
+                    j3_state=j3_state,
+                    det_ratio_state=det_ratio_state,
                 )
             )
             # spin-filp
@@ -897,6 +913,8 @@ class GFMC_t:
                             flag_determinant_only=False,
                             A_old_inv=A_old_inv,
                             RT=R.T,
+                            j3_state=j3_state,
+                            det_ratio_state=det_ratio_state,
                         )
                     )
 
@@ -915,6 +933,8 @@ class GFMC_t:
                             flag_determinant_only=True,
                             A_old_inv=A_old_inv,
                             RT=R.T,
+                            j3_state=j3_state,
+                            det_ratio_state=det_ratio_state,
                         )
                     )
 
@@ -927,6 +947,7 @@ class GFMC_t:
                         old_r_dn_carts=r_dn_carts,
                         new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
                         new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                        j3_state=j3_state,
                     )
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
@@ -1018,23 +1039,38 @@ class GFMC_t:
                 dn_index = jnp.argmax(dn_diff)
 
             def _update_inv_up_t(_):
-                v = (
-                    compute_geminal_up_one_row_elements(
+                # Streaming path uses cached AO + paired_dn from
+                # ``det_ratio_state``; legacy path falls back to the
+                # twice-called row helper.
+                if det_ratio_state is None:
+                    v = (
+                        compute_geminal_up_one_row_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                        - compute_geminal_up_one_row_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                    )[:, None]
+                else:
+                    v = _compute_v_up_move_from_det_ratio_state(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                    - compute_geminal_up_one_row_elements(
-                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                        r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
-                        r_dn_carts=r_dn_carts,
-                    )
-                )[:, None]
+                        state=det_ratio_state,
+                        moved_index=up_index,
+                        r_up_carts_proposed=new_r_up_carts,
+                    )[:, None]
                 u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
                 Ainv_u = A_old_inv @ u
                 vT_Ainv = v.T @ A_old_inv
                 det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                # Consumer-zone explicit cast: cast the rank-1 update to the
+                # local gfmc zone dtype so the result agrees with the
+                # _no_update_t lax.cond branch and never depends on
+                # A_old_inv's upstream dtype.
+                return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
             def _no_update_t(_):
                 return A_old_inv
@@ -1044,23 +1080,32 @@ class GFMC_t:
             else:
 
                 def _update_inv_dn_t(_):
-                    u = (
-                        compute_geminal_dn_one_column_elements(
+                    if det_ratio_state is None:
+                        u = (
+                            compute_geminal_dn_one_column_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_carts=r_up_carts,
+                                r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
+                            )
+                            - compute_geminal_dn_one_column_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_carts=r_up_carts,
+                                r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                            )
+                        )[:, None]
+                    else:
+                        u = _compute_u_dn_move_from_det_ratio_state(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
-                        )
-                        - compute_geminal_dn_one_column_elements(
-                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
-                        )
-                    )[:, None]
+                            state=det_ratio_state,
+                            moved_index=dn_index,
+                            r_dn_carts_proposed=new_r_dn_carts,
+                        )[:, None]
                     v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                    # See note in _update_inv_up_t: consumer-zone explicit cast.
+                    return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
             if num_up_electrons == 0:
                 A_new_inv = A_old_inv
@@ -1082,15 +1127,132 @@ class GFMC_t:
                 A_new_inv,
                 jax_PRNG_key,
                 R.T,
+                has_up_move,
+                up_index,
+                dn_index,
             )
+
+        # Note: This jit drastically accelarates the computation!!
+        @partial(jit, static_argnums=(7, 8, 9))
+        def _projection_t(
+            projection_counter: int,
+            tau_left: float,
+            w_L: float,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            A_old_inv: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
+            random_discretized_mesh: bool,
+            non_local_move: bool,
+            alat: float,
+            hamiltonian_data: Hamiltonian_data,
+        ):
+            """Legacy GFMC_t projection step (no streaming kinetic-energy state).
+
+            Recomputes the per-electron continuum kinetic energy fresh each step
+            via :func:`compute_kinetic_energy_all_elements_fast_update` and
+            delegates the rest of the body to :func:`_projection_t_core`.
+            """
+            ke_up, ke_dn = compute_kinetic_energy_all_elements_fast_update(
+                wavefunction_data=hamiltonian_data.wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                geminal_inverse=A_old_inv,
+            )
+            (e_L, pc, tl, wL, ru, rd, Ainv, key, RT, _has_up, _up_idx, _dn_idx) = _projection_t_core(
+                projection_counter,
+                tau_left,
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                A_old_inv,
+                jax_PRNG_key,
+                ke_up,
+                ke_dn,
+                None,  # j3_state
+                random_discretized_mesh,
+                non_local_move,
+                alat,
+                hamiltonian_data,
+            )
+            return (e_L, pc, tl, wL, ru, rd, Ainv, key, RT)
+
+        @partial(jit, static_argnums=(8, 9, 10))
+        def _projection_t_streaming(
+            projection_counter: int,
+            tau_left: float,
+            w_L: float,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            A_old_inv: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
+            kinetic_state: Kinetic_streaming_state,
+            random_discretized_mesh: bool,
+            non_local_move: bool,
+            alat: float,
+            hamiltonian_data: Hamiltonian_data,
+        ):
+            """Streaming GFMC_t projection step.
+
+            Reads per-electron kinetic energies from ``kinetic_state`` instead
+            of recomputing them, threads ``kinetic_state.j3_state`` into the
+            fast-update kernels (discretized kinetic / non-local ECP / rank-1
+            Jastrow ratio), delegates the body to :func:`_projection_t_core`,
+            then advances the kinetic streaming state to the post-step
+            ``(r_up_new, r_dn_new, A_new_inv)``.
+
+            Valid only when ``jastrow_data.jastrow_nn_data is None`` (NN J3
+            has no rank-1 advance). Dispatch is Python-static at the
+            ``run()`` entry point. When ``tau_left <= 0.0`` the move is
+            suppressed (positions unchanged, A_new_inv == A_old_inv), so the
+            advance is a numerical no-op.
+            """
+            ke_up, ke_dn = _kinetic_energy_from_streaming_state(kinetic_state)
+            (e_L, pc, tl, wL, ru, rd, Ainv, key, RT, has_up, up_idx, dn_idx) = _projection_t_core(
+                projection_counter,
+                tau_left,
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                A_old_inv,
+                jax_PRNG_key,
+                ke_up,
+                ke_dn,
+                kinetic_state.j3_state,
+                random_discretized_mesh,
+                non_local_move,
+                alat,
+                hamiltonian_data,
+                det_ratio_state=kinetic_state.det_state,
+            )
+            moved_spin_is_up = has_up
+            moved_index = jnp.where(has_up, up_idx, dn_idx)
+            kinetic_state_new = _advance_kinetic_energy_all_elements_streaming_state(
+                wavefunction_data=hamiltonian_data.wavefunction_data,
+                state=kinetic_state,
+                moved_spin_is_up=moved_spin_is_up,
+                moved_index=moved_index,
+                r_up_carts_new=ru,
+                r_dn_carts_new=rd,
+                A_new_inv=Ainv,
+            )
+            return (e_L, pc, tl, wL, ru, rd, Ainv, kinetic_state_new, key, RT)
+
+        # Python-static dispatch: streaming is incompatible with NN three-body
+        # Jastrow (J_NN has no rank-1 advance). The determinant streaming
+        # path (now consuming ``kinetic_state.det_state`` in the LRDMC mesh
+        # kernels and the GFMC inv-update) brings benefit even when J3 is
+        # absent, so the dispatch gate depends only on ``jastrow_nn_data``.
+        jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data
+        use_streaming = jastrow_data.jastrow_nn_data is None
 
         # projection compilation.
         start_init = time.perf_counter()
         logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
         projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-        tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
-        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+        tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)], dtype=jnp.float64)
+        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
         (_, _, _, _, _, _, _, _, _) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
             projection_counter_list,
             tau_left_list,
@@ -1104,6 +1266,31 @@ class GFMC_t:
             self.__alat,
             self.__hamiltonian_data,
         )
+        if use_streaming:
+            # Pre-compile the streaming variant on a fresh kinetic state so the
+            # while-loop inside the branching loop does not pay the JIT cost.
+            _init_kinetic_state_list_compile = vmap(_init_kinetic_energy_all_elements_streaming_state, in_axes=(None, 0, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
+            )
+            (_, _, _, _, _, _, _, _, _, _) = vmap(
+                _projection_t_streaming, in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None)
+            )(
+                projection_counter_list,
+                tau_left_list,
+                w_L_list,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
+                self.__jax_PRNG_key_list,
+                _init_kinetic_state_list_compile,
+                self.__random_discretized_mesh,
+                self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
+            )
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -1335,7 +1522,7 @@ class GFMC_t:
             start_init_force = time.perf_counter()
             logger.info("Start compilation of force gradient functions.")
             logger.info("  Compilation is in progress...")
-            _dummy_RTs = jnp.stack([jnp.eye(3)] * self.__num_walkers)
+            _dummy_RTs = jnp.stack([jnp.eye(3, dtype=jnp.float64)] * self.__num_walkers)
             _, _, _ = _jit_vmap_grad_e_L_t(
                 hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
@@ -1349,6 +1536,13 @@ class GFMC_t:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            if self.__use_swct:
+                # Warm up SWCT vmap callables here so the very first branching
+                # step that consumes them does not pay JIT compile time.
+                _ = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_omega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+                _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
             end_init_force = time.perf_counter()
             logger.info("End compilation of force gradient functions.")
             logger.info(f"Elapsed Time = {end_init_force - start_init_force:.2f} sec.")
@@ -1357,19 +1551,147 @@ class GFMC_t:
         # Main branching loop.
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
-        logger.info("-Start branching-")
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        gmfc_total_current = time.perf_counter()
-        logger.info(
-            f"  branching step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
+        # ------------------------------------------------------------------
+        # Pre-build the per-branching projection driver. Defined ONCE here
+        # (outside the ``for i_branching`` loop) so that:
+        #   * The Python closure objects ``_body_t`` / ``_body_t_streaming``
+        #     are stable across iterations -> the implicit jit cache key
+        #     for ``lax.while_loop`` hits after the first compile.
+        #   * Closing over ``self.__random_discretized_mesh``,
+        #     ``self.__non_local_move``, ``self.__alat``, and
+        #     ``self.__hamiltonian_data`` is safe because none of them
+        #     change between branching steps within a single ``run()``.
+        # If these were defined inside the per-branching loop, every step
+        # would create a fresh function identity and trigger a full
+        # re-trace + re-compile.
+        # ------------------------------------------------------------------
+        def _cond_t(carry):
+            tau_left = carry[2]
+            return jnp.max(tau_left) > 0.0
+
+        _body_vmap_t = vmap(
+            _projection_t,
+            in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None),
         )
 
+        def _body_t(carry):
+            (_, pcl, tll, wll, ru, rd, Ainv, key, _) = carry
+            return _body_vmap_t(
+                pcl,
+                tll,
+                wll,
+                ru,
+                rd,
+                Ainv,
+                key,
+                self.__random_discretized_mesh,
+                self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
+            )
+
+        @jit
+        def _run_projection_loop(pcl, tll, wll, ru, rd, Ainv, key):
+            init_carry = _body_vmap_t(
+                pcl,
+                tll,
+                wll,
+                ru,
+                rd,
+                Ainv,
+                key,
+                self.__random_discretized_mesh,
+                self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
+            )
+            return lax.while_loop(_cond_t, _body_t, init_carry)
+
+        if use_streaming:
+            _body_vmap_t_streaming = vmap(
+                _projection_t_streaming,
+                in_axes=(0, 0, 0, 0, 0, 0, 0, 0, None, None, None, None),
+            )
+
+            def _body_t_streaming(carry):
+                (_, pcl, tll, wll, ru, rd, Ainv, ks, key, _) = carry
+                return _body_vmap_t_streaming(
+                    pcl,
+                    tll,
+                    wll,
+                    ru,
+                    rd,
+                    Ainv,
+                    key,
+                    ks,
+                    self.__random_discretized_mesh,
+                    self.__non_local_move,
+                    self.__alat,
+                    self.__hamiltonian_data,
+                )
+
+            @jit
+            def _run_projection_loop_streaming(pcl, tll, wll, ru, rd, Ainv, key, ks):
+                init_carry = _body_vmap_t_streaming(
+                    pcl,
+                    tll,
+                    wll,
+                    ru,
+                    rd,
+                    Ainv,
+                    key,
+                    ks,
+                    self.__random_discretized_mesh,
+                    self.__non_local_move,
+                    self.__alat,
+                    self.__hamiltonian_data,
+                )
+                return lax.while_loop(_cond_t, _body_t_streaming, init_carry)
+
+        # ------------------------------------------------------------------
+        # Warm up the lax.while_loop driver(s) via AOT compilation, so that
+        # the first ``branching step`` does NOT include compile time.
+        # ``.lower(*args).compile()`` traces & compiles without executing,
+        # so walker state / RNG keys are not consumed.
+        # ------------------------------------------------------------------
+        start_warmup = time.perf_counter()
+        logger.info("Start compilation of the GFMC projection while_loop driver.")
+        logger.info("  Compilation is in progress...")
+        _run_projection_loop.lower(
+            projection_counter_list,
+            tau_left_list,
+            w_L_list,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+            self.__latest_A_old_inv,
+            self.__jax_PRNG_key_list,
+        ).compile()
+        if use_streaming:
+            _run_projection_loop_streaming.lower(
+                projection_counter_list,
+                tau_left_list,
+                w_L_list,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
+                self.__jax_PRNG_key_list,
+                _init_kinetic_state_list_compile,
+            ).compile()
+        end_warmup = time.perf_counter()
+        timer_projection_init += end_warmup - start_warmup
+        logger.info("End compilation of the GFMC projection while_loop driver.")
+        logger.info(f"Elapsed Time = {end_warmup - start_warmup:.2f} sec.")
+        logger.info("")
+
+        logger.info("-Start branching-")
         num_mcmc_done = 0
 
         # -- Extend stored arrays with zero-padding for new steps --
+        # gfmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
         # average_projection_counter is stored on all ranks
         self.__stored_average_projection_counter = np.concatenate(
-            [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,))]
+            [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,), dtype=dtype_np)]
         )
         # other observables are stored on rank 0 only
         if mpi_rank == 0:
@@ -1377,32 +1699,87 @@ class GFMC_t:
             n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
             n_atoms = self.__hamiltonian_data.structure_data.natom
 
-            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
             if self.__comput_position_deriv:
-                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
-                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_force_HF = np.concatenate(
+                    [self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
+                self.__stored_force_PP = np.concatenate(
+                    [self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
                 self.__stored_E_L_force_PP = np.concatenate(
-                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
                 )
 
+        gfmc_loop_start = time.perf_counter()
         for i_branching in range(num_mcmc_steps):
-            if (i_branching + 1) % gfmc_interval == 0:
-                progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_branching % gfmc_interval == 0:
+                progress = (i_branching + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  branching step = {i_branching + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
+                    f"  branching step = {i_branching + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_loop_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
             projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-            tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)], dtype=jnp.float64)
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             start_projection = time.perf_counter()
+            # If streaming is enabled, build a fresh per-walker kinetic state
+            # at the start of each branching step (consistent with the freshly
+            # reset projection_counter / tau_left / w_L). The state is then
+            # advanced by ``_projection_t_streaming`` inside the while loop.
+            if use_streaming:
+                kinetic_state_list = vmap(_init_kinetic_energy_all_elements_streaming_state, in_axes=(None, 0, 0, 0))(
+                    self.__hamiltonian_data.wavefunction_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                )
             # projection loop
-            while True:
+            #
+            # The previous implementation was a Python ``while True`` that
+            # dispatched ``vmap(_projection_t)`` from the host once per
+            # projection step and broke on ``np.max(tau_left_list) <= 0``.
+            # That ``np.max`` forces a host-side jax->numpy materialization,
+            # which blocks on the GPU once per step and dispatches a fresh
+            # jit per step. We replace it with ``lax.while_loop`` so the
+            # entire projection loop is captured into a single jit graph
+            # (CUDA-graph friendly) and only one host sync happens at the
+            # end via ``block_until_ready`` below. The cond is evaluated on
+            # device (``jnp.max(tau_left) > 0.0``).
+            #
+            # The driver functions ``_run_projection_loop_*`` are defined
+            # **outside** this ``for i_branching`` loop (see above) so the
+            # jit cache hits after the first compile; defining them here
+            # would create a fresh Python closure each branching and force
+            # a re-trace + re-compile per step (catastrophic slowdown).
+            if use_streaming:
+                (
+                    e_L_list,
+                    projection_counter_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                    kinetic_state_list,
+                    self.__jax_PRNG_key_list,
+                    latest_RTs,
+                ) = _run_projection_loop_streaming(
+                    projection_counter_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
+                    self.__jax_PRNG_key_list,
+                    kinetic_state_list,
+                )
+            else:
                 (
                     e_L_list,
                     projection_counter_list,
@@ -1413,7 +1790,7 @@ class GFMC_t:
                     self.__latest_A_old_inv,
                     self.__jax_PRNG_key_list,
                     latest_RTs,
-                ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
+                ) = _run_projection_loop(
                     projection_counter_list,
                     tau_left_list,
                     w_L_list,
@@ -1421,13 +1798,7 @@ class GFMC_t:
                     self.__latest_r_dn_carts,
                     self.__latest_A_old_inv,
                     self.__jax_PRNG_key_list,
-                    self.__random_discretized_mesh,
-                    self.__non_local_move,
-                    self.__alat,
-                    self.__hamiltonian_data,
                 )
-                if np.max(tau_left_list) <= 0.0:
-                    break
 
             # sync. jax arrays computations.
             e_L_list.block_until_ready()
@@ -1524,10 +1895,10 @@ class GFMC_t:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
@@ -1669,7 +2040,7 @@ class GFMC_t:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -1681,6 +2052,9 @@ class GFMC_t:
             local_probabilities = w_L_latest / global_weight_sum
 
             # Compute the local cumulative probabilities.
+            # NOTE: MPI reductions for branching probabilities are kept float64
+            # unconditionally (regardless of the gfmc precision zone) to avoid
+            # population collapse from float32 round-off in the branching step.
             local_cumprob = np.cumsum(local_probabilities)
             local_sum_arr = np.array(np.sum(local_probabilities), dtype=np.float64)
             offset_arr = np.zeros(1, dtype=np.float64)
@@ -1766,7 +2140,7 @@ class GFMC_t:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -1826,7 +2200,7 @@ class GFMC_t:
             end_ = time.perf_counter()
             logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -1916,8 +2290,8 @@ class GFMC_t:
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
             self.__stored_average_projection_counter[self.__mcmc_counter + num_mcmc_done] = ave_projection_counter
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
                 self.__latest_r_up_carts, self.__latest_r_dn_carts
             )
@@ -1930,27 +2304,44 @@ class GFMC_t:
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             # check current time
+            # Use rank 0's decision and broadcast to all ranks to prevent
+            # MPI deadlock caused by different ranks disagreeing on whether
+            # to break (due to slight differences in gfmc_total_start).
             gmfc_current = time.perf_counter()
-            if max_time < gmfc_current - gfmc_total_start:
+            should_stop = bool(max_time < gmfc_current - gfmc_total_start) if mpi_rank == 0 else False
+            should_stop = mpi_comm.bcast(should_stop, root=0)
+            if should_stop:
                 logger.info(f"  Stopping... Max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the branching loop.")
                 break
 
             # check toml file (stop flag)
-            if os.path.isfile(toml_filename):
-                dict_toml = toml.load(open(toml_filename))
-                try:
-                    stop_flag = dict_toml["external_control"]["stop"]
-                except KeyError:
+            # Only rank 0 reads the file to avoid filesystem cache inconsistencies.
+            if mpi_rank == 0:
+                if os.path.isfile(toml_filename):
+                    dict_toml = toml.load(open(toml_filename))
+                    try:
+                        stop_flag = dict_toml["external_control"]["stop"]
+                    except KeyError:
+                        stop_flag = False
+                else:
                     stop_flag = False
-                if stop_flag:
-                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
-                    logger.info("  Break the mcmc loop.")
-                    break
+            else:
+                stop_flag = False
+            stop_flag = mpi_comm.bcast(stop_flag, root=0)
+            if stop_flag:
+                logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                logger.info("  Break the mcmc loop.")
+                break
 
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        gmfc_total_current = time.perf_counter()
+        logger.info(
+            f"  branching step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_loop_start):.1f} sec."
+        )
         logger.info("")
 
         # count up
@@ -2101,20 +2492,17 @@ class GFMC_t:
 
                 Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-                # E: jackknife mean and std
-                sum_E_local = np.sum(E_jackknife_binned_local)
-                sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
 
-                E_mean = sum_E_local / M_local
-                E_var = (sumsq_E_local / M_local) - (sum_E_local / M_local) ** 2
+                # E: 1st pass -- mean, 2nd pass -- centered sum of squares
+                E_mean = np.sum(E_jackknife_binned_local) / M_local
+                E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: jackknife mean and std
-                sum_Var_local = np.sum(Var_jackknife_binned_local)
-                sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-                Var_mean = sum_Var_local / M_total
-                Var_var = (sumsq_Var_local / M_total) - (sum_Var_local / M_local) ** 2
+                # Var: 1st pass -- mean, 2nd pass -- centered sum of squares
+                Var_mean = np.sum(Var_jackknife_binned_local) / M_total
+                Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
 
             else:
@@ -2198,28 +2586,25 @@ class GFMC_t:
 
             Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-            # E: jackknife mean and std
-            sum_E_local = np.sum(E_jackknife_binned_local)
-            sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: global sum
-            sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
-            sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
-
+            # E: 1st pass -- global mean
+            sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
-            E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+
+            # E: 2nd pass -- centered sum of squares (numerically stable)
+            sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
+            E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: jackknife mean and std
-            sum_Var_local = np.sum(Var_jackknife_binned_local)
-            sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-            # Var: global sum
-            sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
-            sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-
+            # Var: 1st pass -- global mean
+            sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
-            Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+
+            # Var: 2nd pass -- centered sum of squares
+            sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
+            Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
 
         # return
@@ -2338,12 +2723,10 @@ class GFMC_t:
 
                 force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
-                sum_force_local = np.sum(force_jn_local, axis=0)
-                sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
-                ## mean and var = E[x^2] - (E[x])^2
-                mean_force_global = sum_force_local / M_local
-                var_force_global = (sumsq_force_local / M_local) - (sum_force_local / M_local) ** 2
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
+                mean_force_global = np.sum(force_jn_local, axis=0) / M_local
+                var_force_global = np.sum((force_jn_local - mean_force_global) ** 2, axis=0) / M_local
 
                 ## mean and std
                 force_mean = mean_force_global
@@ -2500,18 +2883,20 @@ class GFMC_t:
 
             force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
+
+            # 1st pass -- global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
-            sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
             sum_force_global = np.empty_like(sum_force_local)
-            sumsq_force_global = np.empty_like(sumsq_force_local)
-
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
-
-            ## mean and var = E[x^2] - (E[x])^2
             mean_force_global = sum_force_global / M_total
-            var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+            # 2nd pass -- centered sum of squares (numerically stable)
+            sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
+            sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
+            mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
+            var_force_global = sumsq_centered_force_global / M_total
 
             ## mean and std
             force_mean = mean_force_global
@@ -2588,9 +2973,10 @@ class _GFMC_t_debug:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -2615,18 +3001,22 @@ class _GFMC_t_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -2967,21 +3357,19 @@ class _GFMC_t_debug:
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  branching step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %.")
 
         num_mcmc_done = 0
         for i_branching in range(num_mcmc_steps):
-            if (i_branching + 1) % gfmc_interval == 0:
-                progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_branching % gfmc_interval == 0:
+                progress = (i_branching + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  branching step = {i_branching + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+                    f"  branching step = {i_branching + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Always set the initial weight list to 1.0
             projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
-            e_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            e_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             logger.devel("  Projection is on going....")
 
@@ -3024,7 +3412,7 @@ class _GFMC_t_debug:
 
                     # generate a random rotation matrix
                     jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    R = jnp.eye(3)  # Rotate in the order x -> y -> z
+                    R = jnp.eye(3, dtype=jnp.float64)  # Rotate in the order x -> y -> z
 
                     # compute discretized kinetic energy and mesh (with a random rotation)
                     mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -3256,16 +3644,15 @@ class _GFMC_t_debug:
                     if tau_left <= 0.0:  # '= is very important!!'
                         jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                         break
-                    else:
-                        # electron position update
-                        # random choice
-                        # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
-                        jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                        cdf = jnp.cumsum(non_diagonal_move_probabilities)
-                        random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
-                        k = jnp.searchsorted(cdf, random_value)
-                        r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
-                        r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
+                    # electron position update
+                    # random choice
+                    # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
+                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                    cdf = jnp.cumsum(non_diagonal_move_probabilities)
+                    random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                    k = jnp.searchsorted(cdf, random_value)
+                    r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
+                    r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
                 projection_counter_list[i_walker] = projection_counter
                 e_L_list[i_walker] = e_L
@@ -3288,10 +3675,10 @@ class _GFMC_t_debug:
 
             # projection ends
             projection_counter_list = jnp.array(projection_counter_list)
-            e_L_list = jnp.array(e_L_list)
-            w_L_list = jnp.array(w_L_list)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
+            e_L_list = jnp.asarray(e_L_list, dtype=jnp.float64)
+            w_L_list = jnp.asarray(w_L_list, dtype=jnp.float64)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts, dtype=jnp.float64)
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)
 
             logger.debug("  Projection ends.")
@@ -3299,7 +3686,7 @@ class _GFMC_t_debug:
             # atomic force related
             if self.__comput_position_deriv:
                 # RT is always eye(3) in _GFMC_t_debug (no random_discretized_mesh)
-                RT_eye = jnp.eye(3)
+                RT_eye = jnp.eye(3, dtype=jnp.float64)
 
                 _grad_e_L_fn = grad(_compute_local_energy_t_debug, argnums=(0, 1, 2))
                 _grad_e_L_results = [
@@ -3390,10 +3777,10 @@ class _GFMC_t_debug:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -3588,12 +3975,16 @@ class _GFMC_t_debug:
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
             self.__stored_average_projection_counter.append(ave_projection_counter)
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
 
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(
+            f"  branching step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+        )
         logger.info("")
 
         # count up mcmc_counter
@@ -3895,9 +4286,10 @@ class GFMC_n:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -3922,18 +4314,22 @@ class GFMC_n:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -3970,21 +4366,24 @@ class GFMC_n:
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
+        # gfmc zone dtype for stored numpy arrays
+        dtype_np = np.float64
+
         # stored weight (w_L)
-        self.__stored_w_L = np.zeros((0, 1))
+        self.__stored_w_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L)
-        self.__stored_e_L = np.zeros((0, 1))
+        self.__stored_e_L = np.zeros((0, 1), dtype=dtype_np)
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = np.zeros((0, 1))
+        self.__stored_e_L2 = np.zeros((0, 1), dtype=dtype_np)
 
         # stored force products (per-walker cross-correlation preserved)
-        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3))
-        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
+        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3), dtype=dtype_np)
 
-        # stored G_L and G_e_L for updating the E_scf (kept as lists — variable count per run)
+        # stored G_L and G_e_L for updating the E_scf (kept as lists -- variable count per run)
         self.__G_L = []
         self.__G_e_L = []
 
@@ -4131,7 +4530,7 @@ class GFMC_n:
 
         # -- Hamiltonian data (apply DiffMask as the normal setter does) --
         obj._GFMC_n__hamiltonian_data = hamiltonian_data
-        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter -> DiffMask + __init_attributes
 
         # -- Overwrite __init_attributes results with loaded state --
         obj._GFMC_n__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -4145,8 +4544,9 @@ class GFMC_n:
         obj._GFMC_n__jax_PRNG_key_list_init = jnp.array(rng["jax_PRNG_key_list_init"])
 
         # -- Walker state --
-        obj._GFMC_n__latest_r_up_carts = jnp.array(ws["latest_r_up_carts"])
-        obj._GFMC_n__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
+        dtype_jnp = jnp.float64
+        obj._GFMC_n__latest_r_up_carts = jnp.asarray(ws["latest_r_up_carts"], dtype=dtype_jnp)
+        obj._GFMC_n__latest_r_dn_carts = jnp.asarray(ws["latest_r_dn_carts"], dtype=dtype_jnp)
 
         # -- Observables --
         n_up = obj._GFMC_n__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
@@ -4292,6 +4692,8 @@ class GFMC_n:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
+        check_mpi4py_jax_distribution_consistency()
+
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
@@ -4327,6 +4729,9 @@ class GFMC_n:
         gfmc_total_start = time.perf_counter()
 
         # precompute geminal inverses per walker for fast updates across projections
+        dtype_jnp = jnp.float64
+        eps_rcond = get_eps("rcond_svd", dtype_jnp)
+
         def _compute_initial_A_inv_n(r_up_carts, r_dn_carts):
             geminal = compute_geminal_all_elements(
                 geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -4334,7 +4739,7 @@ class GFMC_n:
                 r_dn_carts=r_dn_carts,
             )
             U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
-            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+            s_inv = jnp.where(s > eps_rcond * s[0], 1.0 / s, 0.0)
             return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         _jit_vmap_A_inv_n = jit(vmap(_compute_initial_A_inv_n, in_axes=(0, 0)))
@@ -4354,7 +4759,8 @@ class GFMC_n:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=jnp.float64,
             )
             return R
 
@@ -4399,29 +4805,36 @@ class GFMC_n:
             """
 
             @jit
-            def _body_fun_n(i, carry):
-                (
-                    w_L,
-                    r_up_carts,
-                    r_dn_carts,
-                    RT,
-                    A_old_inv,
-                    _,
-                    _,
-                ) = carry
+            def _body_step_core(
+                i,
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                A_old_inv,
+                diagonal_kinetic_continuum_elements_up,
+                diagonal_kinetic_continuum_elements_dn,
+                j3_state=None,
+                det_ratio_state=None,
+            ):
+                """Single GFMC projection step, parameterized by per-electron continuum kinetic energy.
 
+                Extracted from the original ``_body_fun_n`` so that both the legacy path
+                (which recomputes ``compute_kinetic_energy_all_elements_fast_update`` from
+                scratch every step) and the streaming path (which reads the kinetic
+                energy from a maintained ``Kinetic_streaming_state``) can share the
+                identical post-kinetic logic. Returns the carry components plus the
+                ``(moved_spin_is_up, moved_index)`` pair that the streaming path needs
+                to advance its auxiliary state.
+
+                The optional ``j3_state`` (a ``Jastrow_three_body_streaming_state``
+                consistent with the current ``r_{up,dn}_carts``) lets the streaming
+                path avoid re-evaluating J3 AOs / W,U / cross-vec auxiliaries inside
+                the discretized-mesh kinetic ratio and the ECP non-local ratio. Pass
+                ``None`` (default) on the legacy path; the callees fall back to fresh
+                AO evaluation when ``j3_state is None``.
+                """
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
-
-                # compute continuum kinetic energy
-                diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements_fast_update(
-                        wavefunction_data=hamiltonian_data.wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                        geminal_inverse=A_old_inv,
-                    )
-                )
 
                 # generate a random rotation matrix
                 rot_key = rotation_keys[i]
@@ -4442,6 +4855,8 @@ class GFMC_n:
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                         RT=R.T,
+                        j3_state=j3_state,
+                        det_ratio_state=det_ratio_state,
                     )
                 )
                 # spin-filp
@@ -4575,6 +4990,8 @@ class GFMC_n:
                                 flag_determinant_only=False,
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
+                                j3_state=j3_state,
+                                det_ratio_state=det_ratio_state,
                             )
                         )
 
@@ -4601,6 +5018,8 @@ class GFMC_n:
                                 flag_determinant_only=True,
                                 A_old_inv=A_old_inv,
                                 RT=R.T,
+                                j3_state=j3_state,
+                                det_ratio_state=det_ratio_state,
                             )
                         )
 
@@ -4613,6 +5032,7 @@ class GFMC_n:
                             old_r_dn_carts=r_dn_carts,
                             new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
                             new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                            j3_state=j3_state,
                         )
 
                         V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
@@ -4693,23 +5113,38 @@ class GFMC_n:
                     dn_index = jnp.argmax(dn_diff)
 
                 def _update_inv_up_n(_):
-                    v = (
-                        compute_geminal_up_one_row_elements(
+                    # v construction: streaming path uses cached AO +
+                    # paired_dn from ``det_ratio_state``; legacy path falls
+                    # back to the twice-called row helper.
+                    if det_ratio_state is None:
+                        v = (
+                            compute_geminal_up_one_row_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_cart=jnp.reshape(proposed_r_up_carts[up_index], (1, 3)),
+                                r_dn_carts=r_dn_carts,
+                            )
+                            - compute_geminal_up_one_row_elements(
+                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                                r_dn_carts=r_dn_carts,
+                            )
+                        )[:, None]
+                    else:
+                        v = _compute_v_up_move_from_det_ratio_state(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_cart=jnp.reshape(proposed_r_up_carts[up_index], (1, 3)),
-                            r_dn_carts=r_dn_carts,
-                        )
-                        - compute_geminal_up_one_row_elements(
-                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                            r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
-                            r_dn_carts=r_dn_carts,
-                        )
-                    )[:, None]
+                            state=det_ratio_state,
+                            moved_index=up_index,
+                            r_up_carts_proposed=proposed_r_up_carts,
+                        )[:, None]
                     u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
                     Ainv_u = A_old_inv @ u
                     vT_Ainv = v.T @ A_old_inv
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                    # Consumer-zone explicit cast: cast the rank-1 update to the
+                    # local gfmc zone dtype so the result agrees with the
+                    # _no_update_n lax.cond branch and never depends on
+                    # A_old_inv's upstream dtype.
+                    return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
                 def _no_update_n(_):
                     return A_old_inv
@@ -4719,23 +5154,32 @@ class GFMC_n:
                 else:
 
                     def _update_inv_dn_n(_):
-                        u = (
-                            compute_geminal_dn_one_column_elements(
+                        if det_ratio_state is None:
+                            u = (
+                                compute_geminal_dn_one_column_elements(
+                                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                    r_up_carts=r_up_carts,
+                                    r_dn_cart=jnp.reshape(proposed_r_dn_carts[dn_index], (1, 3)),
+                                )
+                                - compute_geminal_dn_one_column_elements(
+                                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                                    r_up_carts=r_up_carts,
+                                    r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                                )
+                            )[:, None]
+                        else:
+                            u = _compute_u_dn_move_from_det_ratio_state(
                                 geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                                r_up_carts=r_up_carts,
-                                r_dn_cart=jnp.reshape(proposed_r_dn_carts[dn_index], (1, 3)),
-                            )
-                            - compute_geminal_dn_one_column_elements(
-                                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                                r_up_carts=r_up_carts,
-                                r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
-                            )
-                        )[:, None]
+                                state=det_ratio_state,
+                                moved_index=dn_index,
+                                r_dn_carts_proposed=proposed_r_dn_carts,
+                            )[:, None]
                         v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
                         Ainv_u = A_old_inv @ u
                         vT_Ainv = v.T @ A_old_inv
                         det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
-                        return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+                        # See note in _update_inv_up_n: consumer-zone explicit cast.
+                        return jnp.asarray(A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio, dtype=jnp.float64)
 
                 if num_up_electrons == 0:
                     A_new_inv = A_old_inv
@@ -4750,7 +5194,17 @@ class GFMC_n:
                 r_up_carts = proposed_r_up_carts
                 r_dn_carts = proposed_r_dn_carts
 
-                carry = (
+                # ``moved_index`` is whichever of (up_index, dn_index) is the
+                # one whose spin actually moved this step. Used by the streaming
+                # path to identify the column-changed by the rank-1 update.
+                # If neither moved (no_move case), ``moved_spin_is_up`` and
+                # ``moved_index`` are still well-defined arrays and the
+                # streaming advance handles the no-op robustly via
+                # ``r_up_carts`` / ``r_dn_carts`` which haven't actually changed.
+                moved_spin_is_up = has_up_move
+                moved_index = jnp.where(has_up_move, up_index, dn_index)
+
+                return (
                     w_L,
                     r_up_carts,
                     r_dn_carts,
@@ -4758,8 +5212,117 @@ class GFMC_n:
                     A_new_inv,
                     diagonal_sum_hamiltonian,
                     non_diagonal_sum_hamiltonian,
+                    moved_spin_is_up,
+                    moved_index,
                 )
-                return carry
+
+            @jit
+            def _body_fun_n(i, carry):
+                """Legacy GFMC projection body -- recomputes kinetic energies fresh per step."""
+                (
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    RT,
+                    A_old_inv,
+                    _,
+                    _,
+                ) = carry
+
+                # compute continuum kinetic energy from scratch (legacy path).
+                ke_up, ke_dn = compute_kinetic_energy_all_elements_fast_update(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                    geminal_inverse=A_old_inv,
+                )
+
+                (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                    _moved_spin_is_up,
+                    _moved_index,
+                ) = _body_step_core(i, w_L, r_up_carts, r_dn_carts, A_old_inv, ke_up, ke_dn)
+
+                return (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                )
+
+            @jit
+            def _body_fun_n_streaming(i, carry):
+                """Streaming GFMC projection body -- reads kinetic energies from a maintained
+                ``Kinetic_streaming_state`` (J3 incrementally; J1/J2/det fresh in PR1) and
+                advances the state at the end of each step.
+
+                Only valid when ``jastrow_nn_data is None`` (NN J3 has no streaming path).
+                Dispatch is Python-static at the ``_projection_n`` entry point.
+                """
+                (
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    RT,
+                    A_old_inv,
+                    kinetic_state,
+                    _,
+                    _,
+                ) = carry
+
+                ke_up, ke_dn = _kinetic_energy_from_streaming_state(kinetic_state)
+
+                (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                    moved_spin_is_up,
+                    moved_index,
+                ) = _body_step_core(
+                    i,
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    A_old_inv,
+                    ke_up,
+                    ke_dn,
+                    j3_state=kinetic_state.j3_state,
+                    det_ratio_state=kinetic_state.det_state,
+                )
+
+                kinetic_state_new = _advance_kinetic_energy_all_elements_streaming_state(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    state=kinetic_state,
+                    moved_spin_is_up=moved_spin_is_up,
+                    moved_index=moved_index,
+                    r_up_carts_new=r_up_new,
+                    r_dn_carts_new=r_dn_new,
+                    A_new_inv=A_new_inv,
+                )
+
+                return (
+                    w_L_new,
+                    r_up_new,
+                    r_dn_new,
+                    RT_new,
+                    A_new_inv,
+                    kinetic_state_new,
+                    diag_sum_H,
+                    nondiag_sum_H,
+                )
 
             def _split_step_keys(key, num_steps):
                 def _split_body(current_key, _):
@@ -4771,28 +5334,69 @@ class GFMC_n:
 
             latest_jax_PRNG_key, (rotation_keys, move_keys) = _split_step_keys(init_jax_PRNG_key, num_mcmc_per_measurement)
 
-            (
-                latest_w_L,
-                latest_r_up_carts,
-                latest_r_dn_carts,
-                latest_RT,
-                latest_A_old_inv,
-                latest_diagonal_sum_hamiltonian,
-                latest_non_diagonal_sum_hamiltonian,
-            ) = jax.lax.fori_loop(
-                0,
-                num_mcmc_per_measurement,
-                _body_fun_n,
+            # Python-static dispatch: streaming is incompatible with NN three-body
+            # Jastrow (J_NN has no rank-1 advance). The determinant streaming
+            # path (now consuming ``kinetic_state.det_state`` in the LRDMC
+            # mesh kernels and the GFMC inv-update) brings benefit even when
+            # J3 is absent, so the dispatch gate depends only on
+            # ``jastrow_nn_data``. Mirrors the GFMC_t dispatch policy.
+            jastrow_data = hamiltonian_data.wavefunction_data.jastrow_data
+            use_streaming = jastrow_data.jastrow_nn_data is None
+
+            if use_streaming:
+                init_kinetic_state = _init_kinetic_energy_all_elements_streaming_state(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    r_up_carts=init_r_up_carts,
+                    r_dn_carts=init_r_dn_carts,
+                    geminal_inverse=init_A_old_inv,
+                )
                 (
-                    init_w_L,
-                    init_r_up_carts,
-                    init_r_dn_carts,
-                    jnp.eye(3),
-                    init_A_old_inv,
-                    jnp.asarray(0.0),
-                    jnp.asarray(0.0),
-                ),
-            )
+                    latest_w_L,
+                    latest_r_up_carts,
+                    latest_r_dn_carts,
+                    latest_RT,
+                    latest_A_old_inv,
+                    _latest_kinetic_state,
+                    latest_diagonal_sum_hamiltonian,
+                    latest_non_diagonal_sum_hamiltonian,
+                ) = jax.lax.fori_loop(
+                    0,
+                    num_mcmc_per_measurement,
+                    _body_fun_n_streaming,
+                    (
+                        init_w_L,
+                        init_r_up_carts,
+                        init_r_dn_carts,
+                        jnp.eye(3, dtype=jnp.float64),
+                        init_A_old_inv,
+                        init_kinetic_state,
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                    ),
+                )
+            else:
+                (
+                    latest_w_L,
+                    latest_r_up_carts,
+                    latest_r_dn_carts,
+                    latest_RT,
+                    latest_A_old_inv,
+                    latest_diagonal_sum_hamiltonian,
+                    latest_non_diagonal_sum_hamiltonian,
+                ) = jax.lax.fori_loop(
+                    0,
+                    num_mcmc_per_measurement,
+                    _body_fun_n,
+                    (
+                        init_w_L,
+                        init_r_up_carts,
+                        init_r_dn_carts,
+                        jnp.eye(3, dtype=jnp.float64),
+                        init_A_old_inv,
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                        jnp.asarray(0.0, dtype=jnp.float64),
+                    ),
+                )
 
             return (
                 latest_w_L,
@@ -4831,13 +5435,14 @@ class GFMC_n:
 
             if use_fast_update:
                 # precompute geminal inverse for fast updates (SVD-based, robust for near-singular G)
+                _eps_rcond = get_eps("rcond_svd", jnp.float64)
                 geminal = compute_geminal_all_elements(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
                 _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
-                _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+                _s_inv = jnp.where(_s > _eps_rcond * _s[0], 1.0 / _s, 0.0)
                 A_old_inv = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
@@ -5121,7 +5726,7 @@ class GFMC_n:
         start_init = time.perf_counter()
         logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
-        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+        w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
         (
             _,
             _,
@@ -5171,6 +5776,13 @@ class GFMC_n:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            if self.__use_swct:
+                # Warm up SWCT vmap callables so they are not JIT-compiled
+                # inside the main MCMC loop.
+                _ = _jit_vmap_swct_omega_n(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_omega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+                _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
+                _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -5187,33 +5799,36 @@ class GFMC_n:
             n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
             n_atoms = self.__hamiltonian_data.structure_data.natom
 
-            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
+            # gfmc zone dtype for stored numpy arrays
+            dtype_np = np.float64
+
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1), dtype=dtype_np)])
             if self.__comput_position_deriv:
-                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
-                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_force_HF = np.concatenate(
+                    [self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
+                self.__stored_force_PP = np.concatenate(
+                    [self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
+                )
                 self.__stored_E_L_force_PP = np.concatenate(
-                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3), dtype=dtype_np)]
                 )
 
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        gfmc_total_current = time.perf_counter()
-        logger.info(
-            f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
-        )
         mcmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))
 
+        gfmc_loop_start = time.perf_counter()
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 gfmc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
+                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_loop_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             start_projection = time.perf_counter()
 
@@ -5359,10 +5974,10 @@ class GFMC_n:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             # Barrier before MPI operation
             start_mpi_barrier = time.perf_counter()
@@ -5502,7 +6117,7 @@ class GFMC_n:
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
-            # Use pickle‐based allreduce here (allowed for this part)
+            # Use pickle-based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
@@ -5514,6 +6129,9 @@ class GFMC_n:
             local_probabilities = w_L_latest / global_weight_sum
 
             # Compute the local cumulative probabilities.
+            # NOTE: MPI reductions for branching probabilities are kept float64
+            # unconditionally (regardless of the gfmc precision zone) to avoid
+            # population collapse from float32 round-off in the branching step.
             local_cumprob = np.cumsum(local_probabilities)
             local_sum_arr = np.array(np.sum(local_probabilities), dtype=np.float64)
             offset_arr = np.zeros(1, dtype=np.float64)
@@ -5595,7 +6213,7 @@ class GFMC_n:
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
 
-            # 3.1.1: Flatten `reqs` into an (N_req × 3) int32 array of triplets
+            # 3.1.1: Flatten `reqs` into an (N_req x 3) int32 array of triplets
             start_ = time.perf_counter()
             flat_list = [
                 (src_rank, dest_idx, src_local_idx) for src_rank, pairs in reqs.items() for dest_idx, src_local_idx in pairs
@@ -5655,7 +6273,7 @@ class GFMC_n:
             end_ = time.perf_counter()
             logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
+            # 3.1.9: Wait for data to arrive and reconstruct per-process request dicts
             start_ = time.perf_counter()
             all_reqs = []
             for p in range(mpi_size):
@@ -5744,8 +6362,8 @@ class GFMC_n:
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
             self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
 
             mpi_comm.Barrier()
@@ -5814,26 +6432,43 @@ class GFMC_n:
 
             gfmc_current = time.perf_counter()
 
-            if max_time < gfmc_current - gfmc_total_start:
+            # Use rank 0's decision and broadcast to all ranks to prevent
+            # MPI deadlock caused by different ranks disagreeing on whether
+            # to break (due to slight differences in gfmc_total_start).
+            should_stop = bool(max_time < gfmc_current - gfmc_total_start) if mpi_rank == 0 else False
+            should_stop = mpi_comm.bcast(should_stop, root=0)
+            if should_stop:
                 logger.info(f"  Stopping... Max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the branching loop.")
                 break
 
             # check toml file (stop flag)
-            if os.path.isfile(toml_filename):
-                dict_toml = toml.load(open(toml_filename))
-                try:
-                    stop_flag = dict_toml["external_control"]["stop"]
-                except KeyError:
+            # Only rank 0 reads the file to avoid filesystem cache inconsistencies.
+            if mpi_rank == 0:
+                if os.path.isfile(toml_filename):
+                    dict_toml = toml.load(open(toml_filename))
+                    try:
+                        stop_flag = dict_toml["external_control"]["stop"]
+                    except KeyError:
+                        stop_flag = False
+                else:
                     stop_flag = False
-                if stop_flag:
-                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
-                    logger.info("  Break the mcmc loop.")
-                    break
+            else:
+                stop_flag = False
+            stop_flag = mpi_comm.bcast(stop_flag, root=0)
+            if stop_flag:
+                logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                logger.info("  Break the mcmc loop.")
+                break
 
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        gfmc_total_current = time.perf_counter()
+        logger.info(
+            f"  Progress: GFMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_loop_start):.1f} sec."
+        )
         logger.info("")
 
         # count up mcmc_counter
@@ -5991,20 +6626,17 @@ class GFMC_n:
 
                 Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-                # E: jackknife mean and std
-                sum_E_local = np.sum(E_jackknife_binned_local)
-                sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
 
-                E_mean = sum_E_local / M_local
-                E_var = (sumsq_E_local / M_local) - (sum_E_local / M_local) ** 2
+                # E: 1st pass -- mean, 2nd pass -- centered sum of squares
+                E_mean = np.sum(E_jackknife_binned_local) / M_local
+                E_var = np.sum((E_jackknife_binned_local - E_mean) ** 2) / M_local
                 E_std = np.sqrt((M_local - 1) * E_var)
 
-                # Var: jackknife mean and std
-                sum_Var_local = np.sum(Var_jackknife_binned_local)
-                sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-                Var_mean = sum_Var_local / M_total
-                Var_var = (sumsq_Var_local / M_total) - (sum_Var_local / M_local) ** 2
+                # Var: 1st pass -- mean, 2nd pass -- centered sum of squares
+                Var_mean = np.sum(Var_jackknife_binned_local) / M_total
+                Var_var = np.sum((Var_jackknife_binned_local - Var_mean) ** 2) / M_total
                 Var_std = np.sqrt((M_total - 1) * Var_var)
 
             else:
@@ -6088,28 +6720,25 @@ class GFMC_n:
 
             Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
 
-            # E: jackknife mean and std
-            sum_E_local = np.sum(E_jackknife_binned_local)
-            sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
 
-            # E: global sums
-            sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
-            sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
-
+            # E: 1st pass -- global mean
+            sum_E_global = mpi_comm.allreduce(np.sum(E_jackknife_binned_local), op=MPI.SUM)
             E_mean = sum_E_global / M_total
-            E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+
+            # E: 2nd pass -- centered sum of squares (numerically stable)
+            sumsq_centered_E_global = mpi_comm.allreduce(np.sum((E_jackknife_binned_local - E_mean) ** 2), op=MPI.SUM)
+            E_var = sumsq_centered_E_global / M_total
             E_std = np.sqrt((M_total - 1) * E_var)
 
-            # Var: jackknife mean and std
-            sum_Var_local = np.sum(Var_jackknife_binned_local)
-            sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-
-            # Var: global sums
-            sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
-            sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-
+            # Var: 1st pass -- global mean
+            sum_Var_global = mpi_comm.allreduce(np.sum(Var_jackknife_binned_local), op=MPI.SUM)
             Var_mean = sum_Var_global / M_total
-            Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+
+            # Var: 2nd pass -- centered sum of squares
+            sumsq_centered_Var_global = mpi_comm.allreduce(np.sum((Var_jackknife_binned_local - Var_mean) ** 2), op=MPI.SUM)
+            Var_var = sumsq_centered_Var_global / M_total
             Var_std = np.sqrt((M_total - 1) * Var_var)
 
         # return
@@ -6229,12 +6858,10 @@ class GFMC_n:
 
                 force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
-                sum_force_local = np.sum(force_jn_local, axis=0)
-                sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
-                ## mean and var = E[x^2] - (E[x])^2
-                mean_force_global = sum_force_local / M_local
-                var_force_global = (sumsq_force_local / M_local) - (sum_force_local / M_local) ** 2
+                # Two-pass jackknife std (centered sum of squares) to avoid
+                # catastrophic cancellation in <x^2> - <x>^2.
+                mean_force_global = np.sum(force_jn_local, axis=0) / M_local
+                var_force_global = np.sum((force_jn_local - mean_force_global) ** 2, axis=0) / M_local
 
                 ## mean and std
                 force_mean = mean_force_global
@@ -6393,18 +7020,20 @@ class GFMC_n:
 
             force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
+            # Two-pass jackknife std (centered sum of squares) to avoid
+            # catastrophic cancellation in <x^2> - <x>^2.
+
+            # 1st pass -- global mean
             sum_force_local = np.sum(force_jn_local, axis=0)
-            sumsq_force_local = np.sum(force_jn_local**2, axis=0)
-
             sum_force_global = np.empty_like(sum_force_local)
-            sumsq_force_global = np.empty_like(sumsq_force_local)
-
             mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
-
-            ## mean and var = E[x^2] - (E[x])^2
             mean_force_global = sum_force_global / M_total
-            var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+            # 2nd pass -- centered sum of squares (numerically stable)
+            sumsq_centered_force_local = np.sum((force_jn_local - mean_force_global) ** 2, axis=0)
+            sumsq_centered_force_global = np.empty_like(sumsq_centered_force_local)
+            mpi_comm.Allreduce([sumsq_centered_force_local, MPI.DOUBLE], [sumsq_centered_force_global, MPI.DOUBLE], op=MPI.SUM)
+            var_force_global = sumsq_centered_force_global / M_total
 
             ## mean and std
             force_mean = mean_force_global
@@ -6481,9 +7110,10 @@ class _GFMC_n_debug:
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        self.__jax_PRNG_key_list_init = jnp.array(
-            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
-        )
+        # Use jax.random.split (batched) instead of a Python list-comp of
+        # fold_in calls; the latter scaled linearly with num_walkers and
+        # dominated init time at large walker counts (e.g. nw = 16384).
+        self.__jax_PRNG_key_list_init = jax.random.split(self.__jax_PRNG_key, self.__num_walkers)
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
         # initialize random seed
@@ -6508,18 +7138,22 @@ class _GFMC_n_debug:
         )
 
         ## Electron assignment for all atoms is complete. Check the assignment.
-        for i_walker in range(self.__num_walkers):
-            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            nion = coords.shape[0]
-            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
-            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
-            logger.debug(f"  Charges: {charges}")
-            logger.debug(f"  up counts: {up_counts}")
-            logger.debug(f"  dn counts: {dn_counts}")
-            logger.debug(f"  Total counts: {up_counts + dn_counts}")
+        # NOTE: per-walker debug log loop removed -- it was O(num_walkers) Python
+        # work (np.bincount per walker) executed regardless of log level, which
+        # at nw = 16384 added measurable startup overhead.
+        # for i_walker in range(self.__num_walkers):
+        #     logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+        #     nion = coords.shape[0]
+        #     up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+        #     dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+        #     logger.debug(f"  Charges: {charges}")
+        #     logger.debug(f"  up counts: {up_counts}")
+        #     logger.debug(f"  dn counts: {dn_counts}")
+        #     logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
+        dtype_jnp = jnp.float64
+        self.__latest_r_up_carts = jnp.asarray(r_carts_up, dtype=dtype_jnp)
+        self.__latest_r_dn_carts = jnp.asarray(r_carts_dn, dtype=dtype_jnp)
 
         logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -6659,7 +7293,8 @@ class _GFMC_n_debug:
                     [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
                     [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
                     [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
+                ],
+                dtype=jnp.float64,
             )
             return R
 
@@ -7204,20 +7839,18 @@ class _GFMC_n_debug:
         # MAIN MCMC loop from here !!!
         logger.info("Start GFMC")
         num_mcmc_done = 0
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))
 
         for i_mcmc_step in range(num_mcmc_steps):
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+            if i_mcmc_step % mcmc_interval == 0:
+                progress = (i_mcmc_step + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
 
                 logger.info(
-                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Always set the initial weight list to 1.0
-            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)], dtype=jnp.float64)
 
             logger.devel("  Projection is on going....")
 
@@ -7274,12 +7907,19 @@ class _GFMC_n_debug:
                         for i in range(self.__num_walkers)
                     ]
                 )
-                if np.max(np.abs(e_L_list - e_list_debug)) > rtol_debug_vs_production:
+                # e_L crosses ao_eval/jastrow_eval/det_eval/coulomb/
+                # local_energy; bound the agreement by the weakest zone (fp32 in
+                # mixed precision).
+                _atol_eL, _rtol_eL = get_tolerance_min(
+                    ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "local_energy"),
+                    "strict",
+                )
+                if np.max(np.abs(e_L_list - e_list_debug)) > _rtol_eL:
                     logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
                     logger.info(f"w_L_list = {w_L_list}.")
                     logger.info(f"e_L_list = {e_L_list}.")
                     logger.info(f"e_list_debug = {e_list_debug}.")
-                np.testing.assert_almost_equal(np.array(e_L_list), np.array(e_list_debug), decimal=6)
+                np.testing.assert_allclose(np.array(e_L_list), np.array(e_list_debug), atol=_atol_eL, rtol=_rtol_eL)
 
             # atomic force related
             if self.__comput_position_deriv:
@@ -7372,10 +8012,10 @@ class _GFMC_n_debug:
                     _n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
                     _n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
                     _n_atoms = self.__hamiltonian_data.structure_data.natom
-                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up))
-                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn))
-                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3))
-                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3))
+                    omega_up = jnp.zeros((self.__num_walkers, _n_atoms, _n_up), dtype=jnp.float64)
+                    omega_dn = jnp.zeros((self.__num_walkers, _n_atoms, _n_dn), dtype=jnp.float64)
+                    grad_omega_dr_up = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
+                    grad_omega_dr_dn = jnp.zeros((self.__num_walkers, _n_atoms, 3), dtype=jnp.float64)
 
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
@@ -7580,8 +8220,8 @@ class _GFMC_n_debug:
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
-            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
+            self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
 
             # update E_scf
             eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
@@ -7601,6 +8241,10 @@ class _GFMC_n_debug:
             # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
+        progress = (num_mcmc_done + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(
+            f"  Progress: GFMC step = {num_mcmc_done + self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+        )
         logger.info("")
 
         # count up mcmc_counter
@@ -7618,8 +8262,8 @@ class _GFMC_n_debug:
             # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
             logger.devel("  Progress: Computing G_eq and G_e_L_eq.")
 
-            w_L_eq = jnp.array(w_L_eq)
-            e_L_eq = jnp.array(e_L_eq)
+            w_L_eq = jnp.asarray(w_L_eq, dtype=jnp.float64)
+            e_L_eq = jnp.asarray(e_L_eq, dtype=jnp.float64)
             G_eq = _compute_G_L_debug(w_L_eq, num_gfmc_collect_steps)
             G_e_L_eq = e_L_eq * G_eq
             G_eq = np.array(G_eq)

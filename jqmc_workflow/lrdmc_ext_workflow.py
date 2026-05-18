@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-"""LRDMC_Ext_Workflow — LRDMC extrapolation to the a²→0 limit.
+"""LRDMC_Ext_Workflow -- LRDMC extrapolation to the a^2->0 limit.
 
 Orchestrates multiple :class:`LRDMC_Workflow` runs at different lattice
 spacings (``alat`` values), then post-processes with
@@ -47,7 +46,6 @@ import os
 import re
 import subprocess
 from logging import getLogger
-from typing import List, Optional
 
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
@@ -62,7 +60,7 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
 class LRDMC_Ext_Workflow(Workflow):
-    """LRDMC a²→0 continuum-limit extrapolation workflow.
+    """LRDMC a^2->0 continuum-limit extrapolation workflow.
 
     Orchestrates multiple :class:`LRDMC_Workflow` runs at different
     lattice spacings (``alat`` values), then post-processes with
@@ -78,158 +76,157 @@ class LRDMC_Ext_Workflow(Workflow):
     **Mode selection** follows the same rules as
     :class:`LRDMC_Workflow`:
 
-    * **GFMC_t** (default) — set *time_projection_tau* (default 0.10).
-    * **GFMC_n** — set *target_survived_walkers_ratio* or
+    * **GFMC_t** (default) -- set *time_projection_tau* (default 0.10).
+    * **GFMC_n** -- set *target_survived_walkers_ratio* or
       *num_projection_per_measurement*.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Target machine name (shared by all sub-runs).
-    alat_list : list[float]
-        List of lattice discretization values, e.g. ``[0.5, 0.4, 0.3]``.
-    hamiltonian_file : str
-        Input ``hamiltonian_data.h5`` (must exist in the parent directory
-        or be resolved by ``FileFrom``).
-    queue_label : str
-        Queue/partition label for production runs.
-    pilot_queue_label : str, optional
-        Queue/partition label for pilot runs.  Defaults to
-        ``queue_label`` when *None*.  A shorter queue is often
-        sufficient for the pilot.
-    jobname_prefix : str
-        Prefix for each sub-run job name.
-    number_of_walkers : int
-        Walkers per MPI process.
-    max_time : int
-        Wall-time limit per sub-run (seconds).
-    polynomial_order : int
-        Polynomial order for the a²→0 extrapolation (default: 2).
-    num_gfmc_bin_blocks : int
-        Binning blocks for post-processing.
-    num_gfmc_warmup_steps : int
-        Warmup steps to discard.
-    num_gfmc_collect_steps : int
-        Weight-collection steps.
-    time_projection_tau : float, optional
-        Imaginary time step for GFMC_t mode (default 0.10).  Ignored
-        when *target_survived_walkers_ratio* or
-        *num_projection_per_measurement* is set.
-    target_survived_walkers_ratio : float, optional
-        Target survived-walkers ratio (default *None*).  Each ``alat``
-        independently runs a calibration pilot (``_pilot_a``) to
-        find its own optimal ``num_projection_per_measurement``.
-        Set to *None* to disable auto-calibration (requires explicit
-        *num_projection_per_measurement*).  Activates GFMC_n mode.
-    num_projection_per_measurement : int, optional
-        GFMC projections per measurement.  When given explicitly,
-        automatic calibration is disabled and this value is used
-        for every ``alat``.  Activates GFMC_n mode.
-    non_local_move : str, optional
-        Non-local move treatment.  Default from ``jqmc_miscs``.
-    E_scf : float, optional
-        Initial energy guess for the GFMC shift (GFMC_n only).
-        Default from ``jqmc_miscs``.
-    atomic_force : bool, optional
-        Compute atomic forces.  Default from ``jqmc_miscs``.
-    use_swct : bool, optional
-        Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
-        Default is False for LRDMC.
-    epsilon_PW : float, optional
-        Pathak–Wagner regularization parameter (Bohr). When > 0,
-        the force estimator is regularized near the nodal surface.
-        Default from ``jqmc_miscs``.
-    mcmc_seed : int, optional
-        Random seed for MCMC.  Default from ``jqmc_miscs``.
-    verbosity : str, optional
-        Verbosity level.  Default from ``jqmc_miscs``.
-    poll_interval : int
-        Seconds between job-status polls.
-    target_error : float
-        Target statistical error (Ha) for each sub-LRDMC run.
-        Passed through to each :class:`LRDMC_Workflow`.
-    pilot_steps : int
-        Pilot measurement steps for target-error estimation.
-    num_gfmc_projections : int, optional
-        Fixed number of measurement steps per production run.
-        When set, the error-bar pilot is skipped for each sub-LRDMC
-        and all ``max_continuation`` runs are executed unconditionally.
-        Passed through to each :class:`LRDMC_Workflow`.
-        Default *None* (automatic mode).
-    max_continuation : int
-        Maximum number of production runs per sub-LRDMC.
+    Args:
+        server_machine_name (str):
+            Target machine name (shared by all sub-runs).
+        alat_list (list[float]):
+            List of lattice discretization values, e.g. ``[0.5, 0.4, 0.3]``.
+        hamiltonian_file (str):
+            Input ``hamiltonian_data.h5`` (must exist in the parent directory
+            or be resolved by ``FileFrom``).
+        queue_label (str):
+            Queue/partition label for production runs.
+        pilot_queue_label (str, optional):
+            Queue/partition label for pilot runs.  Defaults to
+            ``queue_label`` when *None*.  A shorter queue is often
+            sufficient for the pilot.
+        jobname_prefix (str):
+            Prefix for each sub-run job name.
+        number_of_walkers (int):
+            Walkers per MPI process.
+        max_time (int):
+            Wall-time limit per sub-run (seconds).
+        polynomial_order (int):
+            Polynomial order for the a^2->0 extrapolation (default: 2).
+        num_gfmc_bin_blocks (int):
+            Binning blocks for post-processing.
+        num_gfmc_warmup_steps (int):
+            Warmup steps to discard.
+        num_gfmc_collect_steps (int):
+            Weight-collection steps.
+        time_projection_tau (float, optional):
+            Imaginary time step for GFMC_t mode (default 0.10).  Ignored
+            when *target_survived_walkers_ratio* or
+            *num_projection_per_measurement* is set.
+        target_survived_walkers_ratio (float, optional):
+            Target survived-walkers ratio (default *None*).  Each ``alat``
+            independently runs a calibration pilot (``_pilot_a``) to
+            find its own optimal ``num_projection_per_measurement``.
+            Set to *None* to disable auto-calibration (requires explicit
+            *num_projection_per_measurement*).  Activates GFMC_n mode.
+        num_projection_per_measurement (int, optional):
+            GFMC projections per measurement.  When given explicitly,
+            automatic calibration is disabled and this value is used
+            for every ``alat``.  Activates GFMC_n mode.
+        non_local_move (str, optional):
+            Non-local move treatment.  Default from ``jqmc_miscs``.
+        E_scf (float, optional):
+            Initial energy guess for the GFMC shift (GFMC_n only).
+            Default from ``jqmc_miscs``.
+        atomic_force (bool, optional):
+            Compute atomic forces.  Default from ``jqmc_miscs``.
+        use_swct (bool, optional):
+            Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
+            Default is False for LRDMC.
+        epsilon_PW (float, optional):
+            Pathak-Wagner regularization parameter (Bohr). When > 0,
+            the force estimator is regularized near the nodal surface.
+            Default from ``jqmc_miscs``.
+        mcmc_seed (int, optional):
+            Random seed for MCMC.  Default from ``jqmc_miscs``.
+        verbosity (str, optional):
+            Verbosity level.  Default from ``jqmc_miscs``.
+        poll_interval (int):
+            Seconds between job-status polls.
+        target_error (float):
+            Target statistical error (Ha) for each sub-LRDMC run.
+            Passed through to each :class:`LRDMC_Workflow`.
+        pilot_steps (int):
+            Pilot measurement steps for target-error estimation.
+        num_gfmc_projections (int, optional):
+            Fixed number of measurement steps per production run.
+            When set, the error-bar pilot is skipped for each sub-LRDMC
+            and all ``max_continuation`` runs are executed unconditionally.
+            Passed through to each :class:`LRDMC_Workflow`.
+            Default *None* (automatic mode).
+        max_continuation (int):
+            Maximum number of production runs per sub-LRDMC.
+        cleanup_patterns (list[str], optional):
+            Glob patterns for files to delete after successful completion
+            (e.g. ``["restart.h5", "hamiltonian_opt*.h5"]``).  Local files
+            are always removed; remote files are removed only when the
+            workflow targets a remote machine.  Passed through to each
+            child :class:`LRDMC_Workflow`.  Default *None* (no cleanup).
 
-    Examples
-    --------
-    GFMC_t mode (default)::
+    Examples:
+        GFMC_t mode (default)::
 
-        wf = LRDMC_Ext_Workflow(
-            server_machine_name="cluster",
-            alat_list=[0.5, 0.4, 0.3],
-            target_error=0.001,
-            number_of_walkers=8,
-        )
-        status, files, values = wf.launch()
-        print(values["extrapolated_energy"],
-              values["extrapolated_energy_error"])
-
-    GFMC_n mode with calibration::
-
-        wf = LRDMC_Ext_Workflow(
-            server_machine_name="cluster",
-            alat_list=[0.5, 0.4, 0.3],
-            target_survived_walkers_ratio=0.97,
-            target_error=0.001,
-            number_of_walkers=8,
-        )
-
-    As part of a :class:`Launcher` pipeline::
-
-        enc = Container(
-            label="lrdmc-ext",
-            dirname="03_lrdmc",
-            input_files=[FileFrom("mcmc-run", "hamiltonian_data.h5")],
-            workflow=LRDMC_Ext_Workflow(
+            wf = LRDMC_Ext_Workflow(
                 server_machine_name="cluster",
                 alat_list=[0.5, 0.4, 0.3],
                 target_error=0.001,
-            ),
-        )
+                number_of_walkers=8,
+            )
+            status, files, values = wf.launch()
+            print(values["extrapolated_energy"],
+                  values["extrapolated_energy_error"])
 
-    Output Values
-    -------------
-    After ``launch()`` completes, ``output_values`` may contain:
+        GFMC_n mode with calibration::
 
-    extrapolated_energy : float
-        Continuum-limit (a²→0) extrapolated energy (Ha).
-    extrapolated_energy_error : float
-        Statistical error on ``extrapolated_energy`` (Ha).
-    per_alat_results : dict
-        Per-alat energy/error results keyed by ``alat``.
-    errors : list[str]
-        Error messages for alat runs that failed.
-    error : str
-        Top-level error message (only on failure).
+            wf = LRDMC_Ext_Workflow(
+                server_machine_name="cluster",
+                alat_list=[0.5, 0.4, 0.3],
+                target_survived_walkers_ratio=0.97,
+                target_error=0.001,
+                number_of_walkers=8,
+            )
 
-    Notes
-    -----
-    * At least two ``alat`` values are required for extrapolation.
-      With a single value, per-alat results are returned but no
-      extrapolation is performed.
-    * Each sub-run directory is named ``lrdmc_alat_<value>/``.
+        As part of a :class:`Launcher` pipeline::
 
-    See Also
-    --------
-    LRDMC_Workflow : Single-alat LRDMC run.
+            enc = Container(
+                label="lrdmc-ext",
+                dirname="03_lrdmc",
+                input_files=[FileFrom("mcmc-run", "hamiltonian_data.h5")],
+                workflow=LRDMC_Ext_Workflow(
+                    server_machine_name="cluster",
+                    alat_list=[0.5, 0.4, 0.3],
+                    target_error=0.001,
+                ),
+            )
+
+    Output Values:
+        extrapolated_energy (float):
+            Continuum-limit (a^2->0) extrapolated energy (Ha).
+        extrapolated_energy_error (float):
+            Statistical error on ``extrapolated_energy`` (Ha).
+        per_alat_results (dict):
+            Per-alat energy/error results keyed by ``alat``.
+        errors (list[str]):
+            Error messages for alat runs that failed.
+        error (str):
+            Top-level error message (only on failure).
+
+    Notes:
+        * At least two ``alat`` values are required for extrapolation.
+          With a single value, per-alat results are returned but no
+          extrapolation is performed.
+        * Each sub-run directory is named ``lrdmc_alat_<value>/``.
+
+    See Also:
+        LRDMC_Workflow : Single-alat LRDMC run.
     """
 
     def __init__(
         self,
         server_machine_name: str = "localhost",
-        alat_list: Optional[List[float]] = None,
+        alat_list: list[float] | None = None,
         hamiltonian_file: str = "hamiltonian_data.h5",
         queue_label: str = "default",
-        pilot_queue_label: Optional[str] = None,
+        pilot_queue_label: str | None = None,
         jobname_prefix: str = "jqmc-lrdmc",
         number_of_walkers: int = 4,
         max_time: int = 86400,
@@ -238,25 +235,28 @@ class LRDMC_Ext_Workflow(Workflow):
         num_gfmc_warmup_steps: int = 0,
         num_gfmc_collect_steps: int = 5,
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
-        time_projection_tau: Optional[float] = 0.10,
-        target_survived_walkers_ratio: Optional[float] = None,
-        num_projection_per_measurement: Optional[int] = None,
-        non_local_move: Optional[str] = None,
-        E_scf: Optional[float] = None,
-        atomic_force: Optional[bool] = None,
-        use_swct: Optional[bool] = None,
-        epsilon_PW: Optional[float] = None,
+        time_projection_tau: float | None = 0.10,
+        target_survived_walkers_ratio: float | None = None,
+        num_projection_per_measurement: int | dict[float, int] | None = None,
+        non_local_move: str | None = None,
+        E_scf: float | None = None,
+        atomic_force: bool | None = None,
+        use_swct: bool | None = None,
+        epsilon_PW: float | None = None,
         # -- [control] section parameters --
-        mcmc_seed: Optional[int] = None,
-        verbosity: Optional[str] = None,
+        mcmc_seed: int | None = None,
+        verbosity: str | None = None,
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
         pilot_steps: int = 100,
-        num_gfmc_projections: Optional[int] = None,
+        num_gfmc_projections: int | None = None,
         max_continuation: int = 5,
+        cleanup_patterns: list | None = None,
+        # -- [precision] section --
+        precision_mode: str = "full",
     ):
-        super().__init__()
+        super().__init__(cleanup_patterns=cleanup_patterns)
         self.server_machine_name = server_machine_name
         self.alat_list = alat_list or [0.5, 0.4, 0.3]
         self.hamiltonian_file = hamiltonian_file
@@ -283,6 +283,18 @@ class LRDMC_Ext_Workflow(Workflow):
         # [lrdmc-bra / lrdmc-tau] section
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
+        # num_projection_per_measurement may be:
+        #   None    -- GFMC_t mode (uses time_projection_tau)
+        #   int     -- same value for every alat
+        #   dict    -- per-alat values; keys must cover every alat in alat_list
+        if isinstance(num_projection_per_measurement, dict):
+            missing = [a for a in self.alat_list if a not in num_projection_per_measurement]
+            if missing:
+                raise ValueError(
+                    f"num_projection_per_measurement dict is missing entries "
+                    f"for alat values: {missing}. dict keys must match "
+                    f"alat_list ({self.alat_list}) exactly."
+                )
         self.num_projection_per_measurement = num_projection_per_measurement
         self.non_local_move = non_local_move
         self.E_scf = E_scf
@@ -298,21 +310,27 @@ class LRDMC_Ext_Workflow(Workflow):
         self.pilot_steps = pilot_steps
         self.num_gfmc_projections = num_gfmc_projections
         self.max_continuation = max_continuation
+        # [precision] section
+        self.precision_mode = precision_mode
 
     def _make_lrdmc_workflow(self, alat):
         """Create one :class:`Container` for a given *alat* value.
 
-        Parameters
-        ----------
-        alat : float
-            Lattice spacing.
+        Args:
+            alat (float):
+                Lattice spacing.
 
-        Returns
-        -------
-        Container
+        Returns:
+            Container:
         """
         label = f"lrdmc-a{alat:.3f}"
         dirname = f"lrdmc_alat_{alat:.3f}"
+
+        # Resolve per-alat num_projection_per_measurement if a dict was supplied.
+        if isinstance(self.num_projection_per_measurement, dict):
+            nmpm_for_alat = self.num_projection_per_measurement[alat]
+        else:
+            nmpm_for_alat = self.num_projection_per_measurement
 
         wf = LRDMC_Workflow(
             server_machine_name=self.server_machine_name,
@@ -328,7 +346,7 @@ class LRDMC_Ext_Workflow(Workflow):
             num_gfmc_collect_steps=self.num_gfmc_collect_steps,
             time_projection_tau=self.time_projection_tau,
             target_survived_walkers_ratio=self.target_survived_walkers_ratio,
-            num_projection_per_measurement=self.num_projection_per_measurement,
+            num_projection_per_measurement=nmpm_for_alat,
             non_local_move=self.non_local_move,
             E_scf=self.E_scf,
             atomic_force=self.atomic_force,
@@ -341,6 +359,8 @@ class LRDMC_Ext_Workflow(Workflow):
             pilot_steps=self.pilot_steps,
             num_gfmc_projections=self.num_gfmc_projections,
             max_continuation=self.max_continuation,
+            cleanup_patterns=self.cleanup_patterns,
+            precision_mode=self.precision_mode,
         )
         enc = Container(
             label=label,
@@ -364,17 +384,16 @@ class LRDMC_Ext_Workflow(Workflow):
         }
 
     async def run(self) -> tuple:
-        """Run LRDMC at each alat, then extrapolate to a²→0.
+        """Run LRDMC at each alat, then extrapolate to a^2->0.
 
         Every ``alat`` value is launched in parallel.  Each child
         :class:`LRDMC_Workflow` independently handles its own
         calibration (``_pilot_a``), error-bar pilot (``_pilot_b``),
         and production phase.
 
-        Returns
-        -------
-        tuple
-            ``(status, output_files, output_values)``
+        Returns:
+            tuple:
+                ``(status, output_files, output_values)``
         """
         self._ensure_project_dir()
         _wd = self.project_dir
@@ -439,7 +458,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
         logger.info(f"All {len(self.alat_list)} LRDMC runs completed.")
 
-        # ── Extrapolation ─────────────────────────────────────────
+        # -- Extrapolation -----------------------------------------
         if len(restart_chks) >= 2:
             ext_energy, ext_error = self._extrapolate_energy(restart_chks)
             if ext_energy is not None:
@@ -458,13 +477,12 @@ class LRDMC_Ext_Workflow(Workflow):
         self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
-    def _extrapolate_energy(self, restart_chks: List[str]):
+    def _extrapolate_energy(self, restart_chks: list[str]):
         """Run ``jqmc-tool lrdmc extrapolate-energy``.
 
-        Returns
-        -------
-        tuple
-            ``(energy, error)`` or ``(None, None)``.
+        Returns:
+            tuple:
+                ``(energy, error)`` or ``(None, None)``.
         """
         chk_args = " ".join(restart_chks)
         cmd = (

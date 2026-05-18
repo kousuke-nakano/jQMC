@@ -72,7 +72,7 @@ $$
 u\left( r \right) = \frac{ 1 }{2 b_{\text{ei}}} \left( {1 - {e^{ - r b_{\text{ei}}}}} \right) \,,
 $$ (onebody_u)
 
-**Padé form** (`jastrow_1b_type='pade'`):
+**Pade form** (`jastrow_1b_type='pade'`):
 
 $$
 u\left( r \right) = \frac{r}{2(1 + b_{\text{ei}} \cdot r)} \,,
@@ -90,7 +90,7 @@ where
 $v_{{\sigma _i},{\sigma _j}}$
 is another  simple bounded  function. jQMC supports two functional forms for $v_{{\sigma _i},{\sigma _j}}$, selectable via the `jastrow_2b_type` parameter:
 
-**Padé form** (`jastrow_2b_type='pade'`, default):
+**Pade form** (`jastrow_2b_type='pade'`, default):
 
 $$
   {v_{{\sigma _i},{\sigma _j}}}\left( {{r_{i,j}}} \right) =
@@ -210,13 +210,13 @@ $$
 We augment the Jastrow factor with a neural-network term $J_{\text{NN}}$ using a PauliNet-inspired GNN [Hermann et al., Nat. Chem. 12, 891 (2020)]. Inputs are electron coordinates $\{\mathbf{r}_i\}_{i=1}^{N_e}$ with spins $s_i \in \{\uparrow,\downarrow\}$, nuclear coordinates $\{\mathbf{R}_I\}_{I=1}^{N_n}$, and atomic numbers $\{Z_I\}$. The architecture is translationally and rotationally invariant and symmetric under exchange of electrons within each spin channel; fermionic antisymmetry is carried by the Slater/Geminal part. Variational parameters in this VMC setting are all trainable weights and biases of the neural networks described below, including spin embeddings, nuclear (species) embeddings, the message/receiver networks, and the readout network.
 
 ### Input Features
-Geometry is encoded solely by scalar distances: electron–electron $r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|$ and electron–nucleus $r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|$ (nucleus–nucleus distances are constant under the Born–Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs) parametrized in the [PauliNet paper](https://doi.org/10.1038/s41557-020-0544-y):
+Geometry is encoded solely by scalar distances: electron-electron $r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|$ and electron-nucleus $r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|$ (nucleus-nucleus distances are constant under the Born-Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs) parametrized in the [PauliNet paper](https://doi.org/10.1038/s41557-020-0544-y):
 
 $$
 e_k(r) = r^2 \exp\!\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right],
 $$
 
-where $\mu_k$ and $\sigma_k$ are hyperparameters determined by the grid points $q_k$. The prefactor $r^2$ makes the feature and its derivative vanish at $r=0$, so $J_{\text{NN}}$ preserves the electron–nucleus cusp enforced by analytic terms. The number of basis functions $K$ is set by `num_rbf`, and the parameter `cutoff` ($r_c$) determines the distribution range of the basis function centers (user inputs). The parameters are defined as $\mu_k = r_c q_k^2, \quad \sigma_k = \frac{1}{7}(1 + r_c q_k)$, where $\{q_k\}_{k=1}^K$ are $K$ points evenly spaced in the interval $(0, 1)$.
+where $\mu_k$ and $\sigma_k$ are hyperparameters determined by the grid points $q_k$. The prefactor $r^2$ makes the feature and its derivative vanish at $r=0$, so $J_{\text{NN}}$ preserves the electron-nucleus cusp enforced by analytic terms. The number of basis functions $K$ is set by `num_rbf`, and the parameter `cutoff` ($r_c$) determines the distribution range of the basis function centers (user inputs). The parameters are defined as $\mu_k = r_c q_k^2, \quad \sigma_k = \frac{1}{7}(1 + r_c q_k)$, where $\{q_k\}_{k=1}^K$ are $K$ points evenly spaced in the interval $(0, 1)$.
 
 ![PauliNet RBF features](paulinet_rbf_plot.png)
 
@@ -526,7 +526,7 @@ p =
 \end{cases}
 $$
 
-This equation shows that, to compute the probability $p$,  one does not have to compute the full rank of $\det(A^{new})$, but we can just compute $\vec{u}$ using the new electron configuration and combine the computed $\vec{u}$ with the old matrix $\det(A^{old})$ that can be stored on a memory. Notice that, $\det(A^{new})$ itself is not needed to compute the probability, but one needs $\det(A^{new})^{-1}$ to compute the next probability. Therefore, in the standard VMC implementation, every time a proposed move is accepted, the matrix inverse is updated using a rank-1 update using the so-called {\it Sherman–Morrison} formula:
+This equation shows that, to compute the probability $p$,  one does not have to compute the full rank of $\det(A^{new})$, but we can just compute $\vec{u}$ using the new electron configuration and combine the computed $\vec{u}$ with the old matrix $\det(A^{old})$ that can be stored on a memory. Notice that, $\det(A^{new})$ itself is not needed to compute the probability, but one needs $\det(A^{new})^{-1}$ to compute the next probability. Therefore, in the standard VMC implementation, every time a proposed move is accepted, the matrix inverse is updated using a rank-1 update using the so-called {\it Sherman-Morrison} formula:
 
 $$
 (A^{new})^{-1} = (A^{old}+\vec{u}\vec{v}_l^T)^{-1} = (A^{old})^{-1} - (A^{old})^{-1}\vec{u}(1+\vec{v}_l^T (A^{old})^{-1} \vec{u})^{-1} \vec{v}_l^T (A^{old})^{-1}.

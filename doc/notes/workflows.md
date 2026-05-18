@@ -5,27 +5,27 @@
 
 The **jqmc_workflow** package provides an autonomous pipeline engine for
 **jQMC** calculations.
-Users define a *pipeline* — a directed acyclic graph (DAG) of workflow steps —
+Users define a *pipeline* -- a directed acyclic graph (DAG) of workflow steps --
 and the engine takes care of:
 
-- **Input generation** — TOML input files are created automatically from
+- **Input generation** -- TOML input files are created automatically from
   explicit parameter values (with sensible defaults).
-- **Data transfer** — Files are uploaded to (and downloaded from) remote
+- **Data transfer** -- Files are uploaded to (and downloaded from) remote
   supercomputers via SSH/SFTP using [Paramiko](https://www.paramiko.org/).
-- **Job submission, monitoring, and collection** — Jobs are submitted through
+- **Job submission, monitoring, and collection** -- Jobs are submitted through
   the site's scheduler (PBS / Slurm / local `bash`), polled until completion,
   and output files are fetched back.
-- **Dependency resolution** — The DAG-based `Launcher` identifies which
+- **Dependency resolution** -- The DAG-based `Launcher` identifies which
   workflow steps are *ready* (all dependencies satisfied) and executes them
   **in parallel** using Python `asyncio` tasks.
-- **Target error-bar estimation** — When a `target_error` (Ha) is specified,
+- **Target error-bar estimation** -- When a `target_error` (Ha) is specified,
   a small *pilot* run is executed first; the statistical error is used to
   estimate the number of production steps required, together with the
   estimated wall time.
 
-A single Python script can therefore express a full QMC pipeline — from
-wavefunction preparation (TREXIO → `hamiltonian_data.h5`) through VMC
-optimization, MCMC production sampling, and LRDMC extrapolation — and run it
+A single Python script can therefore express a full QMC pipeline -- from
+wavefunction preparation (TREXIO -> `hamiltonian_data.h5`) through VMC
+optimization, MCMC production sampling, and LRDMC extrapolation -- and run it
 end-to-end with automatic restarts across interruptions.
 
 
@@ -33,24 +33,24 @@ end-to-end with automatic restarts across interruptions.
 
 ```text
 run_pipeline.py
-      │
-      ▼
-  ┌────────┐
-  │Launcher│   DAG executor (asyncio)
-  └──┬─────┘
-     │  creates asyncio.Task per ready node
-     │
-     ├──► Container("vmc")
-     │         └─► VMC_Workflow.configure() → .run()
-     │
-     ├──► Container("mcmc-prod")   ← runs in parallel
-     │         └─► MCMC_Workflow.configure() → .run()
-     │
-     └──► Container("lrdmc-ext")   ← runs in parallel
-               └─► LRDMC_Ext_Workflow.configure() → .run()
-                       ├─► LRDMC_Workflow (alat=0.50)  ┐
-                       ├─► LRDMC_Workflow (alat=0.40)  ├ parallel
-                       └─► LRDMC_Workflow (alat=0.25)  ┘
+      -
+      v
+  ----------
+  -Launcher-   DAG executor (asyncio)
+  ----------
+     -  creates asyncio.Task per ready node
+     -
+     ---> Container("vmc")
+     -         --> VMC_Workflow.configure() -> .run()
+     -
+     ---> Container("mcmc-prod")   <- runs in parallel
+     -         --> MCMC_Workflow.configure() -> .run()
+     -
+     ---> Container("lrdmc-ext")   <- runs in parallel
+               --> LRDMC_Ext_Workflow.configure() -> .run()
+                       --> LRDMC_Workflow (alat=0.50)  -
+                       --> LRDMC_Workflow (alat=0.40)  - parallel
+                       --> LRDMC_Workflow (alat=0.25)  -
 ```
 
 ### Key components
@@ -65,7 +65,7 @@ run_pipeline.py
 | `MCMC_Workflow` | Production energy sampling (`job_type=mcmc`). |
 | `LRDMC_Workflow` | Lattice-regularized diffusion Monte Carlo for a single $a$ value. |
 | `LRDMC_Ext_Workflow` | Runs multiple `LRDMC_Workflow` instances at different lattice spacings and performs $a^2 \to 0$ extrapolation. |
-| `ScientificPhase` | Enum defining the scientific phases of a workflow session (INIT → SCF → WF_BUILD → VMC → MCMC → LRDMC → COMPLETED). See [Phase management](#phase-management). |
+| `ScientificPhase` | Enum defining the scientific phases of a workflow session (INIT -> SCF -> WF_BUILD -> VMC -> MCMC -> LRDMC -> COMPLETED). See [Phase management](#phase-management). |
 | `WorkflowStatus` / `JobStatus` | Enums for workflow-level and per-job status values. See [Status enums](#status-enums). |
 
 
@@ -79,13 +79,13 @@ to actual paths or values.
 
 Pass a **file** produced by an upstream workflow.  `filename` can be:
 
-- A **static string** — when the exact name is known at definition time:
+- A **static string** -- when the exact name is known at definition time:
 
   ```python
   FileFrom("vmc", "hamiltonian_data_opt_step_9.h5")
   ```
 
-- A **`ValueFrom` object** — when the name is determined at runtime
+- A **`ValueFrom` object** -- when the name is determined at runtime
   (e.g. VMC early convergence produces a step number that cannot be
   predicted):
 
@@ -127,7 +127,7 @@ Pass a **file** produced by an upstream workflow.  `filename` can be:
 #### `ValueFrom(label, key)`
 
 Pass a **scalar value** from an upstream workflow's `output_values`
-dict.  The available keys depend on the workflow class — see the
+dict.  The available keys depend on the workflow class -- see the
 table below.
 
 #### Available `output_values` keys
@@ -194,8 +194,8 @@ via `pilot_queue_label` (defaults to `queue_label`).
 
 #### MCMC / VMC
 
-1. **Pilot** — A short run of `pilot_steps` steps.
-2. **Production** — Step count estimated from the pilot error bar.
+1. **Pilot** -- A short run of `pilot_steps` steps.
+2. **Production** -- Step count estimated from the pilot error bar.
 
 #### LRDMC
 
@@ -203,16 +203,16 @@ LRDMC has an additional calibration stage to automatically determine
 `num_projection_per_measurement` (GFMC projections per measurement) from
 a `target_survived_walkers_ratio` (default 0.97):
 
-1. **Calibration** (`_pilot_a/_pilot1` – `_pilot_a/_pilot3`, parallel) —
+1. **Calibration** (`_pilot_a/_pilot1` - `_pilot_a/_pilot3`, parallel) --
    Three short LRDMC runs with
-   `num_projection_per_measurement = Ne × k × (0.3/alat)²` (k=2,4,6;
+   `num_projection_per_measurement = Ne x k x (0.3/alat)^2` (k=2,4,6;
    $N_e$ is the total electron count).  A quadratic is fit to the
    observed survived-walkers ratio and the optimal
    `num_projection_per_measurement` is determined.
-2. **Error-bar pilot** (`_pilot_b`) — A run with the calibrated
+2. **Error-bar pilot** (`_pilot_b`) -- A run with the calibrated
    `num_projection_per_measurement`; its error bar estimates the production
    step count.
-3. **Production** (`_1`, `_2`, …) — Start from scratch, accumulate
+3. **Production** (`_1`, `_2`, ...) -- Start from scratch, accumulate
    statistics until `target_error` is achieved.
 
 If `num_projection_per_measurement` is given explicitly, the calibration
@@ -345,7 +345,7 @@ total number of walkers.  The ratio
 $W_{\text{pilot}} / W_{\text{prod}}$ (the *walker ratio*) accounts
 for the pilot queue using fewer (or more) MPI processes than the
 production queue.  The number of MPI processes is read from
-`queue_data.toml` (`num_cores`, or `mpi_per_node × nodes` as
+`queue_data.toml` (`num_cores`, or `mpi_per_node x nodes` as
 fallback).
 
 The total production steps are then
@@ -432,20 +432,61 @@ available from the source) are automatically copied in.  Existing
 files are not overwritten.
 
 
+### Post-completion cleanup (`cleanup_patterns`)
+
+When large checkpoint files (e.g. `restart.h5`, `hamiltonian_opt*.h5`)
+are no longer needed after a successful run, the `cleanup_patterns`
+parameter can be used to automatically delete them.
+
+```python
+MCMC_Workflow(
+    server_machine_name="cluster",
+    target_error=0.001,
+    cleanup_patterns=["restart.h5", "hamiltonian_opt*.h5"],
+)
+```
+
+**Behaviour:**
+
+- `cleanup_patterns` accepts a list of glob patterns (e.g.
+  `["restart.h5", "hamiltonian_opt*.h5"]`).
+- Matching is **recursive** -- patterns are applied to the workflow
+  directory **and** all subdirectories (e.g. `_pilot/`, `_pilot_a/`,
+  `_pilot_b/`).
+- **Local files** matching the patterns are always deleted.
+- **Remote files** are deleted only when the workflow targets a remote
+  machine (`server_machine_name` is not `"localhost"`).
+- Cleanup runs **after** `CompletionStatus.OK` is confirmed -- it never
+  touches files while the workflow might still need them for
+  continuation.
+- Cleanup failures are logged as warnings and never cause a completed
+  workflow to fail.
+- Default is an empty list (no cleanup), preserving backward
+  compatibility.
+
+This is especially useful for massively-parallel MCMC runs where
+`restart.h5` can grow to tens of gigabytes.
+
+All workflow classes (`VMC_Workflow`, `MCMC_Workflow`,
+`LRDMC_Workflow`, `LRDMC_Ext_Workflow`) support this parameter.
+For `LRDMC_Ext_Workflow`, the patterns are passed through to each
+child `LRDMC_Workflow`.
+
+
 ### Restart behavior
 
 Every job is recorded in `workflow_state.toml` with a lifecycle:
 
 ```text
-submitted  →  completed  →  fetched
+submitted  ->  completed  ->  fetched
 ```
 
 On restart, the engine checks each job's status:
 
-- **`fetched`** — Input generation *and* submission are both skipped.
-- **`submitted`** / **`completed`** — Input is not regenerated; the job
+- **`fetched`** -- Input generation *and* submission are both skipped.
+- **`submitted`** / **`completed`** -- Input is not regenerated; the job
   is resumed (polled or fetched).
-- **No record** — A fresh input file is generated and the job is submitted.
+- **No record** -- A fresh input file is generated and the job is submitted.
 
 This means a pipeline can be interrupted at any point (Ctrl-C, node
 failure, wall-time limit) and simply re-run; it will pick up exactly
@@ -464,14 +505,14 @@ A workflow session progresses through a sequence of **scientific phases**
 defined by the `ScientificPhase` enum (module `_phase`):
 
 ```text
-INIT → SCF → WF_BUILD → VMC_PILOT → VMC → MCMC_PILOT → MCMC
-                                                         ↓
-                        COMPLETED ← LRDMC_FIT ← LRDMC ← LRDMC_PILOT
+INIT -> SCF -> WF_BUILD -> VMC_PILOT -> VMC -> MCMC_PILOT -> MCMC
+                                                         dn
+                        COMPLETED <- LRDMC_FIT <- LRDMC <- LRDMC_PILOT
 ```
 
 Not every pipeline uses every phase (e.g. a VMC-only pipeline skips
 LRDMC phases).  The allowed transitions are defined in
-`PHASE_TRANSITIONS` — for example, from `VMC` you may advance to
+`PHASE_TRANSITIONS` -- for example, from `VMC` you may advance to
 `MCMC_PILOT`, `MCMC`, `LRDMC_PILOT`, `LRDMC`, or `COMPLETED`.
 
 Each phase has a list of **allowed actions** (`PHASE_ALLOWED_ACTIONS`)
@@ -487,7 +528,7 @@ A set of **always-allowed actions** (`advance_phase`, `rollback_phase`,
 regardless of phase/status.
 
 The `require_action()` function enforces these rules at the boundary
-between an MCP tool call and a workflow method — if the action is not
+between an MCP tool call and a workflow method -- if the action is not
 permitted, a `ValueError` is raised immediately.
 
 
@@ -529,7 +570,7 @@ Each `[[jobs]]` record contains:
 | `server_machine` | Machine name |
 | `status` | One of the `JobStatus` values above |
 | `submitted_at` | ISO 8601 timestamp |
-| `step` | Step index (0 = pilot, 1, 2, … = production) |
+| `step` | Step index (0 = pilot, 1, 2, ... = production) |
 | `run_id` | Short hex identifier for the job |
 | `completed_at` | ISO 8601 timestamp (set on completion) |
 | `fetched_at` | ISO 8601 timestamp (set on fetch) |
@@ -573,7 +614,7 @@ WARNING: Inputs have changed but previous results are still present.
 Delete 'mcmc_prod/' to re-run with the updated inputs.
 ```
 
-The container is **not** automatically re-run — the user must
+The container is **not** automatically re-run -- the user must
 manually delete the stale directory.  This conservative approach
 avoids the risk of mixing old and new job data on the remote server.
 
@@ -594,7 +635,7 @@ exception_type = "RuntimeError"
 traceback = "..."
 ```
 
-The engine records raw data only — failure classification and recovery
+The engine records raw data only -- failure classification and recovery
 strategy are responsibilities of external tooling (e.g. an MCP agent).
 
 
@@ -624,7 +665,7 @@ job_acct_command = "sacct -j 12345 --format=State,ExitCode,MaxRSS,Elapsed -P"
 job_acct_file = "job_accounting_12345.txt"
 ```
 
-No parsing or interpretation is performed — that responsibility belongs
+No parsing or interpretation is performed -- that responsibility belongs
 to external tooling.  If `jobacct` is not configured, the
 `job_acct_command` and `job_acct_file` fields are simply absent.
 
@@ -657,8 +698,8 @@ Configuration files are managed in the following directory hierarchy.
 The engine looks for a project-local override first, then falls back to
 the user-global directory:
 
-1. `./jqmc_setting_local/` — project-local override (if it exists in CWD)
-2. `~/.jqmc_setting/` — user-global default
+1. `./jqmc_setting_local/` -- project-local override (if it exists in CWD)
+2. `~/.jqmc_setting/` -- user-global default
 
 On the very first run, if neither directory exists, the template shipped
 with the package is copied to `~/.jqmc_setting/` and the user is asked
@@ -668,14 +709,14 @@ to edit it.
 
 ```text
 ~/.jqmc_setting/
-├── machine_data.yaml           # Server machine definitions
-├── localhost/                   # Settings for localhost
-│   ├── queue_data.toml
-│   └── submit_mpi.sh           # (name is user-defined)
-├── my-cluster/                 # Settings for a remote cluster (nickname)
-│   ├── queue_data.toml
-│   └── submit_mpi.sh
-└── ...
+--- machine_data.yaml           # Server machine definitions
+--- localhost/                   # Settings for localhost
+-   --- queue_data.toml
+-   --- submit_mpi.sh           # (name is user-defined)
+--- my-cluster/                 # Settings for a remote cluster (nickname)
+-   --- queue_data.toml
+-   --- submit_mpi.sh
+--- ...
 ```
 
 ### `machine_data.yaml`
@@ -900,7 +941,7 @@ jqmc ${INPUT} > ${OUTPUT} 2>&1
 
 ## Pipeline example
 
-A minimal pipeline script that runs VMC → MCMC + LRDMC extrapolation:
+A minimal pipeline script that runs VMC -> MCMC + LRDMC extrapolation:
 
 ```python
 from jqmc_workflow import (
@@ -945,6 +986,7 @@ mcmc = Container(
         pilot_queue_label="small",
         jobname="mcmc",
         target_error=0.001,
+        cleanup_patterns=["restart.h5"],  # delete large checkpoint on success
     ),
 )
 
@@ -978,7 +1020,7 @@ dynamically through `ValueFrom("vmc", "optimized_hamiltonian")`,
 so the pipeline works correctly even when VMC converges early
 (e.g. step 91 instead of 150).  Additionally, `lrdmc-ext` depends on
 `mcmc-prod` (via `ValueFrom` for `E_scf`), so the DAG becomes
-VMC → MCMC → LRDMC-ext.  The `target_survived_walkers_ratio`
+VMC -> MCMC -> LRDMC-ext.  The `target_survived_walkers_ratio`
 triggers automatic calibration of `num_projection_per_measurement`
 independently at each lattice spacing.  All alat values run their
 calibration, error-bar pilot, and production phases in parallel.

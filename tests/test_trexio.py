@@ -43,7 +43,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

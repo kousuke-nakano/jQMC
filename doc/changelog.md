@@ -2,6 +2,52 @@
 
 # Change Log
 
+## May-18-2026: v0.2.2a1
+
+This release brings configurable mixed-precision support, deep kernel-level performance work (AOs, Jastrow, det/Jastrow ratios, GFMC), on-GPU VMC optimization, and a project-wide lint/cleanup.
+
+### New features
+
+* **Mixed precision support**: Added a configurable precision system with per-zone dtype control (fp64 by default; fp32 in selected zones in `"mixed"` mode). Refactored as selectable-precision modules with three explicit design principles. The geminal/AGP/SD path remains in fp64 to prevent fp32 amplification of `log|det|`, and electron-nucleus `r - R` differences are computed in fp64 before downcasting to avoid catastrophic cancellation. `ao_grad_lap` and `mo_grad_lap` precision zones are split for finer-grained control. The public API is reduced to a single mode selector: `"full"` or `"mixed"`.
+* **On-GPU VMC optimization**: VMC parameter optimization can now run entirely on GPU. Added `use_device_collectives` (auto-selected by the JAX backend: GPU=`True`, otherwise `False`) with an MPI/JAX consistency check, along with matching CLI/TOML options. Multi-GPU `run_optimize` is supported.
+* **Ruff lint pipeline**: Added `jqmc-lint-ruff.yml` GitHub Action and updated `.pre-commit-config.yaml`. Applied auto-fixes and manual cleanups across the codebase, and removed non-ASCII characters from code and docstrings.
+
+### Performance & memory
+
+* **AO module (HLO-level)**: Reduced L1/L2/DRAM traffics. Replaced `segment_sum` with a bucketed reduce+gather scheme (including `V_l`). Unrolled `(8Z)**l` in the Cartesian kernels to avoid XLA `while` loops. Removed `eps` from Cartesian GTOs. Fused AO/MO value/grad/lap into a single dispatch on hot paths.
+* **Streaming caches on hot paths**: Stream cached AO and paired tables into every det-ratio / jas-ratio hot paths. Improved the J3 streaming cache in `jastrow_factor.py`. Reused J3 streaming-state AOs in LRDMC mesh / ECP non-local ratios. Improved the K state carry in `jqmc/wavefunction.py`.
+* **Jastrow ratios**: Optimized J2 ratio from an `O(N^2)` baseline to `O(N * N_grid)` per-grid sums. Introduced a slim J3 state carry in the MCMC wavefunction update. Polished Jastrow with a dense `(N, N)` up-up / dn-dn pair reduction and removed scatter-add `while` loops.
+* **GFMC_t**: Added a streaming kinetic-state path (parity with GFMC_n) and replaced a Python `while` loop with `lax.while_loop` in the projection.
+* **Misc**: Vectorized the electron-configuration generator and PRNG key initialization. Switched the jackknife standard deviation to a two-pass centered sum-of-squares for better numerical stability. Replaced `hessian()` with `jvp(grad)` for the NN-Jastrow Laplacian.
+
+### Bug fixes
+
+* **GFMC/MCMC logging**: Improved loggers in `jqmc/jqmc_gfmc.py` and `jqmc/jqmc_mcmc.py`.
+
+### Workflow (`jqmc_workflow`)
+
+* Refactored workflow modules (`vmc_workflow.py`, `mcmc_workflow.py`, `lrdmc_workflow.py`, `lrdmc_ext_workflow.py`, `workflow.py`, and the `_*.py` helpers) for readability, with no behavior change.
+
+### Tests & infrastructure
+
+* Polished tolerance control across the test suite; introduced a medium tolerance for numerical-Laplacian tests and removed the separate autodiff tolerance.
+* Removed `test_kinetic_energy_analytic_and_numerical` and `test_numerial_and_auto_grads_and_laplacians_ln_Det` because the numerical references are intrinsically unstable; analytical versions are already validated against JAX autograd.
+* Shortened `jqmc-run-full-pytest.yml` and updated GitHub Actions.
+* Made the numerical-Laplacian debug functions more stable.
+
+## Apr-24-2026: v0.2.1a2
+
+Minor update focusing on workflow improvements, bug fixes, and new benchmark infrastructure.
+
+### New features
+
+* **Kernel benchmark suite**: Added benchmark modules and tests for profiling kernel performance.
+* **`cleanup_patterns` option**: Added a `cleanup_patterns` configuration option to `jqmc_workflow` for automatic post-run file cleanup, with support for recursive matching in subdirectories.
+
+### Bug fixes
+
+* **MPI deadlock in `max_time` / `stop_flag`**: Fixed a deadlock that could occur during `max_time` and `stop_flag` checks in MPI runs.
+
 ## Apr-16-2026: v0.2.1a1
 
 This release focuses on a major update of the VMC optimizer (Linear Method), extended AO basis optimization, memory/performance improvements of the `jqmc` kernel package, and substantial hardening of the `jqmc_workflow` automation package.
@@ -48,10 +94,10 @@ This release focuses on a major update of the VMC optimizer (Linear Method), ext
 *   **GFMC_t projection averaging**: Fixed incorrect averaging of the number of projections across MPI ranks in GFMC_t.
 *   **SR with `num_params >= num_samples`**: Fixed MPI bug when the number of optimizable parameters exceeds the number of samples.
 *   **MPI `Allreduce` for scalars**: Replaced `Allreduce` with `allreduce` for scalar `int` and `float` values in `jqmc_mcmc.py` and `jqmc_gfmc.py`, as `Allreduce` for scalars exhibits implementation-dependent behavior.
-*   **Optimizer step estimation**: Fixed `estimate_required_steps` — removed incorrect `ceil` rounding and `max` clamp that ignored `walker_ratio`; added `min_steps` parameter.
+*   **Optimizer step estimation**: Fixed `estimate_required_steps` -- removed incorrect `ceil` rounding and `max` clamp that ignored `walker_ratio`; added `min_steps` parameter.
 *   **SR stability near convergence**: Improved stability of SR with adaptive learning rate in the vicinity of convergence.
 *   **Pytree inconsistency**: Fixed a JAX pytree structural mismatch.
-*   **S/N ratio diagnostics**: Fixed averaging (last S/N ratio → averaged S/N ratios) and trivial output bugs.
+*   **S/N ratio diagnostics**: Fixed averaging (last S/N ratio -> averaged S/N ratios) and trivial output bugs.
 
 
 ### Workflow (`jqmc_workflow`)
@@ -98,10 +144,10 @@ This is a major update with drastic performance improvements, new features, and 
 
 ### New features
 
-*   **LRDMC force calculations**: Implemented LRDMC atomic forces with the Pathak–Wagner regularization.
+*   **LRDMC force calculations**: Implemented LRDMC atomic forces with the Pathak-Wagner regularization.
 *   **Jastrow functions**: Added `jastrow_1b_type` (`'exp'` / `'pade'`) and `jastrow_2b_type` (`'pade'` / `'exp'`) fields to `Jastrow_one_body_data` and `Jastrow_two_body_data`, enabling runtime selection of the one-body and two-body Jastrow functional forms.
     *   Exponential form: $u(r) = \frac{1}{2b}(1 - e^{-br})$
-    *   Padé form: $u(r) = \frac{r}{2(1 + br)}$
+    *   Pade form: $u(r) = \frac{r}{2(1 + br)}$
 
 ### Bug fixes
 
@@ -113,10 +159,10 @@ This is a major update with drastic performance improvements, new features, and 
 ### Infrastructure
 
 *   **Restart file format change**: Switched restart files from pickle-based `*.chk` to HDF5-based `*.h5`. **Note:** backward compatibility with old `*.chk` files is *not* maintained.
-*   **`jqmc_workflow` package**: Introduced the `jqmc_workflow` automation package for orchestrating multi-stage QMC pipelines (WF conversion → VMC optimization → MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.
+*   **`jqmc_workflow` package**: Introduced the `jqmc_workflow` automation package for orchestrating multi-stage QMC pipelines (WF conversion -> VMC optimization -> MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.
 *   **Removed `SWCT_data`**: Cleaned up legacy `SWCT_data` class as part of codebase refactoring.
 *   **More comprehensive tests**: Substantially expanded the test suite to cover the new features and improve overall reliability.
-*   **Expanded examples**: Reorganized and enriched the `examples/` directory with 11 end-to-end tutorials (`jqmc-example01`–`jqmc-example08`, `jqmc-workflow-example01`–`jqmc-workflow-example03`) covering single-point VMC/LRDMC, force calculations, GPU walker-scaling benchmarks, interaction-energy workflows, and PES scans with automated `jqmc_workflow` pipelines.
+*   **Expanded examples**: Reorganized and enriched the `examples/` directory with 11 end-to-end tutorials (`jqmc-example01`-`jqmc-example08`, `jqmc-workflow-example01`-`jqmc-workflow-example03`) covering single-point VMC/LRDMC, force calculations, GPU walker-scaling benchmarks, interaction-energy workflows, and PES scans with automated `jqmc_workflow` pipelines.
 
 
 ## Feb-5-2026: v0.1.0

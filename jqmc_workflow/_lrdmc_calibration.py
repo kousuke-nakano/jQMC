@@ -1,4 +1,4 @@
-"""LRDMC calibration utilities — survived walkers ratio.
+"""LRDMC calibration utilities -- survived walkers ratio.
 
 Provides helper functions for determining the optimal
 ``num_projection_per_measurement`` based on a target survived-walkers ratio.
@@ -49,33 +49,29 @@ The calibration procedure is:
 import math
 import re
 from logging import getLogger
-from typing import List, Optional
 
 import h5py
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
-# ── HDF5 electron count ──────────────────────────────────────────
+# -- HDF5 electron count ------------------------------------------
 
 
 def get_num_electrons(hamiltonian_file: str) -> int:
     """Read the total number of electrons from a hamiltonian HDF5 file.
 
-    Parameters
-    ----------
-    hamiltonian_file : str
-        Path to ``hamiltonian_data.h5``.
+    Args:
+        hamiltonian_file (str):
+            Path to ``hamiltonian_data.h5``.
 
-    Returns
-    -------
-    int
-        Total electron count ``num_electron_up + num_electron_dn``.
+    Returns:
+        int:
+            Total electron count ``num_electron_up + num_electron_dn``.
 
-    Raises
-    ------
-    RuntimeError
-        If the electron counts cannot be found in the file.
+    Raises:
+        RuntimeError:
+            If the electron counts cannot be found in the file.
     """
     try:
         with h5py.File(hamiltonian_file, "r") as f:
@@ -87,31 +83,29 @@ def get_num_electrons(hamiltonian_file: str) -> int:
         raise RuntimeError(f"Cannot read electron counts from {hamiltonian_file}: {e}") from e
 
 
-# ── Survived walkers ratio parsing ───────────────────────────────
+# -- Survived walkers ratio parsing -------------------------------
 
 _SURVIVED_PATTERN = re.compile(r"Survived walkers ratio\s*=\s*(\d+\.?\d*)\s*%")
 
 
-def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
+def parse_survived_walkers_ratio(output_file: str) -> float | None:
     """Parse the survived walkers ratio from an LRDMC output file.
 
     Searches for the line
     ``Survived walkers ratio = <value> %``
-    and returns the **last** occurrence as a fraction (0.0–1.0).
+    and returns the **last** occurrence as a fraction (0.0-1.0).
 
-    Parameters
-    ----------
-    output_file : str
-        Path to the jqmc stdout file.
+    Args:
+        output_file (str):
+            Path to the jqmc stdout file.
 
-    Returns
-    -------
-    float or None
-        Survived walkers ratio as a fraction, or *None* if not found.
+    Returns:
+        float or None:
+            Survived walkers ratio as a fraction, or *None* if not found.
     """
     last_value = None
     try:
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             for line in f:
                 m = _SURVIVED_PATTERN.search(line)
                 if m:
@@ -121,12 +115,12 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
     return last_value
 
 
-# ── Linear fitting ───────────────────────────────────────────────
+# -- Linear fitting -----------------------------------------------
 
 
 def fit_num_projection_per_measurement(
-    x_values: List[int],
-    y_values: List[float],
+    x_values: list[int],
+    y_values: list[float],
     target_ratio: float,
 ) -> int:
     r"""Determine the optimal ``num_projection_per_measurement`` by linear fit.
@@ -136,25 +130,22 @@ def fit_num_projection_per_measurement(
     fits a linear model :math:`f(x) = a x + b` via least squares and
     solves for the *x* at which :math:`f(x) = \text{target\_ratio}`.
 
-    Parameters
-    ----------
-    x_values : list[int]
-        ``num_projection_per_measurement`` values used in calibration runs.
-    y_values : list[float]
-        Corresponding survived-walkers ratios (fractions, 0.0–1.0).
-    target_ratio : float
-        Target survived-walkers ratio (e.g. 0.97).
+    Args:
+        x_values (list[int]):
+            ``num_projection_per_measurement`` values used in calibration runs.
+        y_values (list[float]):
+            Corresponding survived-walkers ratios (fractions, 0.0-1.0).
+        target_ratio (float):
+            Target survived-walkers ratio (e.g. 0.97).
 
-    Returns
-    -------
-    int
-        Optimal ``num_projection_per_measurement`` (rounded up to the nearest
-        even integer, minimum 2).
+    Returns:
+        int:
+            Optimal ``num_projection_per_measurement`` (rounded up to the nearest
+            even integer, minimum 2).
 
-    Raises
-    ------
-    RuntimeError
-        If the linear fit cannot determine a positive root.
+    Raises:
+        RuntimeError:
+            If the linear fit cannot determine a positive root.
     """
     if len(x_values) < 2 or len(y_values) < 2:
         raise ValueError(f"Need at least 2 data points, got {len(x_values)}")
@@ -215,20 +206,18 @@ def scale_num_projection_per_measurement(
         \text{nmpm}(\text{alat}) = \text{nmpm\_ref}
             \times \left(\frac{\text{alat\_ref}}{\text{alat}}\right)^{2}
 
-    Parameters
-    ----------
-    nmpm_ref : int
-        Calibrated ``num_projection_per_measurement`` at ``alat_ref``.
-    alat_ref : float
-        Reference lattice spacing (bohr).
-    alat : float
-        Target lattice spacing (bohr).
+    Args:
+        nmpm_ref (int):
+            Calibrated ``num_projection_per_measurement`` at ``alat_ref``.
+        alat_ref (float):
+            Reference lattice spacing (bohr).
+        alat (float):
+            Target lattice spacing (bohr).
 
-    Returns
-    -------
-    int
-        Scaled ``num_projection_per_measurement`` (rounded up to nearest even
-        integer, minimum 2).
+    Returns:
+        int:
+            Scaled ``num_projection_per_measurement`` (rounded up to nearest even
+            integer, minimum 2).
     """
     raw = nmpm_ref * (alat_ref / alat) ** 2
     result = max(2, int(math.ceil(raw)))

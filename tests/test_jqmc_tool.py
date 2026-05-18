@@ -49,7 +49,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.jqmc_tool import (  # noqa: E402
+from jqmc.jqmc_tool import (
     _J3_PERIOD_RANGES,
     hamiltonian_show_info,
     hamiltonian_to_xyz,
@@ -61,11 +61,8 @@ from jqmc.jqmc_tool import (  # noqa: E402
     vmc_analyze_output,
     vmc_generate_input,
 )
-from jqmc._setting import (  # noqa: E402
-    atol_consistency,
-    rtol_consistency,
-)
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc._precision import get_tolerance
+from jqmc.trexio_wrapper import read_trexio_file
 
 trexio_files = [
     "H2_ecp_ccpvtz_cart.h5",
@@ -426,7 +423,7 @@ def _write_chk(path, objs):
         meta.attrs["driver_type"] = "MCMC"
         meta.attrs["mpi_size"] = len(objs)
 
-        # hamiltonian_data — minimal stub for force tests
+        # hamiltonian_data -- minimal stub for force tests
         first = objs[0]
         if hasattr(first, "hamiltonian_data"):
             _write_minimal_hamiltonian(f, first.hamiltonian_data)
@@ -607,8 +604,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("local_energy", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_mcmc_multi_rank_random(self, tmp_path):
         """Multiple MPI ranks with random data should match np.sum reference."""
@@ -638,8 +636,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("local_energy", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_mcmc_warmup_discards_steps(self, tmp_path):
         """Warmup discard + random data post-warmup must match reference."""
@@ -669,8 +668,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("local_energy", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_lrdmc_random_energy_jackknife(self, tmp_path):
         """LRDMC jqmc-tool must match the np.sum-based reference jackknife for random data."""
@@ -699,8 +699,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("local_energy", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_lrdmc_multi_rank_random(self, tmp_path):
         """Multiple LRDMC ranks with random data must match np.sum reference."""
@@ -730,8 +731,9 @@ class TestComputeEnergy:
         m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
         assert m is not None
         E_cli, std_cli = float(m.group(1)), float(m.group(2))
-        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
-        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
+        atol, rtol = get_tolerance("local_energy", "strict")
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol, rtol=rtol)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol, rtol=rtol)
 
     def test_lrdmc_extrapolate_energy(self, tmp_path):
         """extrapolate-energy with two LRDMC checkpoints should report a->0 result."""

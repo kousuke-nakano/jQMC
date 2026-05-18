@@ -9,7 +9,8 @@ specialized subclasses.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 import jax
 
@@ -34,7 +35,7 @@ class DiffMask:
     params: bool = True
     coords: bool = True
 
-    def update(self, *, params: bool | None = None, coords: bool | None = None) -> "DiffMask":
+    def update(self, *, params: bool | None = None, coords: bool | None = None) -> DiffMask:
         """Return a new mask with any provided overrides applied."""
         return DiffMask(
             params=self.params if params is None else params,

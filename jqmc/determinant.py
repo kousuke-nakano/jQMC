@@ -1,4 +1,12 @@
-"""Determinant module."""
+"""Determinant module.
+
+Precision Zones:
+    - ``geminal``: matrix elements (compute_geminal_*).
+    - ``determinant``: log-det, SVD, antisymmetrisation (compute_ln_det_*, compute_AS_*).
+    - ``kinetic``: determinant derivatives (compute_grads_and_laplacian_ln_Det*).
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -43,13 +51,13 @@ from typing import TYPE_CHECKING
 # from jax.debug import print as jprint
 import jax
 import jax.numpy as jnp
-import jax.scipy.linalg as jsp_linalg
 import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit, vmap
 
-from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
+from ._precision import get_dtype_jnp, get_dtype_np
+from ._setting import atol_consistency, get_eps, rtol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -59,9 +67,16 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_AOs_value_grad_lap,
     compute_overlap_matrix,
 )
-from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+from .molecular_orbital import (
+    MOs_data,
+    compute_MOs,
+    compute_MOs_grad,
+    compute_MOs_laplacian,
+    compute_MOs_value_grad_lap,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -84,8 +99,8 @@ class Geminal_data:
         num_electron_dn (int): Number of spin-down electrons.
         orb_data_up_spin (AOs_data | MOs_data): Basis/orbitals for spin-up electrons.
         orb_data_dn_spin (AOs_data | MOs_data): Basis/orbitals for spin-down electrons.
-        lambda_matrix (npt.NDArray | jax.Array): Geminal pairing matrix with shape
-            ``(orb_num_up, orb_num_dn + num_electron_up - num_electron_dn)``.
+        lambda_matrix (npt.NDArray[np.float64]): Geminal pairing matrix with shape
+            ``(orb_num_up, orb_num_dn + num_electron_up - num_electron_dn)``. dtype: float64.
 
     Notes:
         - For closed shells, ``orb_num_up == orb_num_dn`` and ``lambda_matrix`` is square.
@@ -100,9 +115,9 @@ class Geminal_data:
     orb_data_dn_spin: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(
         pytree_node=True, default_factory=lambda: AOs_sphe_data()
     )  #: Orbital data (AOs or MOs) for spin-down electrons.
-    lambda_matrix: npt.NDArray | jax.Array = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([])
-    )  #: Geminal pairing matrix; see class notes for expected shape.
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64)
+    )  #: Geminal pairing matrix; see class notes for expected shape. dtype: float64.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -158,73 +173,78 @@ class Geminal_data:
     # --- AO basis property accessors (for basis optimization) ---
 
     @property
+    def _lambda_matrix_jnp(self) -> jax.Array:
+        """Return lambda_matrix as a jax.Array (jnp view of the underlying numpy storage)."""
+        # Lift-only fp64 basis-data storage accessor (see _precision.py exemption);
+        # consumer casts to its own zone at use site.
+        return jnp.asarray(self.lambda_matrix, dtype=jnp.float64)
+
+    @property
     def ao_exponents_up(self) -> jax.Array:
-        """AO Gaussian exponents for spin-up orbitals, regardless of AO/MO representation."""
+        """AO Gaussian exponents for spin-up orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_up_spin.exponents
-        elif isinstance(self.orb_data_up_spin, MOs_data):
-            return self.orb_data_up_spin.aos_data.exponents
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+            return self.orb_data_up_spin._exponents_jnp
+        if isinstance(self.orb_data_up_spin, MOs_data):
+            return self.orb_data_up_spin.aos_data._exponents_jnp
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
 
     @property
     def ao_exponents_dn(self) -> jax.Array:
-        """AO Gaussian exponents for spin-down orbitals, regardless of AO/MO representation."""
+        """AO Gaussian exponents for spin-down orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_dn_spin.exponents
-        elif isinstance(self.orb_data_dn_spin, MOs_data):
-            return self.orb_data_dn_spin.aos_data.exponents
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+            return self.orb_data_dn_spin._exponents_jnp
+        if isinstance(self.orb_data_dn_spin, MOs_data):
+            return self.orb_data_dn_spin.aos_data._exponents_jnp
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
 
     @property
     def ao_coefficients_up(self) -> jax.Array:
-        """AO contraction coefficients for spin-up orbitals, regardless of AO/MO representation."""
+        """AO contraction coefficients for spin-up orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_up_spin.coefficients
-        elif isinstance(self.orb_data_up_spin, MOs_data):
-            return self.orb_data_up_spin.aos_data.coefficients
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+            return self.orb_data_up_spin._coefficients_jnp
+        if isinstance(self.orb_data_up_spin, MOs_data):
+            return self.orb_data_up_spin.aos_data._coefficients_jnp
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
 
     @property
     def ao_coefficients_dn(self) -> jax.Array:
-        """AO contraction coefficients for spin-down orbitals, regardless of AO/MO representation."""
+        """AO contraction coefficients for spin-down orbitals (jnp view of underlying numpy storage)."""
         if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
-            return self.orb_data_dn_spin.coefficients
-        elif isinstance(self.orb_data_dn_spin, MOs_data):
-            return self.orb_data_dn_spin.aos_data.coefficients
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+            return self.orb_data_dn_spin._coefficients_jnp
+        if isinstance(self.orb_data_dn_spin, MOs_data):
+            return self.orb_data_dn_spin.aos_data._coefficients_jnp
+        raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
 
     def _replace_orb_exponents(self, orb_data, new_exp):
         """Helper to replace exponents in an orb_data (AO or MO)."""
         if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
             return orb_data.replace(exponents=new_exp)
-        elif isinstance(orb_data, MOs_data):
+        if isinstance(orb_data, MOs_data):
             new_aos = orb_data.aos_data.replace(exponents=new_exp)
             return orb_data.replace(aos_data=new_aos)
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
     def _replace_orb_coefficients(self, orb_data, new_coeff):
         """Helper to replace coefficients in an orb_data (AO or MO)."""
         if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
             return orb_data.replace(coefficients=new_coeff)
-        elif isinstance(orb_data, MOs_data):
+        if isinstance(orb_data, MOs_data):
             new_aos = orb_data.aos_data.replace(coefficients=new_coeff)
             return orb_data.replace(aos_data=new_aos)
-        else:
-            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+        raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
-    def with_updated_ao_exponents(self, new_exp_up: jax.Array, new_exp_dn: jax.Array) -> "Geminal_data":
+    def with_updated_ao_exponents(
+        self, new_exp_up: npt.NDArray[np.float64], new_exp_dn: npt.NDArray[np.float64]
+    ) -> "Geminal_data":
         """Return a new instance with updated AO exponents for both spins."""
         return self.replace(
             orb_data_up_spin=self._replace_orb_exponents(self.orb_data_up_spin, new_exp_up),
             orb_data_dn_spin=self._replace_orb_exponents(self.orb_data_dn_spin, new_exp_dn),
         )
 
-    def with_updated_ao_coefficients(self, new_coeff_up: jax.Array, new_coeff_dn: jax.Array) -> "Geminal_data":
+    def with_updated_ao_coefficients(
+        self, new_coeff_up: npt.NDArray[np.float64], new_coeff_dn: npt.NDArray[np.float64]
+    ) -> "Geminal_data":
         """Return a new instance with updated AO contraction coefficients for both spins."""
         return self.replace(
             orb_data_up_spin=self._replace_orb_coefficients(self.orb_data_up_spin, new_coeff_up),
@@ -264,7 +284,7 @@ class Geminal_data:
         if block.name == "lambda_matrix":
             lambda_new = np.array(block.values)
 
-            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
+            # Symmetrize unconditionally -- the method is a no-op for non-symmetric matrices.
             lambda_new = self.symmetrize_lambda(lambda_new)
 
             return Geminal_data(
@@ -274,17 +294,15 @@ class Geminal_data:
                 orb_data_dn_spin=self.orb_data_dn_spin,
                 lambda_matrix=lambda_new,
             )
-        elif block.name == "lambda_basis_exp":
+        if block.name == "lambda_basis_exp":
             vals = np.asarray(block.values, dtype=np.float64)
             vals = self._symmetrize_ao_basis(vals)
-            vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_exponents_up)
             new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
-        elif block.name == "lambda_basis_coeff":
+        if block.name == "lambda_basis_coeff":
             vals = np.asarray(block.values, dtype=np.float64)
             vals = self._symmetrize_ao_basis(vals)
-            vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_coefficients_up)
             new_coeff_up, new_coeff_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_coefficients(new_coeff_up, new_coeff_dn)
@@ -326,7 +344,7 @@ class Geminal_data:
 
            When molecular or crystal spatial symmetry is incorporated in
            the future, **only this method** needs to be extended (e.g. to
-           average over a symmetry-group orbit) — every call site
+           average over a symmetry-group orbit) -- every call site
            automatically follows.
 
         Args:
@@ -391,10 +409,9 @@ class Geminal_data:
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) or isinstance(self.orb_data_up_spin, AOs_cart_data):
             return self.orb_data_up_spin.num_ao
-        elif isinstance(self.orb_data_up_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data):
             return self.orb_data_up_spin.num_mo
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def orb_num_dn(self) -> int:
@@ -412,10 +429,9 @@ class Geminal_data:
         """
         if isinstance(self.orb_data_dn_spin, AOs_sphe_data) or isinstance(self.orb_data_dn_spin, AOs_cart_data):
             return self.orb_data_dn_spin.num_ao
-        elif isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_dn_spin, MOs_data):
             return self.orb_data_dn_spin.num_mo
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def is_mo_representation(self) -> bool:
@@ -444,14 +460,13 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
@@ -468,14 +483,13 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs_grad
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_grad
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_grad
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
@@ -492,14 +506,30 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
             return compute_AOs_laplacian
-        elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_laplacian
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_laplacian
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
+
+    @property
+    def compute_orb_value_grad_lap_api(self) -> Callable[..., tuple]:
+        """Fused (value, grad, laplacian) api for AOs or MOs.
+
+        Returns a callable that yields ``(val, gx, gy, gz, lap)`` in a single
+        dispatch -- used by the streaming advance hot path so the heavy block
+        (``exp``, polynomial chain, ``S_l_m``) is shared across val/grad/lap
+        instead of being recomputed three times.
+        """
+        if (isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data)) or (
+            isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data)
+        ):
+            return compute_AOs_value_grad_lap
+        if isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
+            return compute_MOs_value_grad_lap
+        raise NotImplementedError
 
     def to_cartesian(self) -> "Geminal_data":
         """Convert spherical orbitals to Cartesian and transform the lambda matrix.
@@ -644,15 +674,15 @@ class Geminal_data:
     @classmethod
     def convert_from_MOs_to_AOs(cls, geminal_data: "Geminal_data") -> "Geminal_data":
         """Convert MOs to AOs."""
-        if isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data) and isinstance(
-            geminal_data.orb_data_dn_spin, AOs_sphe_data
+        if (
+            isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data)
+            and isinstance(geminal_data.orb_data_dn_spin, AOs_sphe_data)
+        ) or (
+            isinstance(geminal_data.orb_data_up_spin, AOs_cart_data)
+            and isinstance(geminal_data.orb_data_dn_spin, AOs_cart_data)
         ):
             return geminal_data
-        elif isinstance(geminal_data.orb_data_up_spin, AOs_cart_data) and isinstance(
-            geminal_data.orb_data_dn_spin, AOs_cart_data
-        ):
-            return geminal_data
-        elif isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
+        if isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
             # split mo_lambda_matrix
             mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
                 geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
@@ -676,8 +706,7 @@ class Geminal_data:
                 aos_data_dn_spin,
                 aos_lambda_matrix,
             )
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     @classmethod
     def convert_from_AOs_to_MOs(
@@ -806,10 +835,10 @@ class Geminal_data:
         # Augment up-spin MO basis with unpaired directions  (Ne_up > Ne_dn)
         #
         # The paired-block SVD produces only Ne_dn meaningful left singular
-        # vectors.  The remaining (num_mo − Ne_dn) vectors belong to the
+        # vectors.  The remaining (num_mo - Ne_dn) vectors belong to the
         # null space and have *arbitrary* orientation, so the unpaired AO
         # columns may lose rank when projected onto this MO basis (making
-        # det(Slater) ≈ 0).  We fix this by replacing the null-space vectors
+        # det(Slater) ~= 0).  We fix this by replacing the null-space vectors
         # with orthonormal directions derived from the unpaired AO block,
         # projected into the orthogonal complement of the paired subspace.
         # ------------------------------------------------------------------
@@ -826,7 +855,7 @@ class Geminal_data:
             # Replace null-space SVD vectors with unpaired-derived vectors
             selected_vectors_up = selected_vectors_up.copy()
             selected_vectors_up[:, ne_dn : ne_dn + n_replace] = Q_unp[:, :n_replace]
-            # Zero out paired eigenvalues for the replaced positions — these MOs
+            # Zero out paired eigenvalues for the replaced positions -- these MOs
             # serve the unpaired block only and must not contribute to the paired part.
             selected_evals[ne_dn : ne_dn + n_replace] = 0.0
             logger.info(
@@ -998,13 +1027,10 @@ def compute_ln_det_geminal_all_elements(
     Returns:
         float: Scalar log-determinant of the geminal matrix.
     """
-    return jnp.log(
-        jnp.abs(
-            jnp.linalg.det(
-                compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-            )
-        )
-    )
+    dtype_jnp = get_dtype_jnp("det_eval")
+    G = compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
+    return jnp.log(jnp.abs(jnp.linalg.det(G)))
 
 
 # Forward pass for custom VJP.
@@ -1020,7 +1046,9 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
         - primal output: ln|det(G)|
         - residuals: (inputs and SVD factors) for use in backward pass
     """
+    dtype_jnp = get_dtype_jnp("det_eval")
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
     ln_det = jnp.log(jnp.abs(jnp.linalg.det(G)))
     # Compute SVD: G = U_svd @ diag(s) @ Vt
     U_svd, s, Vt = jnp.linalg.svd(G, full_matrices=False)
@@ -1038,8 +1066,8 @@ def _ln_det_bwd(res, g):
     implicitly accounts for the pseudoinverse structure (including projection
     terms when singular values are zeroed).  This is why the autodiff kinetic
     energy remains accurate even for ill-conditioned ``G``, whereas the analytic
-    Laplacian in :func:`compute_grads_and_laplacian_ln_Det` — which assumes
-    the simpler ``d(G^{-1}) = -G^{-1} dG G^{-1}`` — becomes approximate.
+    Laplacian in :func:`compute_grads_and_laplacian_ln_Det` -- which assumes
+    the simpler ``d(G^{-1}) = -G^{-1} dG G^{-1}`` -- becomes approximate.
 
     Args:
         res: residuals from forward pass
@@ -1051,8 +1079,10 @@ def _ln_det_bwd(res, g):
     geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt = res
 
     # Compute G^{-1} via SVD pseudoinverse with thresholding.
-    # Singular values below EPS_rcond_SVD * s_max are zeroed to avoid NaN from 1/~0.
-    s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
+    # Singular values below eps_rcond * s_max are zeroed to avoid NaN from 1/~0.
+    dtype_jnp = get_dtype_jnp("det_eval")
+    eps_rcond = get_eps("rcond_svd", dtype_jnp)
+    s_inv = jnp.where(s > eps_rcond * s[0], jnp.asarray(1.0, dtype=dtype_jnp) / s, jnp.asarray(0.0, dtype=dtype_jnp))
     X = (Vt.T * s_inv[jnp.newaxis, :]) @ U_svd.T  # G^{-1}, shape (n, n)
 
     # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
@@ -1080,7 +1110,7 @@ def compute_ln_det_geminal_all_elements_fast(
     Mirrors :func:`compute_ln_det_geminal_all_elements` in the forward direction.
     The **backward pass** replaces the implicit ``G^{-1}`` computation that JAX
     would normally perform (via a fresh LU decomposition) with the pre-computed
-    ``geminal_inv`` — the Sherman-Morrison running inverse.  This avoids
+    ``geminal_inv`` -- the Sherman-Morrison running inverse.  This avoids
     catastrophic NaN for near-singular geminal matrices sampled when
     ``epsilon_AS > 0``.
 
@@ -1097,11 +1127,13 @@ def compute_ln_det_geminal_all_elements_fast(
         ``geminal_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
         at the supplied electron positions.  This is only guaranteed when the
         inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialized LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse -- the pattern
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect gradients.
     """
+    dtype_jnp = get_dtype_jnp("det_eval")
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
     return jnp.log(jnp.abs(jnp.linalg.det(G)))
 
 
@@ -1111,14 +1143,18 @@ def _ln_det_fast_fwd(
     r_dn_carts: jax.Array,
     geminal_inv: jax.Array,
 ):
+    dtype_jnp = get_dtype_jnp("det_eval")
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
     val = jnp.log(jnp.abs(jnp.linalg.det(G)))
     # Save inputs for backward (geminal_inv replaces G^{-1} in bwd)
     return val, (geminal_data, r_up_carts, r_dn_carts, geminal_inv)
 
 
 def _ln_det_fast_bwd(res, g):
+    dtype_jnp = get_dtype_jnp("det_eval")
     geminal_data, r_up_carts, r_dn_carts, geminal_inv = res
+    geminal_inv = jnp.asarray(geminal_inv, dtype=dtype_jnp)
     # d(ln|det G|)/d(G_{ij}) = (G^{-T})_{ij}
     # Use the pre-computed inverse instead of re-solving.
     G_bar = g * geminal_inv.T  # cotangent w.r.t. G, shape (N_up, N_up)
@@ -1149,7 +1185,10 @@ def compute_det_geminal_all_elements(
     Returns:
         float: Scalar determinant of the geminal matrix.
     """
-    return jnp.linalg.det(compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts))
+    dtype_jnp = get_dtype_jnp("det_eval")
+    G = compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
+    return jnp.linalg.det(G)
 
 
 def _compute_det_geminal_all_elements_debug(
@@ -1158,19 +1197,20 @@ def _compute_det_geminal_all_elements_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> np.float64:
     """See compute_det_geminal_all_elements_api."""
-    return np.linalg.det(
-        _compute_geminal_all_elements_debug(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    dtype_np = get_dtype_np("det_eval")
+    G = _compute_geminal_all_elements_debug(
+        geminal_data=geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
+    G = np.asarray(G, dtype=dtype_np)
+    return np.linalg.det(G)
 
 
 def compute_AS_regularization_factor_fast_update(
     geminal: npt.NDArray[np.float64], geminal_inv: npt.NDArray[np.float64]
 ) -> jax.Array:
-    """Compute Attaccalite–Sorella regularization via fast update.
+    """Compute Attaccalite-Sorella regularization via fast update.
 
     Args:
         geminal: Geminal matrix with shape ``(N_up, N_up)``.
@@ -1179,6 +1219,9 @@ def compute_AS_regularization_factor_fast_update(
     Returns:
         jax.Array: Scalar AS regularization factor.
     """
+    dtype_jnp = get_dtype_jnp("det_ratio")
+    geminal = jnp.asarray(geminal, dtype=dtype_jnp)
+    geminal_inv = jnp.asarray(geminal_inv, dtype=dtype_jnp)
     # compute the AS factor
     theta = 3.0 / 8.0
 
@@ -1208,7 +1251,9 @@ def _compute_AS_regularization_factor_debug(
     geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     """See compute_AS_regularization_factor_jax."""
+    dtype_np = get_dtype_np("det_eval")
     geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    geminal = np.asarray(geminal, dtype=dtype_np)
 
     # compute the AS factor
     theta = 3.0 / 8.0
@@ -1231,7 +1276,7 @@ def _compute_AS_regularization_factor_debug(
 
 @jit
 def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax.Array, r_dn_carts: jax.Array) -> jax.Array:
-    """Compute Attaccalite–Sorella regularization from electron coordinates.
+    """Compute Attaccalite-Sorella regularization from electron coordinates.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1241,15 +1286,20 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     Returns:
         jax.Array: Scalar AS regularization factor.
     """
+    dtype_jnp = get_dtype_jnp("det_eval")
     geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    geminal = jnp.asarray(geminal, dtype=dtype_jnp)
 
     # compute the AS factor
     theta = 3.0 / 8.0
 
     # compute F \equiv the square of Frobenius norm of geminal_inv
     # Use SVD with conservative threshold to avoid Inf from 1/sigma^2 for tiny sigma
+    eps_rcond = get_eps("rcond_svd", dtype_jnp)
     sigma = jnp.linalg.svd(geminal, compute_uv=False)
-    sigma_sq_inv = jnp.where(sigma > EPS_rcond_SVD * sigma[0], 1.0 / (sigma**2), 0.0)
+    sigma_sq_inv = jnp.where(
+        sigma > eps_rcond * sigma[0], jnp.asarray(1.0, dtype=dtype_jnp) / (sigma**2), jnp.asarray(0.0, dtype=dtype_jnp)
+    )
     F = jnp.sum(sigma_sq_inv)
 
     # compute the scaling factor
@@ -1262,7 +1312,7 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     )
 
     # compute R_AS
-    # Guard: S*F can be 0*∞ = NaN when G is near-singular (S→0, F→∞).
+    # Guard: S*F can be 0*inf = NaN when G is near-singular (S->0, F->inf).
     # Return 0 in that case to fully down-weight the walker instead of NaN.
     SF = S * F
     R_AS = jnp.where(jnp.isfinite(SF) & (SF > 0.0), SF ** (-theta), 0.0)
@@ -1281,6 +1331,13 @@ def compute_geminal_all_elements(geminal_data: Geminal_data, r_up_carts: jax.Arr
     Returns:
         jax.Array: Geminal matrix with shape ``(N_up, N_up)`` combining paired and unpaired blocks.
     """
+    # NOTE: do not pre-cast r_*_carts here. r_*_carts is only forwarded to
+    # ``_compute_geminal_all_elements`` (which in turn calls ``compute_orb_api``
+    # -> ``compute_AOs``); the AO kernels reconstruct ``r - R`` in float64
+    # internally to avoid catastrophic cancellation, and a wrapper-level
+    # downcast would defeat that guard. Arithmetic in this function uses
+    # ``ao_matrix_*`` / ``lambda_matrix_*`` which are cast at their own use
+    # sites, so r_*_carts itself does not need casting here.
     if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
         logger.info(
             f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
@@ -1313,10 +1370,16 @@ def _compute_geminal_all_elements(
     r_dn_carts: jax.Array,
 ) -> jax.Array:
     """See compute_geminal_all_elements_api."""
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    dtype_jnp = get_dtype_jnp("det_eval")
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
-    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    # orb_matrix_* may be produced in the ao_eval / mo_eval zone (potentially
+    # float32). Explicitly upcast to the geminal zone here so the matmul does
+    # not rely on JAX implicit type promotion (fp32 x fp64 -> fp64).
+    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
+    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
 
     # compute geminal values
     geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
@@ -1332,10 +1395,15 @@ def _compute_geminal_all_elements_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """See compute_geminal_all_elements_api."""
+    dtype_np = get_dtype_np("det_eval")
+    r_up_carts = np.asarray(r_up_carts, dtype=dtype_np)
+    r_dn_carts = np.asarray(r_dn_carts, dtype=dtype_np)
     lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = np.asarray(lambda_matrix_paired, dtype=dtype_np)
+    lambda_matrix_unpaired = np.asarray(lambda_matrix_unpaired, dtype=dtype_np)
 
-    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
-    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_np)
+    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_np)
 
     # compute geminal values
     geminal_paired = np.dot(orb_matrix_up.T, np.dot(lambda_matrix_paired, orb_matrix_dn))
@@ -1348,32 +1416,42 @@ def _compute_geminal_all_elements_debug(
 @jax.jit
 def compute_geminal_up_one_row_elements(
     geminal_data,
-    r_up_cart: jax.Array,  # shape: (3,) or (1,3)
+    r_up_cart: jax.Array,  # shape: (1, 3)
     r_dn_carts: jax.Array,  # shape: (N_dn, 3)
 ) -> jax.Array:
     """Single row of the geminal matrix for one spin-up electron.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
-        r_up_cart: Cartesian coordinate for one spin-up electron with shape ``(3,)`` or ``(1, 3)``.
+        r_up_cart: Cartesian coordinate for one spin-up electron with shape ``(1, 3)``.
+            ``compute_orb_api`` requires a 2D ``(N, 3)`` batch; pass a single
+            electron as ``(1, 3)``, not ``(3,)``.
         r_dn_carts: Cartesian coordinates for all spin-down electrons with shape ``(N_dn, 3)``.
 
     Returns:
         jax.Array: Row vector with shape ``(N_dn + N_unpaired,)``.
     """
+    # r_*_cart(s) are only forwarded to ``compute_orb_api``; do not pre-cast
+    # here (would defeat the AO kernels' fp64 ``r - R`` reconstruction).
+    dtype_jnp = get_dtype_jnp("det_ratio")
     # Split lambda into paired/unpaired blocks along columns
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
+        geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn]
     )  # shapes: (n_orb_up, n_orb_dn), (n_orb_up, num_unpaired)
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
     # Orbital values:
     # - up: single position -> 1D vector (n_orb_up,)
     # - dn: batched positions -> (n_orb_dn, N_dn)
-    orb_up_vec = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_cart)
+    # Explicitly upcast to the geminal zone (compute_orb_api may return
+    # ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX
+    # implicit type promotion in the lambda matmul below.
+    orb_up_vec = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_cart).astype(dtype_jnp)
     orb_up_vec = jnp.reshape(orb_up_vec, (-1,))  # ensure (n_orb_up,)
-    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
     # ensure (n_orb_dn, N_dn)
-    orb_matrix_dn = jnp.asarray(orb_matrix_dn)
+    orb_matrix_dn = jnp.asarray(orb_matrix_dn, dtype=dtype_jnp)
 
     # Paired block row:  (n_orb_up,) @ (n_orb_up, N_dn) -> (N_dn,)
     paired_right = lambda_matrix_paired @ orb_matrix_dn  # (n_orb_up, N_dn)
@@ -1391,30 +1469,39 @@ def compute_geminal_up_one_row_elements(
 def compute_geminal_dn_one_column_elements(
     geminal_data,
     r_up_carts: jax.Array,  # shape: (N_up, 3)
-    r_dn_cart: jax.Array,  # shape: (3,) or (1,3)
+    r_dn_cart: jax.Array,  # shape: (1, 3)
 ) -> jax.Array:
     """Single column of the geminal matrix for one spin-down electron.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
         r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
-        r_dn_cart: Cartesian coordinate for one spin-down electron with shape ``(3,)`` or ``(1, 3)``.
+        r_dn_cart: Cartesian coordinate for one spin-down electron with shape ``(1, 3)``.
+            ``compute_orb_api`` requires a 2D ``(N, 3)`` batch; pass a single
+            electron as ``(1, 3)``, not ``(3,)``.
 
     Returns:
         jax.Array: Column vector for the paired block with shape ``(N_up,)``.
     """
+    # r_*_cart(s) are only forwarded to ``compute_orb_api``; do not pre-cast
+    # here (would defeat the AO kernels' fp64 ``r - R`` reconstruction).
+    dtype_jnp = get_dtype_jnp("det_ratio")
     # Split lambda into paired/unpaired blocks along columns
     lambda_matrix_paired, _lambda_matrix_unpaired = jnp.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
+        geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn]
     )  # lambda_matrix_paired: (n_orb_up, n_orb_dn)
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
 
     # Orbital values:
     # - up: batched positions -> (n_orb_up, N_up)
     # - dn: single position -> 1D vector (n_orb_dn,)
-    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
-    orb_matrix_up = jnp.asarray(orb_matrix_up)  # (n_orb_up, N_up)
+    # Explicitly upcast to the geminal zone (compute_orb_api may return
+    # ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX
+    # implicit type promotion in the lambda matmul below.
+    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
+    orb_matrix_up = jnp.asarray(orb_matrix_up, dtype=dtype_jnp)  # (n_orb_up, N_up)
 
-    orb_dn_vec = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_cart)
+    orb_dn_vec = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_cart).astype(dtype_jnp)
     orb_dn_vec = jnp.reshape(orb_dn_vec, (-1,))  # (n_orb_dn,)
 
     # Column of paired block:
@@ -1463,6 +1550,11 @@ def _compute_ratio_determinant_part_rank1_update(
         grid generated by the MCMC loop, where exactly one electron is displaced
         per grid point by construction.
     """
+    # Forward A_old_inv and old/new r_up/dn_carts as-is (Principle 3a -- no
+    # parameter rebind). Module-level forwards (compute_det_geminal_all_elements,
+    # compute_orb_api) handle their own use-site casts. Inline arithmetic below
+    # casts at the use site (Principle 3b) -- see jnp.dot with A_old_inv.
+    dtype_jnp = get_dtype_jnp("det_ratio")
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
 
@@ -1495,33 +1587,61 @@ def _compute_ratio_determinant_part_rank1_update(
 
     # lambda split
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
-        geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
+        geminal_data._lambda_matrix_jnp, indices_or_sections=[geminal_data.orb_num_dn], axis=1
     )
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    # Precompute old AO matrices once.
-    orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts)
-    orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts)
+    # Precompute old AO matrices once. Explicitly upcast to the geminal zone
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
+    # relying on JAX implicit type promotion in the lambda matmuls below.
+    orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts).astype(dtype_jnp)
+    orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts).astype(dtype_jnp)
 
-    # Batched AO for moved electrons (up) -> rows
-    orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat)  # (n_orb_up, G)
-    tmp_up = jnp.dot(orb_up_new_batch.T, lambda_matrix_paired)  # (G, n_orb_dn)
-    row_paired = jnp.dot(tmp_up, orb_matrix_dn_old)  # (G, N_dn)
+    # Batched AO for moved electrons (up) -> rows.
+    #
+    # R3 (associativity): the chain is
+    #   row_paired = (orb_up_new^T @ lambda_paired) @ orb_dn_old.
+    # Naively materialising ``orb_up_new^T @ lambda_paired`` produces a
+    # ``(G, n_orb_dn)`` intermediate that is enormous on the ECP / discretized
+    # kinetic mesh (G ~= walker * Nv * NN or walker * 6 * n_elec, easily 1-100 M
+    # rows for f64 at GH200 scale).  Pre-contracting on the small side instead,
+    #   M_paired := lambda_paired @ orb_dn_old   # (n_orb_up, N_dn)
+    #   row_paired = orb_up_new^T @ M_paired     # (G, N_dn)
+    # turns the big middle gemm into a small ``(n_orb_up, n_orb_dn) x (n_orb_dn, N_dn)``
+    # constant-size product (executed once per walker) followed by a single
+    # ``(G, n_orb_up) x (n_orb_up, N_dn)`` gemm whose output is the final
+    # small ``(G, N_dn)`` row block.  Roughly (n_orb + N) / N FLOPs are saved
+    # and the (G, n_orb) intermediate is eliminated, lifting the gemm AI from
+    # the DRAM-bound regime to ridge.
+    orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat).astype(
+        dtype_jnp
+    )  # (n_orb_up, G)
+    M_paired_up = jnp.dot(lambda_matrix_paired, orb_matrix_dn_old)  # (n_orb_up, N_dn)
+    row_paired = jnp.dot(orb_up_new_batch.T, M_paired_up)  # (G, N_dn)
     row_unpaired = jnp.dot(orb_up_new_batch.T, lambda_matrix_unpaired)  # (G, num_unpaired)
     new_rows_up = jnp.hstack([row_paired, row_unpaired])  # (G, N_up)
 
-    # Batched AO for moved electrons (dn) -> columns
-    orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat)  # (n_orb_dn, G)
-    w_batch = jnp.dot(lambda_matrix_paired, orb_dn_new_batch)  # (n_orb_up, G)
-    cols = jnp.dot(orb_matrix_up_old.T, w_batch)  # (N_up, G)
+    # Batched AO for moved electrons (dn) -> columns.
+    # Same R3 reorder for the dn block:
+    #   cols = orb_up_old^T @ (lambda_paired @ orb_dn_new) -> (orb_up_old^T @ lambda_paired) @ orb_dn_new.
+    # ``M_dn`` has shape ``(N_up, n_orb_dn)`` (small) instead of ``(n_orb_up, G)``.
+    orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat).astype(
+        dtype_jnp
+    )  # (n_orb_dn, G)
+    M_paired_dn = jnp.dot(orb_matrix_up_old.T, lambda_matrix_paired)  # (N_up, n_orb_dn)
+    cols = jnp.dot(M_paired_dn, orb_dn_new_batch)  # (N_up, G)
     new_cols_dn = cols.T  # (G, N_up)
 
     # rank-1 determinant ratios for up-move grids and dn-move grids.
     # Use matrix-matrix contractions first to maximize BLAS/TensorCore utilization,
     # then extract the moved-electron component per grid.
-    up_all_cols = jnp.dot(new_rows_up, A_old_inv)  # (N_grid, N_up)
+    # Cast A_old_inv to the det_ratio zone at the use site (Principle 3b).
+    A_old_inv_z = A_old_inv.astype(dtype_jnp)
+    up_all_cols = jnp.dot(new_rows_up, A_old_inv_z)  # (N_grid, N_up)
     det_ratio_up = jnp.take_along_axis(up_all_cols, idx_up[:, None], axis=1).reshape(-1)
 
-    dn_all_rows = jnp.dot(A_old_inv, new_cols_dn.T).T  # (N_grid, N_up)
+    dn_all_rows = jnp.dot(A_old_inv_z, new_cols_dn.T).T  # (N_grid, N_up)
     det_ratio_dn = jnp.take_along_axis(dn_all_rows, idx_dn[:, None], axis=1).reshape(-1)
 
     # Select per grid based on which spin moved.
@@ -1536,6 +1656,7 @@ def _compute_ratio_determinant_part_split_spin(
     old_r_dn_carts: jax.Array,
     new_r_up_shifted: jax.Array,
     new_r_dn_shifted: jax.Array,
+    det_ratio_state=None,
 ) -> jax.Array:
     r"""Determinant ratio for a block-structured mesh where up and dn electrons move separately.
 
@@ -1553,6 +1674,14 @@ def _compute_ratio_determinant_part_split_spin(
             up electron differs from ``old_r_up_carts`` per config.
         new_r_dn_shifted: Dn-block proposed coords ``(G_dn, N_dn, 3)``.  Exactly one
             dn electron differs from ``old_r_dn_carts`` per config.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or a
+            superset like :class:`Det_streaming_state`) that is consistent
+            with ``(old_r_up_carts, old_r_dn_carts)``. When provided, this
+            function reuses ``state.ao_up``, ``state.ao_dn``,
+            ``state.paired_dn``, and ``state.paired_up_lambda`` to skip the
+            heavy ``compute_orb_api`` calls for the bulk old configuration
+            and the two ``lambda_paired @ ao_*`` precontracts. Pass ``None``
+            (default) for the legacy path used by debug / observation code.
 
     Returns:
         jax.Array: Concatenated determinant ratios ``(G_up + G_dn,)``.
@@ -1567,10 +1696,17 @@ def _compute_ratio_determinant_part_split_spin(
         exclusively for the block-structured non-local ECP grids produced by
         the MCMC loop.
     """
+    # Forward A_old_inv and old/new r_up/dn coords as-is (Principle 3a -- no
+    # parameter rebind). Module-level forwards (compute_orb_api,
+    # _compute_ratio_determinant_part_rank1_update) handle their own use-site
+    # casts. A_old_inv is cast at the use site (Principle 3b) below.
+    dtype_jnp = get_dtype_jnp("det_ratio")
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
 
     # Degenerate cases fall back to the general function on empty slices.
+    # (Slim state plumb is irrelevant here -- those code paths are not in the
+    # production hot loop.)
     if num_up == 0 or num_dn == 0:
         combined_up = jnp.concatenate(
             [new_r_up_shifted, jnp.broadcast_to(old_r_up_carts[None], (new_r_dn_shifted.shape[0], num_up, 3))],
@@ -1585,42 +1721,73 @@ def _compute_ratio_determinant_part_split_spin(
         )
 
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
-        geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
+        geminal_data._lambda_matrix_jnp, indices_or_sections=[geminal_data.orb_num_dn], axis=1
     )
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    # Precompute old AO matrices once.
-    orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts)
-    orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts)
+    if det_ratio_state is None:
+        # Legacy path: evaluate old-side AO matrices and precontracts from scratch.
+        # Explicitly upcast to the det_ratio zone (compute_orb_api may return
+        # ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid relying on JAX
+        # implicit type promotion in the lambda matmuls below.
+        orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts).astype(dtype_jnp)
+        orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts).astype(dtype_jnp)
+        # M_paired_up := lambda_paired @ orb_dn_old   (n_orb_up, N_dn)
+        M_paired_up = jnp.dot(lambda_matrix_paired, orb_matrix_dn_old)
+        # M_paired_dn := orb_up_old.T @ lambda_paired   (N_up, n_orb_dn)
+        M_paired_dn = jnp.dot(orb_matrix_up_old.T, lambda_matrix_paired)
+    else:
+        # Streaming path: reuse cached AO + paired tables maintained by the
+        # walker. Cast at use site to the det_ratio zone (Principle 3b).
+        # state.paired_dn and state.paired_up_lambda are mathematically equal
+        # to lambda_paired @ ao_dn_old and ao_up_old.T @ lambda_paired
+        # respectively (refreshed on every accepted single-electron move).
+        M_paired_up = jnp.asarray(det_ratio_state.paired_dn, dtype=dtype_jnp)
+        M_paired_dn = jnp.asarray(det_ratio_state.paired_up_lambda, dtype=dtype_jnp)
 
-    # ── UP BLOCK: up electron moved, dn unchanged ──────────────────────────────
-    g_up = new_r_up_shifted.shape[0]
+    # --- UP BLOCK: up electron moved, dn unchanged -----------------------------
     delta_up = new_r_up_shifted - old_r_up_carts  # (G_up, N_up, 3)
     moved_up_mask = jnp.any(delta_up != 0.0, axis=2)  # (G_up, N_up)
     idx_up = jnp.argmax(moved_up_mask.astype(jnp.int32), axis=1)  # (G_up,)
     r_up_new_flat = jnp.take_along_axis(new_r_up_shifted, idx_up[:, None, None], axis=1).reshape(-1, 3)
 
     # Only evaluate up-spin MOs for the moved electron positions.
-    orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat)  # (n_orb_up, G_up)
-    tmp_up = jnp.dot(orb_up_new_batch.T, lambda_matrix_paired)  # (G_up, n_orb_dn)
-    row_paired = jnp.dot(tmp_up, orb_matrix_dn_old)  # (G_up, N_dn)
+    #
+    # R3 (associativity): pre-contract on the small side
+    #   M_paired := lambda_paired @ orb_dn_old   # (n_orb_up, N_dn)
+    # so the chain ``(orb_up_new^T @ lambda_paired) @ orb_dn_old`` becomes
+    #   row_paired = orb_up_new^T @ M_paired     # (G_up, N_dn)
+    # eliminating the (G_up, n_orb_dn) middle intermediate. See the matching
+    # comment in ``_compute_ratio_determinant_part_rank1_update`` for the
+    # GH200 motivation (DRAM-bound pattern C).
+    orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat).astype(
+        dtype_jnp
+    )  # (n_orb_up, G_up)
+    row_paired = jnp.dot(orb_up_new_batch.T, M_paired_up)  # (G_up, N_dn)
     row_unpaired = jnp.dot(orb_up_new_batch.T, lambda_matrix_unpaired)  # (G_up, num_unpaired)
     new_rows_up = jnp.hstack([row_paired, row_unpaired])  # (G_up, N_up)
 
-    A_col_for_up = jnp.take(A_old_inv, idx_up, axis=1).T  # (G_up, N_up)
+    # Cast A_old_inv to the det_ratio zone at the use site (Principle 3b).
+    A_old_inv_z = A_old_inv.astype(dtype_jnp)
+    A_col_for_up = jnp.take(A_old_inv_z, idx_up, axis=1).T  # (G_up, N_up)
     det_ratio_up_block = jnp.sum(new_rows_up * A_col_for_up, axis=1)  # (G_up,)
 
-    # ── DN BLOCK: dn electron moved, up unchanged ──────────────────────────────
+    # --- DN BLOCK: dn electron moved, up unchanged -----------------------------
     delta_dn = new_r_dn_shifted - old_r_dn_carts  # (G_dn, N_dn, 3)
     moved_dn_mask = jnp.any(delta_dn != 0.0, axis=2)  # (G_dn, N_dn)
     idx_dn = jnp.argmax(moved_dn_mask.astype(jnp.int32), axis=1)  # (G_dn,)
     r_dn_new_flat = jnp.take_along_axis(new_r_dn_shifted, idx_dn[:, None, None], axis=1).reshape(-1, 3)
 
     # Only evaluate dn-spin MOs for the moved electron positions.
-    orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat)  # (n_orb_dn, G_dn)
-    w_batch = jnp.dot(lambda_matrix_paired, orb_dn_new_batch)  # (n_orb_up, G_dn)
-    new_cols_dn = jnp.dot(orb_matrix_up_old.T, w_batch).T  # (G_dn, N_up)
+    # R3 (associativity): pre-contract ``M_dn := orb_up_old^T @ lambda_paired``
+    # (N_up, n_orb_dn), then ``cols.T = orb_dn_new^T @ M_dn^T = (M_dn @ orb_dn_new).T``.
+    orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat).astype(
+        dtype_jnp
+    )  # (n_orb_dn, G_dn)
+    new_cols_dn = jnp.dot(M_paired_dn, orb_dn_new_batch).T  # (G_dn, N_up)
 
-    A_row_for_dn = jnp.take(A_old_inv, idx_dn, axis=0)  # (G_dn, N_up)
+    A_row_for_dn = jnp.take(A_old_inv_z, idx_dn, axis=0)  # (G_dn, N_up)
     det_ratio_dn_block = jnp.sum(A_row_for_dn * new_cols_dn, axis=1)  # (G_dn,)
 
     return jnp.concatenate([det_ratio_up_block, det_ratio_dn_block])
@@ -1634,6 +1801,11 @@ def _compute_ratio_determinant_part_debug(
     new_r_dn_carts_arr: npt.NDArray[np.float64],
 ) -> npt.NDArray:
     """See _api method."""
+    dtype_np = get_dtype_np("det_ratio")
+    old_r_up_carts = np.asarray(old_r_up_carts, dtype=dtype_np)
+    old_r_dn_carts = np.asarray(old_r_dn_carts, dtype=dtype_np)
+    new_r_up_carts_arr = np.asarray(new_r_up_carts_arr, dtype=dtype_np)
+    new_r_dn_carts_arr = np.asarray(new_r_dn_carts_arr, dtype=dtype_np)
     return np.array(
         [
             compute_det_geminal_all_elements(geminal_data, new_r_up_carts, new_r_dn_carts)
@@ -1710,30 +1882,42 @@ def compute_grads_and_laplacian_ln_Det(
             - Laplacians for spin-up electrons with shape ``(N_up,)``.
             - Laplacians for spin-down electrons with shape ``(N_dn,)``.
     """
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+    # NOTE: do not pre-cast r_*_carts. They are forwarded to
+    # ``compute_geminal_all_elements`` and ``compute_orb_*_api``; the AO
+    # kernels reconstruct ``r - R`` in float64 internally and a wrapper-level
+    # downcast would defeat that guard. Arithmetic in this function uses
+    # ``ao_matrix_*`` / ``lambda_matrix_*`` (cast at their own use sites).
     # Compute G_inv via SVD pseudoinverse (numerically stable, avoids LU NaN).
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
     _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
     # Use conservative threshold to prevent G^{-2} and G^{-3} terms in the
     # backward pass from diverging. Standard numpy.linalg.pinv uses max(M,N)*eps,
     # but for de_L/dc (which involves G_inv^2 in the chain rule) we need a larger
     # safety margin to avoid Inf/NaN in the gradient. EPS_rcond_SVD is set in setting.py
     # to handle near-singular G while preserving well-conditioned singular values.
-    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+    eps_rcond = get_eps("rcond_svd", dtype_jnp)
+    _s_inv = jnp.where(_s > eps_rcond * _s[0], jnp.asarray(1.0, dtype=dtype_jnp) / _s, jnp.asarray(0.0, dtype=dtype_jnp))
     geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
-
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_up_spin, r_up_carts
+    # Single fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap and matches the ``_fast`` / ``_grads_lap_body`` paths so all
+    # three produce bit-identical AO outputs. Cast val to det_grad_lap zone
+    # (fp64) at the use site below -- required by Principle 3b since the kernel
+    # zone for downstream einsums is det_grad_lap.
+    ao_matrix_up, ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z, ao_matrix_laplacian_up = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts
+    ao_matrix_dn, ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z, ao_matrix_laplacian_dn = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_matrix_up = ao_matrix_up.astype(dtype_jnp)
+    ao_matrix_dn = ao_matrix_dn.astype(dtype_jnp)
 
     ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
     ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
@@ -1748,7 +1932,7 @@ def compute_grads_and_laplacian_ln_Det(
     geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
     geminal_grad_dn_unpaired = jnp.zeros(
         (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
-        dtype=geminal_grad_dn_paired.dtype,
+        dtype=dtype_jnp,
     )
     geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
 
@@ -1759,7 +1943,7 @@ def compute_grads_and_laplacian_ln_Det(
     geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
         [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
-        dtype=geminal_laplacian_dn_paired.dtype,
+        dtype=dtype_jnp,
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
@@ -1801,19 +1985,27 @@ def _grads_lap_body(
     passed to ``jax.vjp`` inside the custom VJP backward pass without creating
     a dependency on the public fast function.
     """
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+    # r_*_carts are only forwarded; do not pre-cast (see the public function
+    # ``compute_grads_and_laplacian_ln_Det`` for the rationale).
+    geminal_inverse = jnp.asarray(geminal_inverse, dtype=dtype_jnp)
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
-
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_up_spin, r_up_carts
+    # Explicitly upcast AO/MO forward values to the kinetic zone
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
+    # relying on JAX implicit type promotion in the lambda/gradient matmuls below.
+    # Single fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap.
+    ao_matrix_up, ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z, ao_matrix_laplacian_up = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts
+    ao_matrix_dn, ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z, ao_matrix_laplacian_dn = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_matrix_up = ao_matrix_up.astype(dtype_jnp)
+    ao_matrix_dn = ao_matrix_dn.astype(dtype_jnp)
 
     ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
     ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
@@ -1828,7 +2020,7 @@ def _grads_lap_body(
     geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
     geminal_grad_dn_unpaired = jnp.zeros(
         (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
-        dtype=geminal_grad_dn_paired.dtype,
+        dtype=dtype_jnp,
     )
     geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
 
@@ -1839,7 +2031,7 @@ def _grads_lap_body(
     geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
         [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
-        dtype=geminal_laplacian_dn_paired.dtype,
+        dtype=dtype_jnp,
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
@@ -1874,10 +2066,15 @@ def _grads_lap_fwd(
     r_dn_carts: jax.Array,
 ):
     """Forward pass: compute stable G_inv and primal outputs."""
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+    # r_*_carts are only forwarded; do not pre-cast (see
+    # ``compute_grads_and_laplacian_ln_Det`` for the rationale).
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    G = jnp.asarray(G, dtype=dtype_jnp)
     _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
     # Use same conservative threshold as in compute_grads_and_laplacian_ln_Det
-    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+    eps_rcond = get_eps("rcond_svd", dtype_jnp)
+    _s_inv = jnp.where(_s > eps_rcond * _s[0], jnp.asarray(1.0, dtype=dtype_jnp) / _s, jnp.asarray(0.0, dtype=dtype_jnp))
     G_inv_stable = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
     primals = _grads_lap_body(geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
     return primals, (geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
@@ -1904,12 +2101,14 @@ def _grads_lap_bwd(res, g):
         Step 2 uses ``d(G^{-1}) = -G^{-1} dG G^{-1}``, which is exact only
         when ``G_inv_stable`` is the true inverse.  If ``EPS_rcond_SVD`` is
         large enough to zero out non-negligible singular values, this identity
-        becomes approximate — the full pseudoinverse derivative has additional
+        becomes approximate -- the full pseudoinverse derivative has additional
         projection terms (see the docstring of
         :func:`compute_grads_and_laplacian_ln_Det` for details).  Keep
         ``EPS_rcond_SVD`` very small (e.g. ``1e-20``) to avoid this.
     """
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
     geminal_data, r_up_carts, r_dn_carts, G_inv_stable = res
+    G_inv_stable = jnp.asarray(G_inv_stable, dtype=dtype_jnp)
 
     # Step 1: differentiate _grads_lap_body w.r.t. all args.
     # This gives direct gradients (AO path) and G_inv_bar (cotangent for G_inv).
@@ -1927,7 +2126,16 @@ def _grads_lap_bwd(res, g):
     G_bar_from_inv = -(G_inv_stable.T @ G_inv_bar @ G_inv_stable.T)
 
     # Step 3: propagate G_bar back through G = compute_geminal_all_elements(...).
+    # ``vjp_fn2`` is built around the un-cast call, whose primal output dtype is
+    # determined by (r_up_carts, r_dn_carts) (kinetic zone). In mixed precision the
+    # G_inv_bar / G_inv_stable arithmetic can promote ``G_bar_from_inv`` to a wider
+    # dtype, so cast back to the primal output dtype before invoking ``vjp_fn2``.
+    # The vjp_fn2 cotangent dtype must match the primal output dtype of
+    # compute_geminal_all_elements (det_eval zone). Use get_dtype_jnp("det_eval")
+    # explicitly rather than borrowing geminal_primal_out.dtype, to keep the
+    # cast target source-visible per the consumer-zone principle.
     _, vjp_fn2 = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
+    G_bar_from_inv = jnp.asarray(G_bar_from_inv, dtype=get_dtype_jnp("det_eval"))
     d_geminal_inv, d_r_up_inv, d_r_dn_inv = vjp_fn2(G_bar_from_inv)
 
     # Total: sum both contributions.
@@ -1966,26 +2174,35 @@ def compute_grads_and_laplacian_ln_Det_fast(
         ``geminal_inverse`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
         exactly at the supplied electron positions.  This is only guaranteed when
         the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialized LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse -- the pattern
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect kinetic energy.
     """
     if geminal_inverse is None:
         raise ValueError("geminal_inverse must be provided for fast evaluation")
 
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+    # r_*_carts and geminal_inverse are only forwarded; do not pre-cast
+    # (Principle 3a -- no parameter rebind). geminal_inverse is cast to the
+    # det_grad_lap zone at each einsum use site below (Principle 3b).
 
-    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
 
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_up_spin, r_up_carts
+    # Explicitly upcast AO/MO forward values to the kinetic zone
+    # (compute_orb_api may return ao_eval / mo_eval dtype, e.g. fp32 for AGP) to avoid
+    # relying on JAX implicit type promotion in the lambda/gradient matmuls below.
+    # Single fused dispatch shares the heavy block (exp / poly / S_l_m) across
+    # val/grad/lap.
+    ao_matrix_up, ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z, ao_matrix_laplacian_up = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts
+    ao_matrix_dn, ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z, ao_matrix_laplacian_dn = (
+        geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    ao_matrix_up = ao_matrix_up.astype(dtype_jnp)
+    ao_matrix_dn = ao_matrix_dn.astype(dtype_jnp)
 
     ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
     ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
@@ -2000,7 +2217,7 @@ def compute_grads_and_laplacian_ln_Det_fast(
     geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
     geminal_grad_dn_unpaired = jnp.zeros(
         (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
-        dtype=geminal_grad_dn_paired.dtype,
+        dtype=dtype_jnp,
     )
     geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
 
@@ -2011,12 +2228,14 @@ def compute_grads_and_laplacian_ln_Det_fast(
     geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
         [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
-        dtype=geminal_laplacian_dn_paired.dtype,
+        dtype=dtype_jnp,
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, geminal_inverse)
-    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", geminal_inverse, geminal_grad_dn)
+    # Cast geminal_inverse to the det_grad_lap zone at the use site (Principle 3b).
+    G_inv = geminal_inverse.astype(dtype_jnp)
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, G_inv)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", G_inv, geminal_grad_dn)
 
     grad_ln_D_up = grad_ln_D_up_stack.T
     grad_ln_D_dn = grad_ln_D_dn_stack.T
@@ -2026,11 +2245,11 @@ def compute_grads_and_laplacian_ln_Det_fast(
 
     lap_ln_D_up = -(
         grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
-    ) + jnp.einsum("ij,ji->i", geminal_laplacian_up, geminal_inverse)
+    ) + jnp.einsum("ij,ji->i", geminal_laplacian_up, G_inv)
 
     lap_ln_D_dn = -(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
-    ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
+    ) + jnp.einsum("ij,ji->i", G_inv, geminal_laplacian_dn)
 
     # Trim to n_dn for open-shell (N_up > N_dn) systems
     n_dn = geminal_data.num_electron_dn
@@ -2040,12 +2259,602 @@ def compute_grads_and_laplacian_ln_Det_fast(
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
+# ---------------------------------------------------------------------------
+# Streaming variant of ``compute_grads_and_laplacian_ln_Det_fast``.
+#
+# Maintains (a) AO/grad/lap tables, (b) lambda_p x ao_dn intermediates, and
+# (c) the full geminal grad/lap matrices, all consistent with the current
+# (r_up, r_dn). A single-electron move advances them in O(n_ao^2 + n_ao*N_e
+# + N_e^2) per call, vs. O(n_ao^2*N_e + n_ao*N_e^2) for fresh recompute.
+# ---------------------------------------------------------------------------
+
+
+@struct.dataclass
+class Det_streaming_state:
+    """Auxiliary tables required to evaluate ``nablaln|Det|`` / ``nabla^2ln|Det|``
+    incrementally under single-electron moves.
+
+    The field ``paired_up_lambda`` makes this state a structural superset of
+    :class:`Det_ratio_streaming_state`, so it can be consumed directly by
+    ratio kernels (``_compute_ratio_determinant_part_split_spin`` and
+    friends) via duck-typing. The four "ratio fields" (``ao_up``,
+    ``ao_dn``, ``paired_dn``, ``paired_up_lambda``) carry the same invariants
+    as the slim state.
+    """
+
+    ao_up: jax.Array
+    ao_dn: jax.Array
+    ao_up_grads: jax.Array
+    ao_dn_grads: jax.Array
+    ao_up_lap: jax.Array
+    ao_dn_lap: jax.Array
+    paired_dn: jax.Array
+    paired_dn_grads: jax.Array
+    paired_dn_lap: jax.Array
+    paired_up_lambda: jax.Array  # (N_up, n_ao_dn) = ao_up.T @ lambda_paired
+    geminal_grad_up: jax.Array
+    geminal_grad_dn: jax.Array
+    geminal_lap_up: jax.Array
+    geminal_lap_dn: jax.Array
+    grad_ln_D_up: jax.Array
+    grad_ln_D_dn: jax.Array
+    lap_ln_D_up: jax.Array
+    lap_ln_D_dn: jax.Array
+
+
+def _det_streaming_finalize(
+    geminal_grad_up: jax.Array,
+    geminal_grad_dn: jax.Array,
+    geminal_lap_up: jax.Array,
+    geminal_lap_dn: jax.Array,
+    G_inv: jax.Array,
+    n_dn: int,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Phase 3 of the fast path: contract ``geminal_*`` with ``G_inv``.
+
+    Mirrors the tail of ``compute_grads_and_laplacian_ln_Det_fast`` so the
+    streaming and fresh paths produce bit-comparable results when fed
+    identical ``geminal_*`` and ``G_inv``.
+    """
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, G_inv)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", G_inv, geminal_grad_dn)
+
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn_full = grad_ln_D_dn_stack.T
+
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
+
+    lap_ln_D_up = -(
+        grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
+    ) + jnp.einsum("ij,ji->i", geminal_lap_up, G_inv)
+    lap_ln_D_dn_full = -(
+        grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
+    ) + jnp.einsum("ij,ji->i", G_inv, geminal_lap_dn)
+
+    grad_ln_D_dn = grad_ln_D_dn_full[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn_full[:n_dn]
+    return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
+
+
+@jit
+def _init_grads_laplacian_ln_Det_streaming_state(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inverse: jax.Array,
+) -> Det_streaming_state:
+    """Initialize the det streaming state at ``(r_up, r_dn)``.
+
+    Cost is dominated by the same ``lambda_p x ao_dn`` and AO einsums as
+    :func:`compute_grads_and_laplacian_ln_Det_fast`; the streaming path
+    additionally retains the Phase-1/2 intermediates needed by the rank-1
+    advance.
+    """
+    if geminal_inverse is None:
+        raise ValueError("geminal_inverse must be provided for streaming init")
+
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
+
+    # Phase 0: AO/grad/lap evaluation (forward r_*_carts unchanged so the
+    # underlying kernels reconstruct r-R in fp64 -- Principle 3b). Single fused
+    # dispatch shares the heavy block (exp / poly / S_l_m) across val/grad/lap.
+    ao_up, ao_up_gx, ao_up_gy, ao_up_gz, ao_up_lap = geminal_data.compute_orb_value_grad_lap_api(
+        geminal_data.orb_data_up_spin, r_up_carts
+    )
+    ao_dn, ao_dn_gx, ao_dn_gy, ao_dn_gz, ao_dn_lap = geminal_data.compute_orb_value_grad_lap_api(
+        geminal_data.orb_data_dn_spin, r_dn_carts
+    )
+    ao_up = ao_up.astype(dtype_jnp)
+    ao_dn = ao_dn.astype(dtype_jnp)
+    ao_up_grads = jnp.asarray(jnp.stack([ao_up_gx, ao_up_gy, ao_up_gz], axis=0), dtype=dtype_jnp)
+    ao_dn_grads = jnp.asarray(jnp.stack([ao_dn_gx, ao_dn_gy, ao_dn_gz], axis=0), dtype=dtype_jnp)
+    ao_up_lap = jnp.asarray(ao_up_lap, dtype=dtype_jnp)
+    ao_dn_lap = jnp.asarray(ao_dn_lap, dtype=dtype_jnp)
+
+    # Phase 1: lambda_p x ao_dn family (depends on dn only).
+    paired_dn = lambda_matrix_paired @ ao_dn
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
+    paired_dn_lap = lambda_matrix_paired @ ao_dn_lap
+
+    # ao_up.T @ lambda_paired -- the dn-block precontract used by ratio
+    # kernels. Refreshed (not rank-1 advanced) on up-move below; unchanged
+    # on dn-move because it depends on ao_up only.
+    paired_up_lambda = ao_up.T @ lambda_matrix_paired
+
+    # Phase 2: full geminal grad/lap matrices (paired || unpaired hstack'd).
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
+
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=dtype_jnp,
+    )
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
+
+    geminal_lap_up_paired = ao_up_lap.T @ paired_dn
+    geminal_lap_up_unpaired = ao_up_lap.T @ lambda_matrix_unpaired
+    geminal_lap_up = jnp.hstack([geminal_lap_up_paired, geminal_lap_up_unpaired])
+
+    geminal_lap_dn_paired = ao_up.T @ paired_dn_lap
+    geminal_lap_dn_unpaired = jnp.zeros(
+        (geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=dtype_jnp,
+    )
+    geminal_lap_dn = jnp.hstack([geminal_lap_dn_paired, geminal_lap_dn_unpaired])
+
+    # Phase 3: contract with G_inv to expose per-electron grad/lap.
+    G_inv = geminal_inverse.astype(dtype_jnp)
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _det_streaming_finalize(
+        geminal_grad_up,
+        geminal_grad_dn,
+        geminal_lap_up,
+        geminal_lap_dn,
+        G_inv,
+        geminal_data.num_electron_dn,
+    )
+
+    return Det_streaming_state(
+        ao_up=ao_up,
+        ao_dn=ao_dn,
+        ao_up_grads=ao_up_grads,
+        ao_dn_grads=ao_dn_grads,
+        ao_up_lap=ao_up_lap,
+        ao_dn_lap=ao_dn_lap,
+        paired_dn=paired_dn,
+        paired_dn_grads=paired_dn_grads,
+        paired_dn_lap=paired_dn_lap,
+        paired_up_lambda=paired_up_lambda,
+        geminal_grad_up=geminal_grad_up,
+        geminal_grad_dn=geminal_grad_dn,
+        geminal_lap_up=geminal_lap_up,
+        geminal_lap_dn=geminal_lap_dn,
+        grad_ln_D_up=grad_ln_D_up,
+        grad_ln_D_dn=grad_ln_D_dn,
+        lap_ln_D_up=lap_ln_D_up,
+        lap_ln_D_dn=lap_ln_D_dn,
+    )
+
+
+@jit
+def _advance_grads_laplacian_ln_Det_streaming_state(
+    geminal_data: Geminal_data,
+    state: Det_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+    A_new_inv: jax.Array,
+) -> Det_streaming_state:
+    """Advance the det streaming state after a single-electron move.
+
+    The new ``(r_up_carts_new, r_dn_carts_new)`` differ from the configuration
+    represented by ``state`` in *exactly one* electron position, identified by
+    ``(moved_spin_is_up, moved_index)``. ``A_new_inv`` is the Sherman-Morrison
+    inverse of ``G(r_up_new, r_dn_new)`` provided by the caller (typically
+    ``_body_step_core`` in ``jqmc_gfmc.py``).
+
+    Cost: ``O(n_ao^2 + n_ao * N_e + N_e^2)`` per call.
+    """
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
+
+    num_up = state.ao_up.shape[1]
+    num_dn = state.ao_dn.shape[1]
+    G_inv = A_new_inv.astype(dtype_jnp)
+
+    def _branch_up(_):
+        # --- Phase 0: single-point AO eval at r_up_new[k] -----------------
+        # Single fused dispatch shares the heavy block (exp / poly / S_l_m)
+        # across val/grad/lap -- replaces three separate compute_orb_* calls.
+        r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
+        ao_v, gx, gy, gz, ao_lap = geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_up_spin, r_new)
+        ao_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)  # (n_ao_up,)
+        grad_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=0), dtype=dtype_jnp)  # (3, n_ao_up)
+        lap_col = jnp.asarray(ao_lap[:, 0], dtype=dtype_jnp)  # (n_ao_up,)
+
+        new_ao_up = state.ao_up.at[:, moved_index].set(ao_col)
+        new_ao_up_grads = state.ao_up_grads.at[:, :, moved_index].set(grad_col)
+        new_ao_up_lap = state.ao_up_lap.at[:, moved_index].set(lap_col)
+
+        # --- paired_up_lambda row: ao_col @ lambda_paired -> (n_ao_dn,)
+        # depends on ao_up only, so on dn-move it stays unchanged.
+        new_paired_up_lambda_row = jnp.dot(ao_col, lambda_matrix_paired)
+        new_paired_up_lambda = state.paired_up_lambda.at[moved_index, :].set(new_paired_up_lambda_row)
+
+        # --- Phase 2: row k of geminal_* (paired || unpaired) --------------
+        # row of geminal_grad_up: einsum("ga,aj->gj", grad_col, paired_dn) ||
+        #                        einsum("ga,ak->gk", grad_col, lambda_u)
+        row_grad_up_paired = jnp.einsum("ga,aj->gj", grad_col, state.paired_dn)
+        row_grad_up_unpaired = jnp.einsum("ga,ak->gk", grad_col, lambda_matrix_unpaired)
+        row_grad_up = jnp.concatenate([row_grad_up_paired, row_grad_up_unpaired], axis=1)
+        new_geminal_grad_up = state.geminal_grad_up.at[:, moved_index, :].set(row_grad_up)
+
+        # row of geminal_grad_dn: paired = einsum("a,gaj->gj", ao_col, paired_dn_grads),
+        # unpaired = zeros.
+        row_grad_dn_paired = jnp.einsum("a,gaj->gj", ao_col, state.paired_dn_grads)
+        row_grad_dn_unpaired = jnp.zeros((3, num_up - num_dn), dtype=dtype_jnp)
+        row_grad_dn = jnp.concatenate([row_grad_dn_paired, row_grad_dn_unpaired], axis=1)
+        new_geminal_grad_dn = state.geminal_grad_dn.at[:, moved_index, :].set(row_grad_dn)
+
+        # row of geminal_lap_up: lap_col @ paired_dn || lap_col @ lambda_u
+        row_lap_up_paired = lap_col @ state.paired_dn
+        row_lap_up_unpaired = lap_col @ lambda_matrix_unpaired
+        row_lap_up = jnp.concatenate([row_lap_up_paired, row_lap_up_unpaired], axis=0)
+        new_geminal_lap_up = state.geminal_lap_up.at[moved_index, :].set(row_lap_up)
+
+        # row of geminal_lap_dn: ao_col @ paired_dn_lap || zeros
+        row_lap_dn_paired = ao_col @ state.paired_dn_lap
+        row_lap_dn_unpaired = jnp.zeros((num_up - num_dn,), dtype=dtype_jnp)
+        row_lap_dn = jnp.concatenate([row_lap_dn_paired, row_lap_dn_unpaired], axis=0)
+        new_geminal_lap_dn = state.geminal_lap_dn.at[moved_index, :].set(row_lap_dn)
+
+        grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _det_streaming_finalize(
+            new_geminal_grad_up,
+            new_geminal_grad_dn,
+            new_geminal_lap_up,
+            new_geminal_lap_dn,
+            G_inv,
+            num_dn,
+        )
+
+        return state.replace(
+            ao_up=new_ao_up,
+            ao_up_grads=new_ao_up_grads,
+            ao_up_lap=new_ao_up_lap,
+            paired_up_lambda=new_paired_up_lambda,
+            geminal_grad_up=new_geminal_grad_up,
+            geminal_grad_dn=new_geminal_grad_dn,
+            geminal_lap_up=new_geminal_lap_up,
+            geminal_lap_dn=new_geminal_lap_dn,
+            grad_ln_D_up=grad_ln_D_up,
+            grad_ln_D_dn=grad_ln_D_dn,
+            lap_ln_D_up=lap_ln_D_up,
+            lap_ln_D_dn=lap_ln_D_dn,
+        )
+
+    def _branch_dn(_):
+        # --- Phase 0: single-point AO eval at r_dn_new[k] -----------------
+        # Single fused dispatch (see _branch_up).
+        r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
+        ao_v, gx, gy, gz, ao_lap = geminal_data.compute_orb_value_grad_lap_api(geminal_data.orb_data_dn_spin, r_new)
+        ao_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)  # (n_ao_dn,)
+        grad_col = jnp.asarray(jnp.stack([gx[:, 0], gy[:, 0], gz[:, 0]], axis=0), dtype=dtype_jnp)  # (3, n_ao_dn)
+        lap_col = jnp.asarray(ao_lap[:, 0], dtype=dtype_jnp)  # (n_ao_dn,)
+
+        new_ao_dn = state.ao_dn.at[:, moved_index].set(ao_col)
+        new_ao_dn_grads = state.ao_dn_grads.at[:, :, moved_index].set(grad_col)
+        new_ao_dn_lap = state.ao_dn_lap.at[:, moved_index].set(lap_col)
+
+        # --- Phase 1: column k of paired_dn family ------------------------
+        new_paired_dn_col = lambda_matrix_paired @ ao_col  # (n_ao_up,)
+        new_paired_dn = state.paired_dn.at[:, moved_index].set(new_paired_dn_col)
+
+        new_paired_dn_grads_col = jnp.einsum("ab,gb->ga", lambda_matrix_paired, grad_col)  # (3, n_ao_up)
+        new_paired_dn_grads = state.paired_dn_grads.at[:, :, moved_index].set(new_paired_dn_grads_col)
+
+        new_paired_dn_lap_col = lambda_matrix_paired @ lap_col  # (n_ao_up,)
+        new_paired_dn_lap = state.paired_dn_lap.at[:, moved_index].set(new_paired_dn_lap_col)
+
+        # --- Phase 2: column k of geminal_* (paired block only; unpaired
+        #              columns are independent of dn). --------------------
+        # geminal_grad_up[:, :, k] paired-block update:
+        col_grad_up = jnp.einsum("gia,a->gi", jnp.swapaxes(state.ao_up_grads, 1, 2), new_paired_dn_col)
+        new_geminal_grad_up = state.geminal_grad_up.at[:, :, moved_index].set(col_grad_up)
+
+        # geminal_grad_dn[:, :, k] paired-block update:
+        col_grad_dn = jnp.einsum("ai,ga->gi", state.ao_up, new_paired_dn_grads_col)
+        new_geminal_grad_dn = state.geminal_grad_dn.at[:, :, moved_index].set(col_grad_dn)
+
+        # geminal_lap_up[:, k] paired-block update:
+        col_lap_up = state.ao_up_lap.T @ new_paired_dn_col
+        new_geminal_lap_up = state.geminal_lap_up.at[:, moved_index].set(col_lap_up)
+
+        # geminal_lap_dn[:, k] paired-block update:
+        col_lap_dn = state.ao_up.T @ new_paired_dn_lap_col
+        new_geminal_lap_dn = state.geminal_lap_dn.at[:, moved_index].set(col_lap_dn)
+
+        grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _det_streaming_finalize(
+            new_geminal_grad_up,
+            new_geminal_grad_dn,
+            new_geminal_lap_up,
+            new_geminal_lap_dn,
+            G_inv,
+            num_dn,
+        )
+
+        return state.replace(
+            ao_dn=new_ao_dn,
+            ao_dn_grads=new_ao_dn_grads,
+            ao_dn_lap=new_ao_dn_lap,
+            paired_dn=new_paired_dn,
+            paired_dn_grads=new_paired_dn_grads,
+            paired_dn_lap=new_paired_dn_lap,
+            geminal_grad_up=new_geminal_grad_up,
+            geminal_grad_dn=new_geminal_grad_dn,
+            geminal_lap_up=new_geminal_lap_up,
+            geminal_lap_dn=new_geminal_lap_dn,
+            grad_ln_D_up=grad_ln_D_up,
+            grad_ln_D_dn=grad_ln_D_dn,
+            lap_ln_D_up=lap_ln_D_up,
+            lap_ln_D_dn=lap_ln_D_dn,
+        )
+
+    # Edge case: zero-electron spin sectors collapse the cond.
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
+
+
+# ---------------------------------------------------------------------------
+# Det_ratio_streaming_state -- slim, value-only streaming state for ratio
+# kernels (MCMC walk body, GFMC inv-update, LRDMC mesh ratio kernels).
+#
+# Compared with Det_streaming_state above, this slim variant carries only
+# the four fields needed for ratio computation; no grad/lap fields.
+#
+# Invariants maintained at every accepted single-electron move:
+#     ao_up            == compute_orb_api(orb_data_up_spin, r_up_carts)
+#     ao_dn            == compute_orb_api(orb_data_dn_spin, r_dn_carts)
+#     paired_dn        == lambda_matrix_paired @ ao_dn
+#     paired_up_lambda == ao_up.T @ lambda_matrix_paired
+#
+# All four fields are *refreshed* (not rank-1 advanced) on accept: when an
+# electron moves, the corresponding column or row is recomputed from the
+# fresh AO at the new position. This means drift accumulation does not
+# occur in the slim state itself.
+# ---------------------------------------------------------------------------
+
+
+@struct.dataclass
+class Det_ratio_streaming_state:
+    """Value-only AO + paired tables for ratio kernels.
+
+    Fields:
+        ao_up: ``(n_ao_up, N_up)`` -- per-electron AO evaluations for up spin.
+        ao_dn: ``(n_ao_dn, N_dn)`` -- per-electron AO evaluations for dn spin.
+        paired_dn: ``(n_ao_up, N_dn)`` -- precomputed ``lambda_paired @ ao_dn``.
+        paired_up_lambda: ``(N_up, n_ao_dn)`` -- precomputed ``ao_up.T @ lambda_paired``.
+    """
+
+    ao_up: jax.Array
+    ao_dn: jax.Array
+    paired_dn: jax.Array
+    paired_up_lambda: jax.Array
+
+
+@jit
+def _init_det_ratio_streaming_state(
+    geminal_data: "Geminal_data",
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> Det_ratio_streaming_state:
+    """Initialize the slim ratio streaming state at ``(r_up_carts, r_dn_carts)``.
+
+    Performs one full AO evaluation per spin and two ``(n_ao, n_ao) @ (n_ao, N_e)``
+    matmuls. Subsequent advances refresh only one column/row per accepted
+    single-electron move.
+    """
+    # Storage zone: det_grad_lap (matches existing Det_streaming_state and
+    # is fp64 in both full/mixed modes).
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+
+    lambda_matrix_paired, _lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+
+    # Forward r_up/dn_carts as-is (Principle 3a). compute_orb_api handles
+    # its own use-site casts.
+    ao_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts).astype(dtype_jnp)
+    ao_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts).astype(dtype_jnp)
+
+    paired_dn = jnp.dot(lambda_matrix_paired, ao_dn)
+    paired_up_lambda = jnp.dot(ao_up.T, lambda_matrix_paired)
+
+    return Det_ratio_streaming_state(
+        ao_up=ao_up,
+        ao_dn=ao_dn,
+        paired_dn=paired_dn,
+        paired_up_lambda=paired_up_lambda,
+    )
+
+
+@jit
+def _advance_det_ratio_streaming_state(
+    geminal_data: "Geminal_data",
+    state: Det_ratio_streaming_state,
+    moved_spin_is_up: jax.Array,
+    moved_index: jax.Array,
+    r_up_carts_new: jax.Array,
+    r_dn_carts_new: jax.Array,
+) -> Det_ratio_streaming_state:
+    """Advance the slim ratio streaming state after a single-electron move.
+
+    The new ``(r_up_carts_new, r_dn_carts_new)`` differ from the configuration
+    represented by ``state`` in *exactly one* electron position, identified by
+    ``(moved_spin_is_up, moved_index)``.
+
+    On up-move: refresh ``ao_up[:, k]`` and ``paired_up_lambda[k, :]``.
+        ``paired_dn`` is unchanged because it depends on ``ao_dn`` only.
+    On dn-move: refresh ``ao_dn[:, k]`` and ``paired_dn[:, k]``.
+        ``paired_up_lambda`` is unchanged because it depends on ``ao_up`` only.
+
+    Cost: O(n_ao + n_ao^2) per call -- one single-electron AO eval plus one
+    ``(n_ao,) @ (n_ao, n_ao)`` matvec.
+    """
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+
+    lambda_matrix_paired, _lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_paired = jnp.asarray(lambda_matrix_paired, dtype=dtype_jnp)
+
+    def _branch_up(_):
+        # Single-electron AO eval at the new up position.
+        r_new = jnp.expand_dims(r_up_carts_new[moved_index], axis=0)  # (1, 3)
+        ao_v = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_new)
+        ao_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)  # (n_ao_up,)
+
+        new_ao_up = state.ao_up.at[:, moved_index].set(ao_col)
+        # paired_up_lambda[k, :] = ao_col @ lambda_paired   (n_ao_dn,)
+        new_paired_up_lambda_row = jnp.dot(ao_col, lambda_matrix_paired)
+        new_paired_up_lambda = state.paired_up_lambda.at[moved_index, :].set(new_paired_up_lambda_row)
+        # paired_dn unchanged (depends on ao_dn only).
+        return state.replace(
+            ao_up=new_ao_up,
+            paired_up_lambda=new_paired_up_lambda,
+        )
+
+    def _branch_dn(_):
+        # Single-electron AO eval at the new dn position.
+        r_new = jnp.expand_dims(r_dn_carts_new[moved_index], axis=0)
+        ao_v = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_new)
+        ao_col = jnp.asarray(ao_v[:, 0], dtype=dtype_jnp)  # (n_ao_dn,)
+
+        new_ao_dn = state.ao_dn.at[:, moved_index].set(ao_col)
+        # paired_dn[:, k] = lambda_paired @ ao_col   (n_ao_up,)
+        new_paired_dn_col = jnp.dot(lambda_matrix_paired, ao_col)
+        new_paired_dn = state.paired_dn.at[:, moved_index].set(new_paired_dn_col)
+        # paired_up_lambda unchanged (depends on ao_up only).
+        return state.replace(
+            ao_dn=new_ao_dn,
+            paired_dn=new_paired_dn,
+        )
+
+    # Edge case: zero-electron spin sectors collapse the cond at trace time.
+    num_up = state.ao_up.shape[1]
+    num_dn = state.ao_dn.shape[1]
+    if num_up == 0:
+        return _branch_dn(None)
+    if num_dn == 0:
+        return _branch_up(None)
+    return jax.lax.cond(moved_spin_is_up, _branch_up, _branch_dn, operand=None)
+
+
+@jit
+def _compute_v_up_move_from_det_ratio_state(
+    geminal_data: "Geminal_data",
+    state: Det_ratio_streaming_state,
+    moved_index: jax.Array,
+    r_up_carts_proposed: jax.Array,
+) -> jax.Array:
+    """Build ``v = (G_new[i, :] - G_old[i, :])`` for an up-move from cached state.
+
+    Replaces the twice-called ``compute_geminal_up_one_row_elements`` pattern
+    in the MCMC walk body by reusing ``state.ao_up`` (old AO column) and
+    ``state.paired_dn`` (= ``lambda_paired @ ao_dn``). Avoids the heavy
+    ``lambda @ ao_dn`` GEMM and the N_dn-bulk AO evaluation that the old
+    pattern paid every step.
+
+    Args:
+        geminal_data: Geminal parameters (used for orb_data_up_spin and
+            ``_lambda_matrix_jnp`` unpaired block).
+        state: Streaming state consistent with the current ``(r_up_carts,
+            r_dn_carts)``.
+        moved_index: Up-electron index that is being proposed to move.
+        r_up_carts_proposed: Proposed up-spin coordinates ``(N_up, 3)``;
+            differs from current ``r_up_carts`` in row ``moved_index`` only.
+
+    Returns:
+        ``v`` with shape ``(N_up,)`` (= N_dn + num_unpaired).
+    """
+    dtype_jnp = get_dtype_jnp("det_ratio")
+
+    # Single-electron AO eval at the proposed position.
+    r_new = jnp.expand_dims(r_up_carts_proposed[moved_index], axis=0)  # (1, 3)
+    ao_up_new_2d = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_new)
+    ao_up_new = jnp.asarray(ao_up_new_2d[:, 0], dtype=dtype_jnp)  # (n_ao_up,)
+
+    # Cached old AO column (use-site cast; Principle 3b).
+    ao_up_old = jnp.asarray(state.ao_up[:, moved_index], dtype=dtype_jnp)
+    delta_ao_up = ao_up_new - ao_up_old  # (n_ao_up,)
+
+    # Paired block:  delta_ao_up @ paired_dn  -> (N_dn,)
+    paired_dn = jnp.asarray(state.paired_dn, dtype=dtype_jnp)
+    v_paired = jnp.dot(delta_ao_up, paired_dn)
+
+    # Unpaired block:  delta_ao_up @ lambda_unpaired  -> (num_unpaired,)
+    _lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data._lambda_matrix_jnp, [geminal_data.orb_num_dn])
+    lambda_matrix_unpaired = jnp.asarray(lambda_matrix_unpaired, dtype=dtype_jnp)
+    v_unpaired = jnp.dot(delta_ao_up, lambda_matrix_unpaired)
+
+    return jnp.concatenate([v_paired, v_unpaired])  # (N_up,)
+
+
+@jit
+def _compute_u_dn_move_from_det_ratio_state(
+    geminal_data: "Geminal_data",
+    state: Det_ratio_streaming_state,
+    moved_index: jax.Array,
+    r_dn_carts_proposed: jax.Array,
+) -> jax.Array:
+    """Build ``u = G_new[:, j] - G_old[:, j]`` for a dn-move from cached state.
+
+    Replaces the twice-called ``compute_geminal_dn_one_column_elements``
+    pattern in the MCMC walk body by reusing ``state.ao_dn`` (old AO column)
+    and ``state.paired_up_lambda`` (= ``ao_up.T @ lambda_paired``).
+
+    Args:
+        geminal_data: Geminal parameters (used for orb_data_dn_spin).
+        state: Streaming state consistent with the current ``(r_up_carts,
+            r_dn_carts)``.
+        moved_index: Dn-electron index that is being proposed to move.
+        r_dn_carts_proposed: Proposed dn-spin coordinates ``(N_dn, 3)``;
+            differs from current ``r_dn_carts`` in row ``moved_index`` only.
+
+    Returns:
+        ``u`` with shape ``(N_up,)``.
+    """
+    dtype_jnp = get_dtype_jnp("det_ratio")
+
+    r_new = jnp.expand_dims(r_dn_carts_proposed[moved_index], axis=0)
+    ao_dn_new_2d = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_new)
+    ao_dn_new = jnp.asarray(ao_dn_new_2d[:, 0], dtype=dtype_jnp)  # (n_ao_dn,)
+
+    ao_dn_old = jnp.asarray(state.ao_dn[:, moved_index], dtype=dtype_jnp)
+    delta_ao_dn = ao_dn_new - ao_dn_old  # (n_ao_dn,)
+
+    # u = paired_up_lambda @ delta_ao_dn   -> (N_up,)
+    paired_up_lambda = jnp.asarray(state.paired_up_lambda, dtype=dtype_jnp)
+    return jnp.dot(paired_up_lambda, delta_ao_dn)
+
+
 def _compute_grads_and_laplacian_ln_Det_fast_debug(
     geminal_data: Geminal_data,
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     """Debug helper that uses auto-diff to validate the fast path."""
+    # Pure delegation to ``_compute_grads_and_laplacian_ln_Det_auto``;
+    # no cast needed at this wrapper.
     # Use auto-diff as the reference (independent implementation).
     grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_data,
@@ -2072,21 +2881,27 @@ def _compute_grads_and_laplacian_ln_Det_auto(
     Uses autodiff on ln|det(G)| to compute gradients w.r.t. electron positions
     and per-electron Laplacians.
     """
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Cast
+    # to the det_grad_lap zone at the use site before passing as the
+    # differentiation operand to grad/jacfwd (Principle 3b).
+    dtype_jnp = get_dtype_jnp("det_grad_lap")
+    r_up_z = r_up_carts.astype(dtype_jnp)
+    r_dn_z = r_dn_carts.astype(dtype_jnp)
 
     def ln_det_fn(r_up, r_dn):
         return compute_ln_det_geminal_all_elements(geminal_data, r_up, r_dn)
 
-    grad_ln_D_up = jax.grad(ln_det_fn, argnums=0)(r_up_carts, r_dn_carts)
-    grad_ln_D_dn = jax.grad(ln_det_fn, argnums=1)(r_up_carts, r_dn_carts)
+    grad_ln_D_up = jax.grad(ln_det_fn, argnums=0)(r_up_z, r_dn_z)
+    grad_ln_D_dn = jax.grad(ln_det_fn, argnums=1)(r_up_z, r_dn_z)
 
     def grad_up_fn(r_up):
-        return jax.grad(ln_det_fn, argnums=0)(r_up, r_dn_carts)
+        return jax.grad(ln_det_fn, argnums=0)(r_up, r_dn_z)
 
     def grad_dn_fn(r_dn):
-        return jax.grad(ln_det_fn, argnums=1)(r_up_carts, r_dn)
+        return jax.grad(ln_det_fn, argnums=1)(r_up_z, r_dn)
 
-    jac_up = jax.jacfwd(grad_up_fn)(r_up_carts)
-    jac_dn = jax.jacfwd(grad_dn_fn)(r_dn_carts)
+    jac_up = jax.jacfwd(grad_up_fn)(r_up_z)
+    jac_dn = jax.jacfwd(grad_dn_fn)(r_dn_z)
 
     laplacian_ln_D_up = jnp.einsum("ijij->i", jac_up)
     laplacian_ln_D_dn = jnp.einsum("ijij->i", jac_dn)
@@ -2105,6 +2920,9 @@ def _compute_grads_and_laplacian_ln_Det_debug(
     np.ndarray,
 ]:
     """See compute_grads_and_laplacian_ln_Det_api."""
+    dtype_np = get_dtype_np("det_grad_lap")
+    r_up_carts = np.asarray(r_up_carts, dtype=dtype_np)
+    r_dn_carts = np.asarray(r_dn_carts, dtype=dtype_np)
     det_geminal = compute_det_geminal_all_elements(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
@@ -2266,94 +3084,44 @@ def _compute_grads_and_laplacian_ln_Det_debug(
     grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T / det_geminal
 
     #############################################################
-    # Laplacian part
+    # Laplacian part (4th-order central finite differences)
+    # f''(x) ~= (-f(x+2h) + 16f(x+h) - 30f(x) + 16f(x-h) - f(x-2h)) / (12h^2)
     #############################################################
 
-    diff_h2 = 1.0e-4  # for laplacian
+    diff_h2 = 1.0e-3  # larger h viable with 4th-order stencil (O(h^4) truncation)
 
     laplacian_ln_D_up = np.zeros(len(r_up_carts))
     laplacian_ln_D_dn = np.zeros(len(r_dn_carts))
 
+    def _det_up(r_up):
+        return compute_det_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up, r_dn_carts=r_dn_carts)
+
+    def _det_dn(r_dn):
+        return compute_det_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn)
+
+    def _fd4_second_deriv(eval_fn, r_carts, r_i, dim, h, f0):
+        """4th-order central FD for f''(x)."""
+        r_p1 = r_carts.copy()
+        r_p2 = r_carts.copy()
+        r_m1 = r_carts.copy()
+        r_m2 = r_carts.copy()
+        r_p1[r_i][dim] += h
+        r_p2[r_i][dim] += 2 * h
+        r_m1[r_i][dim] -= h
+        r_m2[r_i][dim] -= 2 * h
+        return (-eval_fn(r_p2) + 16 * eval_fn(r_p1) - 30 * f0 + 16 * eval_fn(r_m1) - eval_fn(r_m2)) / (12 * h**2)
+
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up2_carts = r_up_carts.copy()
-        diff_p_y_r_up2_carts = r_up_carts.copy()
-        diff_p_z_r_up2_carts = r_up_carts.copy()
-        diff_p_x_r_up2_carts[r_i][0] += diff_h2
-        diff_p_y_r_up2_carts[r_i][1] += diff_h2
-        diff_p_z_r_up2_carts[r_i][2] += diff_h2
-
-        det_geminal_p_x_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_p_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_p_y_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_p_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_p_z_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_p_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        diff_m_x_r_up2_carts = r_up_carts.copy()
-        diff_m_y_r_up2_carts = r_up_carts.copy()
-        diff_m_z_r_up2_carts = r_up_carts.copy()
-        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
-
-        det_geminal_m_x_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_x_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_m_y_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_y_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_m_z_up2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_z_r_up2_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        """ mathematically correct, but numerically unstablle
-        gradgrad_x_up = (
-            np.log(np.abs(det_geminal_p_x_up2))
-            + np.log(np.abs(det_geminal_m_x_up2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_y_up = (
-            np.log(np.abs(det_geminal_p_y_up2))
-            + np.log(np.abs(det_geminal_m_y_up2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_z_up = (
-            np.log(np.abs(det_geminal_p_z_up2))
-            + np.log(np.abs(det_geminal_m_z_up2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-        """
-
-        # compute f''(x)
-        gradgrad_x_up = (det_geminal_p_x_up2 + det_geminal_m_x_up2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_y_up = (det_geminal_p_y_up2 + det_geminal_m_y_up2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_z_up = (det_geminal_p_z_up2 + det_geminal_m_z_up2 - 2.0 * det_geminal) / (diff_h2**2)
+        gradgrad_x_up = _fd4_second_deriv(_det_up, r_up_carts, r_i, 0, diff_h2, det_geminal)
+        gradgrad_y_up = _fd4_second_deriv(_det_up, r_up_carts, r_i, 1, diff_h2, det_geminal)
+        gradgrad_z_up = _fd4_second_deriv(_det_up, r_up_carts, r_i, 2, diff_h2, det_geminal)
 
         _grad_x_up = grad_x_up[r_i]
         _grad_y_up = grad_y_up[r_i]
         _grad_z_up = grad_z_up[r_i]
 
-        # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
+        # d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
         laplacian_ln_D_up[r_i] = (
             (gradgrad_x_up * det_geminal - _grad_x_up**2) / det_geminal**2
             + (gradgrad_y_up * det_geminal - _grad_y_up**2) / det_geminal**2
@@ -2362,84 +3130,15 @@ def _compute_grads_and_laplacian_ln_Det_debug(
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn2_carts = r_dn_carts.copy()
-        diff_p_y_r_dn2_carts = r_dn_carts.copy()
-        diff_p_z_r_dn2_carts = r_dn_carts.copy()
-        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
-        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
-        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
-
-        det_geminal_p_x_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_x_r_dn2_carts,
-        )
-        det_geminal_p_y_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_y_r_dn2_carts,
-        )
-        det_geminal_p_z_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_z_r_dn2_carts,
-        )
-
-        diff_m_x_r_dn2_carts = r_dn_carts.copy()
-        diff_m_y_r_dn2_carts = r_dn_carts.copy()
-        diff_m_z_r_dn2_carts = r_dn_carts.copy()
-        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
-        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
-        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
-
-        det_geminal_m_x_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_x_r_dn2_carts,
-        )
-        det_geminal_m_y_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_y_r_dn2_carts,
-        )
-        det_geminal_m_z_dn2 = compute_det_geminal_all_elements(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_z_r_dn2_carts,
-        )
-
-        """ mathematically correct, but numerically unstable
-        gradgrad_x_dn = (
-            np.log(np.abs(det_geminal_p_x_dn2))
-            + np.log(np.abs(det_geminal_m_x_dn2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_y_dn = (
-            np.log(np.abs(det_geminal_p_y_dn2))
-            + np.log(np.abs(det_geminal_m_y_dn2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-
-        gradgrad_z_dn = (
-            np.log(np.abs(det_geminal_p_z_dn2))
-            + np.log(np.abs(det_geminal_m_z_dn2))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h2**2)
-        """
-
-        # compute f''(x)
-        gradgrad_x_dn = (det_geminal_p_x_dn2 + det_geminal_m_x_dn2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_y_dn = (det_geminal_p_y_dn2 + det_geminal_m_y_dn2 - 2.0 * det_geminal) / (diff_h2**2)
-
-        gradgrad_z_dn = (det_geminal_p_z_dn2 + det_geminal_m_z_dn2 - 2.0 * det_geminal) / (diff_h2**2)
+        gradgrad_x_dn = _fd4_second_deriv(_det_dn, r_dn_carts, r_i, 0, diff_h2, det_geminal)
+        gradgrad_y_dn = _fd4_second_deriv(_det_dn, r_dn_carts, r_i, 1, diff_h2, det_geminal)
+        gradgrad_z_dn = _fd4_second_deriv(_det_dn, r_dn_carts, r_i, 2, diff_h2, det_geminal)
 
         _grad_x_dn = grad_x_dn[r_i]
         _grad_y_dn = grad_y_dn[r_i]
         _grad_z_dn = grad_z_dn[r_i]
 
-        # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
+        # d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
         laplacian_ln_D_dn[r_i] = (
             (gradgrad_x_dn * det_geminal - _grad_x_dn**2) / det_geminal**2
             + (gradgrad_y_dn * det_geminal - _grad_y_dn**2) / det_geminal**2

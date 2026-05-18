@@ -6,10 +6,8 @@ from turbogenius.pyturbo.pseudopotentials import Pseudopotentials
 from jqmc.atomic_orbital import AOs_data
 from jqmc.coulomb_potential import Coulomb_potential_data
 from jqmc.determinant import Geminal_data
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from jqmc.molecular_orbital import MOs_data, compute_MOs_api
 from jqmc.structure import Structure_data
-from jqmc.vmc import VMC
 
 # structure
 io_fort10 = IO_fort10()

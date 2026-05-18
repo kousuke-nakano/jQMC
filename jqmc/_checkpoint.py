@@ -8,14 +8,14 @@ at the root level.
 File layout::
 
     restart.h5
-    ├── _meta/                     (format_version, driver_type, mpi_size, ...)
-    ├── hamiltonian_data/          (shared, saved once)
-    └── rank_{R}/                  (per MPI rank)
-        ├── driver_config/
-        ├── rng_state/
-        ├── walker_state/
-        ├── observables/
-        └── optimizer_state/       (VMCopt only)
+    |-- _meta/                     (format_version, driver_type, mpi_size, ...)
+    |-- hamiltonian_data/          (shared, saved once)
+    `-- rank_{R}/                  (per MPI rank)
+        |-- driver_config/
+        |-- rng_state/
+        |-- walker_state/
+        |-- observables/
+        `-- optimizer_state/       (VMCopt only)
 
 Write flow (mirrors the legacy zip approach)::
 
@@ -167,7 +167,7 @@ def save_rank_checkpoint(
         optimizer_state: VMCopt optimizer runtime (optional).
     """
     with h5py.File(filepath, "w") as f:
-        # driver_config — scalars as attrs
+        # driver_config -- scalars as attrs
         cfg_grp = f.create_group("driver_config")
         for k, v in driver_config.items():
             if v is None:
@@ -454,7 +454,7 @@ def load_driver_config_from_checkpoint(
         rank: MPI rank whose config to read (default 0).
 
     Returns:
-        Dict of driver-config key→value pairs.
+        Dict of driver-config key->value pairs.
     """
     config: dict[str, Any] = {}
     with h5py.File(filepath, "r") as f:

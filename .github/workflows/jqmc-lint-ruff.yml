@@ -1,0 +1,40 @@
+# Lint workflow: runs the same pre-commit hooks declared in
+# .pre-commit-config.yaml (ruff, ruff-format, ascii-only, etc.) on every
+# push and pull request to any branch. Enforces the same rules locally
+# and in CI, so contributors who skip `pre-commit install` are still
+# caught here.
+#
+# To enforce additional ruff rules, fix the violations listed in
+# `lint.extend-ignore` in pyproject.toml and remove them from that list.
+
+name: jqmc lint (ruff + pre-commit)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.12"
+
+    - name: Cache pre-commit envs
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+        restore-keys: |
+          pre-commit-${{ runner.os }}-
+
+    - name: Lint (pre-commit, currently-enforced hooks)
+      run: |
+        python -m pip install pre-commit
+        pre-commit run --all-files

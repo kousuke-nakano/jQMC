@@ -1,4 +1,11 @@
-"""Hamiltonian module."""
+"""Hamiltonian module.
+
+Precision Zones:
+    Zone-boundary aggregation -- combines ``kinetic`` (T) and ``coulomb`` (V)
+    results, cast to ``kinetic`` zone dtype.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -37,7 +44,7 @@ import collections.abc
 import dataclasses
 import importlib
 from logging import getLogger
-from typing import Any, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 import h5py
 
@@ -49,6 +56,7 @@ from flax import struct
 from jax import jit
 from jax import typing as jnpt
 
+from ._precision import get_dtype_jnp
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential, compute_coulomb_potential_fast
 from .structure import Structure_data
 from .wavefunction import (
@@ -191,6 +199,11 @@ def compute_local_energy(
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
+    dtype_jnp = get_dtype_jnp("local_energy")
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Each
+    # downstream consumer (compute_kinetic_energy, compute_coulomb_potential)
+    # casts to its own zone at the use site.
+
     T = compute_kinetic_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
@@ -205,7 +218,8 @@ def compute_local_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
-    return T + V
+    # Cast scalar zone outputs to local_energy zone at the sum (Principle 3b).
+    return T.astype(dtype_jnp) + V.astype(dtype_jnp)
 
 
 def compute_local_energy_fast(
@@ -214,15 +228,16 @@ def compute_local_energy_fast(
     r_dn_carts: jnpt.ArrayLike,
     RT: jnpt.ArrayLike,
     geminal_inverse: jnpt.ArrayLike,
+    det_ratio_state=None,
 ) -> float:
     """Compute local energy using a precomputed geminal inverse.
 
     Identical to :func:`compute_local_energy` but avoids re-computing the
     LU decomposition of the geminal matrix by reusing ``geminal_inverse``
-    supplied by the caller (e.g. the Sherman–Morrison inverse maintained
+    supplied by the caller (e.g. the Sherman-Morrison inverse maintained
     inside the MCMC loop).  When the geminal matrix is near-singular the
     fresh LU decomposition inside :func:`compute_local_energy` produces
-    NaN, whereas the Sherman–Morrison inverse has already been regularized
+    NaN, whereas the Sherman-Morrison inverse has already been regularized
     by the AS acceptance/rejection, making this variant numerically safer.
 
     Args:
@@ -236,8 +251,12 @@ def compute_local_energy_fast(
             Rotation matrix (R.T) used for the non-local ECP part.
         geminal_inverse (jnpt.ArrayLike):
             Precomputed inverse of the geminal matrix ``G(r_up_carts, r_dn_carts)``
-            with shape ``(N_up, N_up)``.  Typically the Sherman–Morrison running
+            with shape ``(N_up, N_up)``.  Typically the Sherman-Morrison running
             inverse from the MCMC loop.
+        det_ratio_state: Optional :class:`Det_ratio_streaming_state` (or
+            superset) consistent with ``(r_up_carts, r_dn_carts)``.
+            Forwarded to ``compute_coulomb_potential_fast`` so the non-local
+            ECP ratio kernel can skip the AO/precontract recomputation.
 
     Returns:
         float: Local energy :math:`e_L` at the supplied configuration.
@@ -247,10 +266,14 @@ def compute_local_energy_fast(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialized LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse -- the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """
+    dtype_jnp = get_dtype_jnp("local_energy")
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Each
+    # downstream consumer casts to its own zone at the use site.
+
     T_up_elements, T_dn_elements = compute_kinetic_energy_all_elements_fast_update(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
@@ -266,9 +289,11 @@ def compute_local_energy_fast(
         RT=RT,
         A_old_inv=geminal_inverse,
         wavefunction_data=hamiltonian_data.wavefunction_data,
+        det_ratio_state=det_ratio_state,
     )
 
-    return T + V
+    # Cast scalar zone outputs to local_energy zone at the sum (Principle 3b).
+    return T.astype(dtype_jnp) + V.astype(dtype_jnp)
 
 
 @jit
@@ -295,6 +320,10 @@ def _compute_local_energy_auto(
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
+    dtype_jnp = get_dtype_jnp("local_energy")
+    # Forward r_up/dn_carts as-is (Principle 3a -- no parameter rebind). Each
+    # downstream consumer casts to its own zone at the use site.
+
     T = _compute_kinetic_energy_auto(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
@@ -309,7 +338,8 @@ def _compute_local_energy_auto(
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
-    return T + V
+    # Cast scalar zone outputs to local_energy zone at the sum (Principle 3b).
+    return T.astype(dtype_jnp) + V.astype(dtype_jnp)
 
 
 def _reconstruct_dataclass(cls, obj):
@@ -405,7 +435,7 @@ def _save_dataclass_to_hdf5(group: h5py.Group, obj: Any) -> None:
         _save_item(group, field.name, value)
 
 
-def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
+def _load_item(item: h5py.Group | h5py.Dataset | Any) -> Any:
     """Helper to load an item from HDF5."""
     if isinstance(item, h5py.Dataset):
         val = item[()]
@@ -417,7 +447,7 @@ def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
             elif val.dtype.kind == "O" and val.size > 0 and isinstance(val.flat[0], bytes):
                 val = np.array([v.decode("utf-8") for v in val.flat]).reshape(val.shape)
         return val
-    elif isinstance(item, h5py.Group):
+    if isinstance(item, h5py.Group):
         if item.attrs.get("_is_list"):
             lst = []
             # Combine keys from subgroups/datasets and attributes
@@ -433,29 +463,27 @@ def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
                 elif k in item.attrs:
                     lst.append(item.attrs[k])
             return lst
-        elif item.attrs.get("_is_dict"):
+        if item.attrs.get("_is_dict"):
             d = {}
             for k in item.keys():
                 d[k] = _load_item(item[k])
             return d
-        else:
-            # Dataclass or generic group
-            class_name = item.attrs.get("_class_name")
-            module_name = item.attrs.get("_module_name")
-            if class_name and module_name:
-                module = importlib.import_module(module_name)
-                sub_cls = getattr(module, class_name)
-                return _load_dataclass_from_hdf5(sub_cls, item)
-            else:
-                # Fallback for dicts saved without _is_dict or unknown structures
-                d = {}
-                for k in item.keys():
-                    d[k] = _load_item(item[k])
-                return d
+        # Dataclass or generic group
+        class_name = item.attrs.get("_class_name")
+        module_name = item.attrs.get("_module_name")
+        if class_name and module_name:
+            module = importlib.import_module(module_name)
+            sub_cls = getattr(module, class_name)
+            return _load_dataclass_from_hdf5(sub_cls, item)
+        # Fallback for dicts saved without _is_dict or unknown structures
+        d = {}
+        for k in item.keys():
+            d[k] = _load_item(item[k])
+        return d
     return item
 
 
-def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
+def _load_dataclass_from_hdf5(cls: type[T], group: h5py.Group) -> T:
     """Recursively load a dataclass from an HDF5 group.
 
     Args:
@@ -488,11 +516,15 @@ def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
             elif isinstance(val, list) and (field.type is tuple or "tuple" in str(field.type)):
                 val = tuple(val)
 
-            # Convert np.ndarray or list/tuple to jax.Array for fields typed as jax.Array
+            # Convert np.ndarray or list/tuple to jax.Array for fields typed as jax.Array.
+            # Note: fields typed `npt.NDArray[np.float64]` (string-form annotation) must
+            # NOT trigger this branch -- they are stored as numpy arrays. Exclude both
+            # "ndarray" (resolved form) and "NDArray" (npt alias form).
             if (
                 isinstance(val, (np.ndarray, list, tuple))
                 and "Array" in str(field.type)
                 and "ndarray" not in str(field.type)
+                and "NDArray" not in str(field.type)
                 and "list" not in str(field.type)
                 and "tuple" not in str(field.type)
             ):

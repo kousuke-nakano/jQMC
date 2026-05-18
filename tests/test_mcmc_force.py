@@ -44,18 +44,18 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
+from jqmc._precision import get_tolerance_min
+from jqmc.hamiltonians import Hamiltonian_data
+from jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_mcmc import MCMC  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import Wavefunction_data  # noqa: E402
+from jqmc.jqmc_mcmc import MCMC
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import Wavefunction_data
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -198,22 +198,27 @@ def test_mcmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict):
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
 
+    # Force crosses ao_eval/jastrow_eval/det_eval/coulomb/wf_kinetic; bound by weakest zone (fp32 in mixed).
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    atol, rtol = get_tolerance_min(
+        ("ao_eval", "jastrow_eval", "det_eval", "coulomb", "wf_kinetic"),
+        "strict",
+    )
     assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
     assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.array(force_std[0]),
         np.array(force_std[1]),
-        atol=atol_debug_vs_production,
-        rtol=rtol_debug_vs_production,
+        atol=atol,
+        rtol=rtol,
     )
 
 
@@ -265,6 +270,77 @@ def test_mcmc_force_without_SWCT():
     force_mean, force_std = mcmc.get_aF(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
 
     # Forces should be finite (no NaN/Inf)
+    assert not np.any(np.isnan(np.array(force_mean))), "NaN detected in force_mean"
+    assert not np.any(np.isnan(np.array(force_std))), "NaN detected in force_std"
+    assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"
+
+
+@pytest.mark.parametrize(
+    "with_nn",
+    [pytest.param(False, id="open-shell"), pytest.param(True, id="open-shell-nn")],
+)
+def test_mcmc_force_open_shell_finite(with_nn: bool):
+    """Force evaluation must stay finite for open-shell systems with J2 active.
+
+    Regression guard: dense (N,N) up-up/dn-dn pair sums in J2 trigger
+    ``0 * inf = NaN`` on the i==j diagonal under second-order AD when num_up>1
+    (or num_dn>1). H2 (n_up=n_dn=1) does not exercise this path; Li
+    (n_up=2, n_dn=1) does.
+    """
+    trexio_file = "Li_ae_ccpvdz_cart.h5"
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=0.5,
+        structure_data=structure_data,
+        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+        jastrow_1b_type="exp",
+    )
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    jastrow_nn_data = (
+        Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0)
+        if with_nn
+        else None
+    )
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
+    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=34356,
+        num_walkers=2,
+        comput_position_deriv=True,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
+        epsilon_AS=1.0e-2,
+    )
+    mcmc.run(num_mcmc_steps=20)
+    mcmc.get_E(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+    force_mean, force_std = mcmc.get_aF(num_mcmc_warmup_steps=5, num_mcmc_bin_blocks=5)
+
     assert not np.any(np.isnan(np.array(force_mean))), "NaN detected in force_mean"
     assert not np.any(np.isnan(np.array(force_std))), "NaN detected in force_std"
     assert np.all(np.isfinite(np.array(force_mean))), "Inf detected in force_mean"

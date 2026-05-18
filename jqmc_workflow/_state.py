@@ -82,7 +82,23 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
-# Legacy sets — kept for backward compatibility during transition.
+class CompletionStatus(str, Enum):
+    """Return values of :func:`validate_completion`.
+
+    Single source of truth for "should the workflow terminate?".
+
+    ``OK``          -- all checks pass (converged or post-hoc validation).
+    ``FAILED``      -- irrecoverable: abnormal termination, non-finite energy.
+    ``INCOMPLETE``  -- no failure signal, but convergence criterion not yet
+                      met (only meaningful when ``target_error`` is given).
+    """
+
+    OK = "ok"
+    FAILED = "failed"
+    INCOMPLETE = "incomplete"
+
+
+# Legacy sets -- kept for backward compatibility during transition.
 # New code should use WorkflowStatus / JobStatus enums.
 VALID_STATUSES = {s.value for s in WorkflowStatus}
 VALID_JOB_STATUSES = {s.value for s in JobStatus}
@@ -153,7 +169,7 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
     """Check fetched output files for the ``Program ends`` marker.
 
     Returns a list of output-file names that exist on disk but do **not**
-    contain the ``Program ends`` line — a strong signal that the
+    contain the ``Program ends`` line -- a strong signal that the
     computation was killed (e.g. wall-time expiration) before normal
     termination.
 
@@ -166,9 +182,9 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
             continue
         filepath = os.path.join(directory, output_file)
         if not os.path.isfile(filepath):
-            continue  # not fetched yet — nothing to check
+            continue  # not fetched yet -- nothing to check
         try:
-            with open(filepath, "r", errors="replace") as f:
+            with open(filepath, errors="replace") as f:
                 # Read only the tail (last 8 KiB) for efficiency;
                 # "Program ends ..." is always the last log line.
                 f.seek(0, 2)
@@ -178,48 +194,101 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
             if "Program ends" not in tail:
                 abnormal.append(output_file)
         except OSError:
-            continue  # unreadable — skip
+            continue  # unreadable -- skip
     return abnormal
 
 
-def validate_completion(directory: str, output_values: dict | None = None) -> tuple[bool, str]:
-    """Run all post-completion checks and return ``(ok, error_msg)``.
+def validate_completion(
+    directory: str,
+    output_values: dict | None = None,
+    *,
+    target_error: float | None = None,
+    target_tol: float = 1.0,
+) -> tuple[CompletionStatus, str]:
+    """Single source of truth for workflow termination decisions.
 
-    Called once from :class:`Container` after a workflow reports
-    ``COMPLETED``.  All "is this really completed?" checks live here.
+    Used in two modes:
 
-    Parameters
-    ----------
-    directory : str
-        Working directory containing ``workflow_state.toml`` and
-        fetched output files.
-    output_values : dict, optional
-        Scalar results from the workflow (energy, error, etc.).
+    * **Post-hoc validation** (``target_error=None``) -- called once by
+      :class:`Container` after a workflow reports ``COMPLETED``.  Only
+      irrecoverable failures are detected; returns ``OK`` or ``FAILED``.
 
-    Returns
-    -------
-    ok : bool
-        ``True`` if all checks pass.
-    error_msg : str
-        Empty when *ok* is ``True``; describes the failure otherwise.
+    * **Per-iteration check** (``target_error`` given) -- called inside
+      a production loop after each continuation run.  May additionally
+      return ``INCOMPLETE`` when no failure is detected but the
+      statistical error still exceeds ``target_error * target_tol``.
+
+    Checks (in order; short-circuits on first failure):
+
+    1. ``Program ends`` marker missing in any fetched output file
+       -> ``FAILED`` (e.g. wall-time kill, process crash).
+    2. Non-finite energy in ``output_values`` -> ``FAILED``.
+    3. (target_error mode) ``energy`` not yet recorded -> ``INCOMPLETE``.
+    4. (target_error mode) ``energy_error > target_error * target_tol``
+       -> ``INCOMPLETE``; otherwise -> ``OK``.
+
+    Args:
+        directory (str):
+            Working directory containing ``workflow_state.toml`` and fetched
+            output files.
+        output_values (dict, optional):
+            Scalar results from the workflow (``energy``, ``energy_error``,
+            ...).
+        target_error (float, optional):
+            Target statistical error in Ha.  ``None`` disables the
+            convergence check (post-hoc mode).
+        target_tol (float, default 1.0):
+            Tolerance factor applied to ``target_error``.  Callers that
+            previously accepted ``error <= target * 1.05`` (MCMC) or
+            ``error <= target * 1.20`` (LRDMC) pass the matching factor.
+
+    Returns:
+        status (CompletionStatus):
+            ``OK`` / ``FAILED`` / ``INCOMPLETE``.
+        message (str):
+            Human-readable description; empty string when ``status == OK``.
     """
     output_values = output_values or {}
     state = read_state(directory)
 
-    # ── Check 1: "Program ends" marker in output files ────────────
+    # -- Check 1: "Program ends" marker in output files ------------
     abnormal = _check_normal_termination(directory, state.get("jobs", []))
     if abnormal:
         files_str = ", ".join(abnormal)
-        return False, f"Abnormal termination: 'Program ends' marker missing in output file(s): {files_str}"
+        return (
+            CompletionStatus.FAILED,
+            f"Abnormal termination: 'Program ends' marker missing in output file(s): {files_str}",
+        )
 
-    # ── Check 2: Non-finite energy ────────────────────────────────
+    # -- Check 2: Non-finite energy --------------------------------
     import math
 
     energy = output_values.get("energy")
     if energy is not None and not math.isfinite(energy):
-        return False, f"Non-finite energy detected (E={energy})"
+        return CompletionStatus.FAILED, f"Non-finite energy detected (E={energy})"
 
-    return True, ""
+    # -- Check 3/4: Convergence (only in per-iteration mode) -------
+    if target_error is not None:
+        if energy is None:
+            return (
+                CompletionStatus.INCOMPLETE,
+                "No energy estimate yet (no restart checkpoint / measurement).",
+            )
+        err = output_values.get("energy_error")
+        if err is None or not math.isfinite(err):
+            return CompletionStatus.INCOMPLETE, f"energy_error not available (={err})."
+        threshold = target_error * target_tol
+        if err <= threshold:
+            return (
+                CompletionStatus.OK,
+                f"{err:.6g} <= {threshold:.6g} Ha (target*{target_tol:g})",
+            )
+        return (
+            CompletionStatus.INCOMPLETE,
+            f"{err:.6g} > {threshold:.6g} Ha (target*{target_tol:g})",
+        )
+
+    return CompletionStatus.OK, ""
 
 
 def update_status(
@@ -230,18 +299,17 @@ def update_status(
 ):
     """Update the status field (and optional extra fields) in workflow_state.toml.
 
-    Parameters
-    ----------
-    directory : str
-        Working directory containing workflow_state.toml.
-    status : str or WorkflowStatus
-        New workflow status.
-    phase : str or None
-        Scientific phase to record.  If given, written to
-        ``[workflow] phase``.
-    **extra_fields
-        Additional fields.  Keys starting with ``result_`` go into
-        ``[result]``; everything else goes into ``[workflow]``.
+    Args:
+        directory (str):
+            Working directory containing workflow_state.toml.
+        status (str or WorkflowStatus):
+            New workflow status.
+        phase (str or None):
+            Scientific phase to record.  If given, written to
+            ``[workflow] phase``.
+        **extra_fields:
+            Additional fields.  Keys starting with ``result_`` go into
+            ``[result]``; everything else goes into ``[workflow]``.
     """
     # Ensure we work with raw string for VALID_STATUSES check
     status_str = status.value if isinstance(status, WorkflowStatus) else status
@@ -270,7 +338,7 @@ def update_status(
     return state
 
 
-# ── Job history (replaces old set_job_info / get_job_info) ────────
+# -- Job history (replaces old set_job_info / get_job_info) --------
 
 
 def add_job(
@@ -374,7 +442,7 @@ def get_jobs(directory: str) -> list:
     return state.get("jobs", [])
 
 
-# ── Result / estimation helpers (unchanged) ───────────────────────
+# -- Result / estimation helpers (unchanged) -----------------------
 
 
 def set_result(directory: str, **result_fields):
@@ -415,17 +483,17 @@ def get_all_workflow_statuses(base_dir: str) -> list:
 
     Returns a list of dicts, each containing:
 
-    - ``directory`` – absolute path to the workflow directory
-    - ``label``     – workflow label (from ``[workflow]``)
-    - ``type``      – workflow type (e.g. ``"vmc"``)
-    - ``status``    – current workflow status
+    - ``directory`` - absolute path to the workflow directory
+    - ``label``     - workflow label (from ``[workflow]``)
+    - ``type``      - workflow type (e.g. ``"vmc"``)
+    - ``status``    - current workflow status
 
     Directories without a ``workflow_state.toml`` are silently skipped.
     """
     results = []
     base_dir = os.path.abspath(base_dir)
     for dirpath, dirnames, filenames in os.walk(base_dir):
-        # Skip pilot-run subdirectories — they have workflow_state.toml
+        # Skip pilot-run subdirectories -- they have workflow_state.toml
         # but are internal bookkeeping, not user-facing workflows.
         dirnames[:] = [d for d in dirnames if not d.startswith("_pilot")]
         if STATE_FILENAME in filenames:
@@ -449,16 +517,16 @@ def get_workflow_summary(directory: str) -> dict:
 
     The returned dict contains:
 
-    - ``workflow`` – label, type, status, timestamps
-    - ``phase``    – current scientific phase (str or ``"init"``)
-    - ``allowed_actions`` – list of permitted MCP actions
-    - ``result``   – any stored results (energy, etc.)
-    - ``estimation`` – step-estimation data (if present)
-    - ``jobs``     – list of job records (each includes accounting
+    - ``workflow`` - label, type, status, timestamps
+    - ``phase``    - current scientific phase (str or ``"init"``)
+    - ``allowed_actions`` - list of permitted MCP actions
+    - ``result``   - any stored results (energy, etc.)
+    - ``estimation`` - step-estimation data (if present)
+    - ``jobs``     - list of job records (each includes accounting
       and scheduler file info when available)
-    - ``num_jobs`` – total number of job records
-    - ``error``    – ``[error]`` section or ``None``
-    - ``artifacts`` – ``[[artifacts]]`` list
+    - ``num_jobs`` - total number of job records
+    - ``error``    - ``[error]`` section or ``None``
+    - ``artifacts`` - ``[[artifacts]]`` list
 
     Returns an empty dict if no ``workflow_state.toml`` is found.
     """
@@ -491,18 +559,17 @@ def get_workflow_summary(directory: str) -> dict:
     }
 
 
-# ── Error / accounting / artifact helpers ─────────────────────────
+# -- Error / accounting / artifact helpers -------------------------
 
 
 def set_error(directory: str, message: str, **context) -> None:
     """Write error information to the ``[error]`` section.
 
-    Parameters
-    ----------
-    message : str
-        Human-readable error description (exception message, etc.).
-    **context
-        Arbitrary extra fields (``traceback``, ``exception_type``, …).
+    Args:
+        message (str):
+            Human-readable error description (exception message, etc.).
+        **context:
+            Arbitrary extra fields (``traceback``, ``exception_type``, ...).
     """
     state = read_state(directory)
     state["error"] = {"message": message, **context}
@@ -581,10 +648,9 @@ def get_artifact_registry(directory: str) -> list[dict]:
 def set_input_fingerprints(directory: str, fingerprints: dict[str, dict]) -> None:
     """Record input-file fingerprints in ``[input_fingerprints]``.
 
-    Parameters
-    ----------
-    fingerprints : dict[str, dict]
-        Mapping ``{basename: {"size": int, "mtime": float}}``.
+    Args:
+        fingerprints (dict[str, dict]):
+            Mapping ``{basename: {"size": int, "mtime": float}}``.
     """
     state = read_state(directory)
     state["input_fingerprints"] = fingerprints
