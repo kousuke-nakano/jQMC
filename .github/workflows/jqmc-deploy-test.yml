@@ -5,7 +5,7 @@ on:
 
 jobs:
   deploy-test-pypi:
-    if: github.repository == 'kousuke-nakano/jQMC'
+    if: github.repository == 'jqmc-project/jQMC'
 
     runs-on: ubuntu-latest
 
