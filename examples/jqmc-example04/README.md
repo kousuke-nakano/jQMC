@@ -18,18 +18,18 @@ The directory structure will look like:
 
 ```
 water_dimer_qmc/
-├── 01_S22_water_monomer_1/   # monomer 1
-│   └── 01DFT/
-├── 02_S22_water_monomer_2/   # monomer 2
-│   └── 01DFT/
-└── 03_S22_water_dimer/       # dimer
-    ├── 01DFT/
-    ├── 02vmc_JSD/
-    ├── 03mcmc_JSD/
-    ├── 04lrdmc_JSD/
-    ├── 05vmc_JAGP/
-    ├── 06mcmc_JAGP/
-    └── 07lrdmc_JAGP/
+--- 01_S22_water_monomer_1/   # monomer 1
+-   --- 01DFT/
+--- 02_S22_water_monomer_2/   # monomer 2
+-   --- 01DFT/
+--- 03_S22_water_dimer/       # dimer
+    --- 01DFT/
+    --- 02vmc_JSD/
+    --- 03mcmc_JSD/
+    --- 04lrdmc_JSD/
+    --- 05vmc_JAGP/
+    --- 06mcmc_JAGP/
+    --- 07lrdmc_JAGP/
 ```
 
 ## Generate trial WFs (DFT)

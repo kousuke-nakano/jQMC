@@ -46,7 +46,6 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from logging import getLogger
-from subprocess import PIPE
 
 import paramiko
 import yaml
@@ -76,7 +75,7 @@ class Machine:
 
         # Load machine data
         try:
-            with open(self.machine_info_yaml, "r") as yf:
+            with open(self.machine_info_yaml) as yf:
                 self.data = yaml.safe_load(yf)[machine]
         except FileNotFoundError:
             logger.error(f"Config file {self.machine_info_yaml} not found!")
@@ -105,7 +104,7 @@ class Machine:
         except Exception:
             pass
 
-    # ── SSH management ──────────────────────────────────────────────
+    # -- SSH management ----------------------------------------------
 
     @staticmethod
     def _kill_proxy_process(proxy_cmd):
@@ -131,7 +130,7 @@ class Machine:
                     pipe.close()
                 except Exception:
                     pass
-        # Kill the process (SIGKILL — SIGTERM may be ignored)
+        # Kill the process (SIGKILL -- SIGTERM may be ignored)
         try:
             proc.kill()
         except OSError:
@@ -159,7 +158,7 @@ class Machine:
         ssh_config = paramiko.SSHConfig()
         config_file = os.path.join(os.getenv("HOME"), ".ssh/config")
         try:
-            with open(config_file, "r") as fh:
+            with open(config_file) as fh:
                 ssh_config.parse(fh)
         except FileNotFoundError:
             logger.error(f"SSH config file ({config_file}) is required.")
@@ -172,7 +171,7 @@ class Machine:
         except KeyError:
             from io import StringIO
 
-            with open(config_file, "r") as fh:
+            with open(config_file) as fh:
                 original = fh.read()
             # Disable CanonicalizeHostname to avoid the paramiko bug
             patched = re.sub(
@@ -229,7 +228,7 @@ class Machine:
         if self.machine_type != "remote" or not self.ssh_status:
             return
 
-        # Save proxy reference before closing — ssh.close() may clear it
+        # Save proxy reference before closing -- ssh.close() may clear it
         proxy_cmd = self._proxy_cmd
         self._proxy_cmd = None
 
@@ -241,7 +240,7 @@ class Machine:
                 future.result(timeout=timeout_sec)
                 logger.debug(f"{obj_name}.close() ok")
             except Exception as e:
-                logger.warning(f"{obj_name}.close() failed ({e.__class__.__name__}: {e}) — abandoning")
+                logger.warning(f"{obj_name}.close() failed ({e.__class__.__name__}: {e}) -- abandoning")
                 future.cancel()
             finally:
                 executor.shutdown(wait=False)
@@ -258,7 +257,7 @@ class Machine:
         del self.sftp
         self.ssh_status = False
 
-    # ── Properties (read from machine_data.yaml) ──────────────────
+    # -- Properties (read from machine_data.yaml) ------------------
 
     _MISSING = object()  # sentinel for _get() default detection
 
@@ -325,7 +324,7 @@ class Machine:
     def jobnum_index(self) -> int:
         return self._get("jobnum_index")
 
-    # ── Command execution ─────────────────────────────────────────
+    # -- Command execution -----------------------------------------
 
     def run_command(self, command: str, execute_dir: str = None):
         if execute_dir:
@@ -343,8 +342,7 @@ class Machine:
 
         if self.machine_type == "local":
             return self._run_local(command_r)
-        else:
-            return self._run_remote(command_r)
+        return self._run_remote(command_r)
 
     def _run_local(self, command_r: str, max_retries: int = 10):
         for attempt in range(max_retries):
@@ -353,8 +351,7 @@ class Machine:
                     proc = subprocess.run(
                         command_r,
                         shell=True,
-                        stdout=PIPE,
-                        stderr=PIPE,
+                        capture_output=True,
                         text=True,
                         timeout=1200,
                     )
@@ -404,7 +401,7 @@ class Machine:
             raise RuntimeError(f"Remote command failed (exit={exit_status}): {command_r}")
         return stdout, stderr
 
-    # ── Filesystem queries ────────────────────────────────────────
+    # -- Filesystem queries ----------------------------------------
 
     def _sftp_lstat_with_retry(self, path: str, max_retries=3, timeout_sec=5.0):
         self.ssh_open()
@@ -444,7 +441,7 @@ class Machine:
             return False
         return stat.S_ISDIR(fileattr.st_mode) or stat.S_ISREG(fileattr.st_mode)
 
-    # ── Job list queries ──────────────────────────────────────────
+    # -- Job list queries ------------------------------------------
 
     def get_job_list(self):
         return self.run_command(self.jobcheck)
@@ -461,7 +458,7 @@ class Machine:
 class Machines_handler:
     """Handles data transfer between localhost and a server machine.
 
-    The client is always localhost — only one Machine (server) is needed.
+    The client is always localhost -- only one Machine (server) is needed.
     """
 
     def __init__(self, machine: Machine):
@@ -470,7 +467,7 @@ class Machines_handler:
     def ssh_close(self):
         self.server_machine.ssh_close()
 
-    # ── put / get conveniences ────────────────────────────────────
+    # -- put / get conveniences ------------------------------------
 
     def put(self, from_file, to_file, exclude_patterns=None):
         self._transfer(from_file, to_file, exclude_patterns, dir_transfer=False, direction="put")
@@ -484,7 +481,7 @@ class Machines_handler:
     def get_dir(self, from_dir, to_dir, exclude_patterns=None):
         self._transfer(from_dir, to_dir, exclude_patterns, dir_transfer=True, direction="get")
 
-    # ── SFTP primitives ───────────────────────────────────────────
+    # -- SFTP primitives -------------------------------------------
 
     def _get_sftp_file(self, source, target, exclude_patterns):
         if exclude_patterns and any(re.match(p, os.path.basename(source)) for p in exclude_patterns):
@@ -529,7 +526,7 @@ class Machines_handler:
             elif os.path.isdir(local_path):
                 self._put_sftp_dir(local_path, remote_path, exclude_patterns)
 
-    # ── Core transfer logic ───────────────────────────────────────
+    # -- Core transfer logic ---------------------------------------
 
     def _transfer(self, from_path, to_path, exclude_patterns, dir_transfer, direction):
         exclude_patterns = exclude_patterns or []
@@ -564,7 +561,7 @@ class Machines_handler:
                 self._get_sftp_file(from_path, to_path, exclude_patterns)
 
 
-# ── Machine catalog (MCP adapter helpers) ─────────────────────────
+# -- Machine catalog (MCP adapter helpers) -------------------------
 
 
 def list_machines() -> list[dict]:
@@ -597,7 +594,7 @@ def probe_environment(machine_name: str) -> dict:
 
     For remote machines an SSH connection is attempted; for local machines
     reachability is always ``True``.  No software detection (jqmc, JAX, etc.)
-    is performed — that responsibility belongs to the MCP agent.
+    is performed -- that responsibility belongs to the MCP agent.
     """
     machine = Machine(machine_name)
     result: dict = {"machine_name": machine_name, "machine_type": machine.machine_type}

@@ -1,4 +1,10 @@
-"""utility module."""
+"""utility module.
+
+Precision Zones:
+    - ``io``: all functions in this module.
+
+See :mod:`jqmc._precision` for details.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -32,17 +38,54 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from functools import lru_cache
+from functools import cache
 from logging import getLogger
 
+import jax
 import numpy as np
 import numpy.typing as npt
+from mpi4py import MPI
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
 # separator
 num_sep_line = 66
+
+
+def check_mpi4py_jax_distribution_consistency() -> None:
+    """Raise ``RuntimeError`` if ``jax.process_count()`` differs from MPI world size.
+
+    Required precondition for any production code path that relies on
+    ``jax.shard_map`` + ``psum`` / ``all_gather`` to aggregate across MPI
+    ranks (currently the device branch of ``MCMC.run_optimize``; future
+    GFMC device migrations will share this requirement). Without
+    ``jax.distributed.initialize(cluster_detection_method="mpi4py")``, each
+    rank's JAX sees only its own local devices and the cross-rank
+    collectives silently degenerate to per-rank-local computation, producing
+    wrong results that don't match the global solution.
+
+    Called at the entry point of every public driver loop (``MCMC.run``,
+    ``MCMC.run_optimize``, ``GFMC_t.run``, ``GFMC_n.run``) so the failure
+    surfaces immediately rather than after substantial work has been done
+    on stale per-rank state.
+
+    The CLI (``jqmc_cli.py``) initializes JAX distributed automatically.
+    User scripts that import ``MCMC`` / ``GFMC`` directly must call
+    ``jax.distributed.initialize(cluster_detection_method="mpi4py")``
+    themselves before invoking these driver loops (see ``jqmc_cli.py``
+    for the standard recipe, including the proxy-strip workaround).
+    """
+    mpi_size = MPI.COMM_WORLD.Get_size()
+    if mpi_size != jax.process_count():
+        raise RuntimeError(
+            f"MPI/JAX rank-count mismatch: mpi_size={mpi_size} vs "
+            f"jax.process_count()={jax.process_count()}. JAX cross-rank "
+            "collectives (psum / all_gather) require ``jax.distributed.initialize("
+            "cluster_detection_method='mpi4py')`` to be called before any "
+            "production driver loop. The CLI does this automatically; user "
+            "scripts importing MCMC / GFMC must call it themselves."
+        )
 
 
 def _generate_init_electron_configurations(
@@ -52,7 +95,179 @@ def _generate_init_electron_configurations(
     charges: np.ndarray,
     coords: np.ndarray,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    """Generate initial electron configurations for walkers.
+    """Vectorized initial electron configuration generator for many walkers.
+
+    Functionally equivalent to :func:`_generate_init_electron_configurations_debug`
+    but avoids the per-walker Python loop. Designed for large walker counts
+    (e.g. ``num_walkers = 16384``) where the reference version becomes the
+    initialization bottleneck.
+
+    Algorithm:
+        1. Compute the deterministic atom-assignment templates for spin-up and
+           spin-down electrons by replaying the original state machine **once**.
+           These templates depend only on (charges, coords) -- every walker
+           shares them.
+        2. Tile the templates to shape ``(num_walkers, ned)``.
+        3. For the only branch in the original that uses per-walker randomness
+           -- Phase 1b "extra up" electrons when
+           ``tot_num_electron_up > sum(zeta - occup_dn)`` -- draw the random
+           atom indices in one batched ``np.random.randint`` call.
+        4. Draw all spherical random offsets in one batched call per spin and
+           add them to the chosen atomic coordinates.
+
+    The duplicate-avoidance retry loop in the reference implementation is
+    omitted: spherical offsets are sampled from continuous uniform
+    distributions, so the probability of two ``float64`` positions colliding
+    within ``1e-6`` is effectively zero. The companion test
+    ``test_init_electron_configurations`` verifies uniqueness across all
+    generated positions.
+
+    Parameters and returns are identical to
+    :func:`_generate_init_electron_configurations_debug`.
+    """
+    min_dst = 0.1
+    max_dst = 1.0
+    dtype_np = np.float64
+
+    nion = coords.shape[0]
+    coords_np = np.asarray(coords, dtype=dtype_np)
+    zeta = np.array([int(round(c)) for c in np.asarray(charges)], dtype=int)
+    max_dn_per_atom = zeta // 2
+
+    # 1) Build ion_seq (each next index is the atom farthest from the previous).
+    ion_sel = np.ones(nion, dtype=bool)
+    ion_seq = np.zeros(nion, dtype=int)
+    ion_seq[0] = 0
+    ion_sel[0] = False
+    i_prev = 0
+    for idx in range(1, nion):
+        d2 = np.sum((coords_np[i_prev] - coords_np) ** 2, axis=1)
+        d2_masked = np.where(ion_sel, d2, -1.0)
+        best_i = int(np.argmax(d2_masked))
+        ion_seq[idx] = best_i
+        ion_sel[best_i] = False
+        i_prev = best_i
+
+    # 2) Replay the deterministic state machine ONCE to obtain owner templates.
+    occup_total = np.zeros(nion, dtype=int)
+    occup_dn = np.zeros(nion, dtype=int)
+    occup_up = np.zeros(nion, dtype=int)
+
+    # Phase 1a: place all spin-down electrons (deterministic).
+    ned_dn = tot_num_electron_dn
+    dn_owner_template = np.empty(ned_dn, dtype=int)
+    j_counter = 0
+    for idn in range(ned_dn):
+        while True:
+            atom = ion_seq[j_counter % nion]
+            if np.any(occup_dn < max_dn_per_atom):
+                cond = occup_dn[atom] < max_dn_per_atom[atom]
+            else:
+                mask_zero = (max_dn_per_atom == 0) & (occup_total < zeta)
+                if np.any(mask_zero):
+                    cond = (max_dn_per_atom[atom] == 0) and (occup_total[atom] < zeta[atom])
+                else:
+                    cond = occup_total[atom] < zeta[atom]
+            if cond:
+                dn_owner_template[idn] = atom
+                occup_dn[atom] += 1
+                occup_total[atom] += 1
+                j_counter += 1
+                break
+            j_counter += 1
+
+    # Phase 1b: place spin-up electrons; deterministic except for the
+    # "extra" tail in Case 2 which is per-walker random.
+    up_needed = zeta - occup_dn
+    sum_up_needed = int(np.sum(up_needed))
+    ned_up = tot_num_electron_up
+    up_owner_template = np.empty(ned_up, dtype=int)
+    n_random_extras = 0  # trailing electrons whose owner is random per walker
+
+    if ned_up <= sum_up_needed:
+        # Case 1: place exactly into the up_needed slots -- fully deterministic.
+        ptr = 0
+        for iup in range(ned_up):
+            while True:
+                atom = ion_seq[ptr % nion]
+                if occup_up[atom] < up_needed[atom]:
+                    up_owner_template[iup] = atom
+                    occup_up[atom] += 1
+                    occup_total[atom] += 1
+                    ptr += 1
+                    break
+                ptr += 1
+    else:
+        # Case 2: first satisfy every atom's up_needed (deterministic), then
+        # the remainder is sampled per walker.
+        cnt = 0
+        for atom in ion_seq:
+            to_give = int(up_needed[atom])
+            for _ in range(to_give):
+                up_owner_template[cnt] = atom
+                occup_up[atom] += 1
+                occup_total[atom] += 1
+                cnt += 1
+        n_random_extras = ned_up - sum_up_needed
+
+    # 3) Build per-walker owner arrays.
+    if ned_dn > 0:
+        dn_owner = np.broadcast_to(dn_owner_template, (num_walkers, ned_dn)).copy()
+    else:
+        dn_owner = np.empty((num_walkers, 0), dtype=int)
+
+    up_owner = np.empty((num_walkers, ned_up), dtype=int)
+    if n_random_extras > 0:
+        det_count = ned_up - n_random_extras
+        if det_count > 0:
+            up_owner[:, :det_count] = up_owner_template[:det_count][None, :]
+        # Per-walker random pick from ion_seq, matching the original
+        #   idx = int(floor(np.random.rand() * nion))
+        rand_idx = np.floor(np.random.rand(num_walkers, n_random_extras) * nion).astype(int)
+        # Clip to nion-1 just in case np.random.rand() returns 1.0 (it shouldn't).
+        np.clip(rand_idx, 0, nion - 1, out=rand_idx)
+        up_owner[:, det_count:] = ion_seq[rand_idx]
+    else:
+        up_owner[:] = up_owner_template[None, :]
+
+    # 4) Draw all spherical random offsets in batched form.
+    def _spherical_offsets(shape: tuple[int, int]) -> np.ndarray:
+        distance = np.random.uniform(min_dst, max_dst, size=shape)
+        theta = np.random.uniform(0.0, np.pi, size=shape)
+        phi = np.random.uniform(0.0, 2.0 * np.pi, size=shape)
+        sin_t = np.sin(theta)
+        return np.stack(
+            [
+                distance * sin_t * np.cos(phi),
+                distance * sin_t * np.sin(phi),
+                distance * np.cos(theta),
+            ],
+            axis=-1,
+        ).astype(dtype_np, copy=False)
+
+    offset_dn = _spherical_offsets((num_walkers, ned_dn)) if ned_dn > 0 else np.zeros((num_walkers, 0, 3), dtype=dtype_np)
+    offset_up = _spherical_offsets((num_walkers, ned_up)) if ned_up > 0 else np.zeros((num_walkers, 0, 3), dtype=dtype_np)
+
+    # 5) Assemble final positions: r = coords[owner] + offset.
+    r_carts_up = (coords_np[up_owner] + offset_up).astype(dtype_np, copy=False)
+    r_carts_dn = (coords_np[dn_owner] + offset_dn).astype(dtype_np, copy=False)
+
+    return r_carts_up, r_carts_dn, up_owner, dn_owner
+
+
+def _generate_init_electron_configurations_debug(
+    tot_num_electron_up: int,
+    tot_num_electron_dn: int,
+    num_walkers: int,
+    charges: np.ndarray,
+    coords: np.ndarray,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Reference (per-walker Python loop) initial electron configuration generator.
+
+    This is the original implementation kept for cross-checks against the
+    vectorized :func:`_generate_init_electron_configurations`. It runs an
+    ``O(num_walkers)`` Python loop and is too slow for large walker counts
+    (e.g. ``num_walkers = 16384``); use only for tests / debugging.
 
     Generate initial electron configurations (up/down positions) for a set of walkers,
     using the same ion_seq idea as the Fortran initconf routine, but without
@@ -89,15 +304,17 @@ def _generate_init_electron_configurations(
         dn_owner (np.ndarray of shape (num_walkers, tot_num_electron_dn), dtype=int):
             For each walker `iw` and each down-electron `k`, the atom-index it was assigned to.
     """
-    # Fixed random displacement range (±dst/2 in each coordinate)
+    # Fixed random displacement range (+/-dst/2 in each coordinate)
     min_dst = 0.1
     max_dst = 1.0
+
+    dtype_np = np.float64
 
     # 1) zeta[i] = integer valence count per atom
     nion = coords.shape[0]
     zeta = np.array([int(round(c)) for c in charges], dtype=int)
 
-    # 2) max_dn_per_atom = floor(zeta[i]/2) for Hund’s rule on down-electrons
+    # 2) max_dn_per_atom = floor(zeta[i]/2) for Hund's rule on down-electrons
     max_dn_per_atom = zeta // 2
 
     # 3) Build ion_seq so that each next index is the atom farthest from the previous
@@ -120,30 +337,30 @@ def _generate_init_electron_configurations(
         i_prev = best_i
 
     # 4) Prepare storage for all walkers
-    r_carts_up = np.zeros((num_walkers, tot_num_electron_up, 3), dtype=float)
-    r_carts_dn = np.zeros((num_walkers, tot_num_electron_dn, 3), dtype=float)
+    r_carts_up = np.zeros((num_walkers, tot_num_electron_up, 3), dtype=dtype_np)
+    r_carts_dn = np.zeros((num_walkers, tot_num_electron_dn, 3), dtype=dtype_np)
     up_owner = np.zeros((num_walkers, tot_num_electron_up), dtype=int)
     dn_owner = np.zeros((num_walkers, tot_num_electron_dn), dtype=int)
 
     # 6) Loop over walkers
     for iw in range(num_walkers):
         # 6.1) Reset per-walker occupancy
-        occup_total = np.zeros(nion, dtype=int)  # total electrons (↑+↓) on each atom
+        occup_total = np.zeros(nion, dtype=int)  # total electrons (up+dn) on each atom
         occup_dn = np.zeros(nion, dtype=int)  # how many down-electrons on each atom
         occup_up = np.zeros(nion, dtype=int)  # how many up-electrons on each atom
         cdown = 0
         cup = 0
 
-        # 6.2) Compute any “extra” beyond sum(zeta)
+        # 6.2) Compute any "extra" beyond sum(zeta)
         nel = tot_num_electron_up + tot_num_electron_dn
         ztot = int(np.sum(zeta))
         nelupeff = nel - ztot if nel > ztot else 0
 
         # -----------------------------------------
-        # Phase 1a: Place all down-electrons under Hund’s limit first
+        # Phase 1a: Place all down-electrons under Hund's limit first
         # -----------------------------------------
         ned_dn = tot_num_electron_dn
-        down_positions = np.zeros((ned_dn, 3), dtype=float)
+        down_positions = np.zeros((ned_dn, 3), dtype=dtype_np)
         j_counter = 0
 
         for idn in range(ned_dn):
@@ -166,7 +383,7 @@ def _generate_init_electron_configurations(
                         cond = occup_total[atom] < zeta[atom]
 
                 if cond:
-                    # Place one ↓-electron around coords[atom] + random_offset
+                    # Place one dn-electron around coords[atom] + random_offset
                     x0, y0, z0 = coords[atom]
                     distance = np.random.uniform(min_dst, max_dst)
                     theta = np.random.uniform(0, np.pi)
@@ -202,16 +419,16 @@ def _generate_init_electron_configurations(
                 j_counter += 1
 
         # -----------------------------------------
-        # Phase 1b: Place up-electrons exactly to “fill to zeta” if possible
+        # Phase 1b: Place up-electrons exactly to "fill to zeta" if possible
         # -----------------------------------------
         # Compute how many up each atom needs to reach zeta:
         up_needed = zeta - occup_dn  # array of length nion
         sum_up_needed = int(np.sum(up_needed))
 
         ned_up = tot_num_electron_up
-        up_positions = np.zeros((ned_up, 3), dtype=float)
+        up_positions = np.zeros((ned_up, 3), dtype=dtype_np)
 
-        # Case 1: ned_up <= sum_up_needed → place ned_up among those up_needed slots
+        # Case 1: ned_up <= sum_up_needed -> place ned_up among those up_needed slots
         if ned_up <= sum_up_needed:
             ptr = 0
             for iup in range(ned_up):
@@ -219,7 +436,7 @@ def _generate_init_electron_configurations(
                 while not placed:
                     atom = ion_seq[ptr % nion]
                     if occup_up[atom] < up_needed[atom]:
-                        # Place one ↑-electron here
+                        # Place one up-electron here
                         x0, y0, z0 = coords[atom]
                         distance = np.random.uniform(min_dst, max_dst)
                         theta = np.random.uniform(0, np.pi)
@@ -253,9 +470,9 @@ def _generate_init_electron_configurations(
                         placed = True
                     ptr += 1
 
-        # Case 2: ned_up > sum_up_needed → give each atom its up_needed, then place extras
+        # Case 2: ned_up > sum_up_needed -> give each atom its up_needed, then place extras
         else:
-            # (a) first satisfy every atom’s up_needed
+            # (a) first satisfy every atom's up_needed
             cnt = 0
             for atom in ion_seq:
                 to_give = int(up_needed[atom])
@@ -291,7 +508,7 @@ def _generate_init_electron_configurations(
                     cnt += 1
                     cup += 1
 
-            # (b) now place the “extra” up = ned_up - sum_up_needed on any atom (fallback)
+            # (b) now place the "extra" up = ned_up - sum_up_needed on any atom (fallback)
             extra_up = ned_up - sum_up_needed
             for _ in range(extra_up):
                 idx = int(np.floor(np.random.rand() * nion))
@@ -328,11 +545,11 @@ def _generate_init_electron_configurations(
                 cup += 1
 
         # -----------------------------------------
-        # Phase 2: If “extra” electrons remain (nelupeff > 0), place them now.
+        # Phase 2: If "extra" electrons remain (nelupeff > 0), place them now.
         #          (This is almost never needed if tot_up+tot_dn == sum(zeta), but we include it for completeness.)
         # -----------------------------------------
         if nelupeff > 1:
-            # 2a) extra down beyond Hund’s limit
+            # 2a) extra down beyond Hund's limit
             sum_dn_assigned = int(np.sum(occup_dn))
             extra_dn = ned_dn - sum_dn_assigned
             for _ in range(extra_dn):
@@ -385,15 +602,14 @@ def _generate_init_electron_configurations(
     return r_carts_up, r_carts_dn, up_owner, dn_owner
 
 
-@lru_cache(maxsize=None)
+@cache
 def _cart_to_spherical_matrix(l: int) -> np.ndarray:
-    """Precomputed cart -> real-spherical transform for angular momentum ``l`` (0–6).
+    """Precomputed cart -> real-spherical transform for angular momentum ``l`` (0-6).
 
     The matrix has shape ``((l+1)(l+2)/2, 2l+1)`` and satisfies
     ``A_sph = A_cart @ T`` under the normalization used in the codebase. Values
     are deterministic and cached to avoid runtime fitting.
     """
-
     precomputed: dict[int, np.ndarray] = {
         0: np.array([[1.0]], dtype=np.float64),
         1: np.array(
@@ -719,7 +935,6 @@ def _spherical_to_cart_matrix(l: int) -> np.ndarray:
     Only ``_cart_to_spherical_matrix`` stores the full analytic values; this helper
     exposes the inverse direction for readability and reuse.
     """
-
     return _cart_to_spherical_matrix(l).T
 
 

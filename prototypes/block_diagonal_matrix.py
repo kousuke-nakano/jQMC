@@ -17,11 +17,11 @@ def compute_sparse_mul_jnp(A, x):
     return jnp.dot(A, x)
 
 
-# 例として、3つのブロック正方行列を持つ場合
+# 例として,3つのブロック正方行列を持つ場合
 num_block = 3
 size_block_list = [2, 3, 4]
 
-# 空のリストを用意して、疎行列のブロックを格納
+# 空のリストを用意して,疎行列のブロックを格納
 blocks = []
 
 for i in range(num_block):
@@ -39,7 +39,7 @@ for i in range(num_block):
 # scipy.sparse.bmatを使って疎ブロック行列を作成
 sparse_block_matrix = bmat(blocks, format="csr")
 
-# ベクトルを作成（疎行列の列数に合わせたベクトルを生成）
+# ベクトルを作成(疎行列の列数に合わせたベクトルを生成)
 vector = np.random.rand(sparse_block_matrix.shape[1])
 
 print(sparse_block_matrix)

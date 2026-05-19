@@ -149,35 +149,35 @@ After running the pipeline:
 
 ```
 jqmc-workflow-example02/
-├── run_pipelines.py         # Main script
-├── run_pyscf.py             # Standalone pySCF script (reference)
-├── water_trexio.hdf5        # TREXIO file (pySCF output)
-├── jqmc_setting_local/      # Machine configuration
-├── 01_wf/                   # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/                  # VMC_Workflow: Jastrow optimization
-├── 03_mcmc/                 # MCMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
-├── 04_lrdmc/                # LRDMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
+--- run_pipelines.py         # Main script
+--- run_pyscf.py             # Standalone pySCF script (reference)
+--- water_trexio.hdf5        # TREXIO file (pySCF output)
+--- jqmc_setting_local/      # Machine configuration
+--- 01_wf/                   # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/                  # VMC_Workflow: Jastrow optimization
+--- 03_mcmc/                 # MCMC production (per walker count)
+-   --- w00008/
+-   --- w00016/
+-   --- ...
+-   --- w08192/
+--- 04_lrdmc/                # LRDMC production (per walker count)
+-   --- w00008/
+-   --- w00016/
+-   --- ...
+-   --- w08192/
 ```
 
 ## Workflow DAG
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC  (w8)    ─┐
-                   ├─--> MCMC  (w16)    │
-                   ├─--> ...            ├─--> Summary table
-                   ├─--> MCMC  (w8192)  │
-                   ├─--> LRDMC (w8)     │
-                   ├─--> LRDMC (w16)    │
-                   ├─--> ...            │
-                   └─--> LRDMC (w8192)  ─┘
+pySCF --> WF --> VMC -----> MCMC  (w8)    --
+                   ----> MCMC  (w16)    -
+                   ----> ...            ----> Summary table
+                   ----> MCMC  (w8192)  -
+                   ----> LRDMC (w8)     -
+                   ----> LRDMC (w16)    -
+                   ----> ...            -
+                   ----> LRDMC (w8192)  --
 ```
 
 ## Machine configuration
@@ -186,8 +186,8 @@ This example assumes a cluster where each node has 4 NVIDIA GPUs. The benchmark 
 
 | Component | Specification |
 |-----------|---------------|
-| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90–3.50 GHz) × 2 sockets |
-| GPU       | NVIDIA H100 (Hopper) × 4 sockets |
+| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90-3.50 GHz) x 2 sockets |
+| GPU       | NVIDIA H100 (Hopper) x 4 sockets |
 
 To run on a different cluster, change `SERVER`, `QUEUE_LABEL_s`, and `QUEUE_LABEL_l` in `run_pipelines.py` and provide the appropriate machine configuration in `jqmc_setting_local/`.
 

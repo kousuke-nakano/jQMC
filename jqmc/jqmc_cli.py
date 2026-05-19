@@ -35,7 +35,7 @@
 # python modules
 import os
 import sys
-from logging import FileHandler, Formatter, StreamHandler, getLogger
+from logging import DEBUG, FileHandler, Formatter, StreamHandler, getLogger
 
 import jax
 import toml
@@ -48,6 +48,10 @@ from ._checkpoint import merge_rank_checkpoints
 
 # jQMC
 from ._header_footer import _print_footer, _print_header
+from ._jqmc_utility import check_mpi4py_jax_distribution_consistency, num_sep_line
+from ._precision import configure as configure_precision
+from ._precision import mode_label as precision_mode_label
+from ._precision import zone_detail as precision_zone_detail
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -66,19 +70,36 @@ jax.config.update("jax_traceback_filtering", "off")
 logger = getLogger("jqmc").getChild(__name__)
 
 
+def _log_precision_section() -> None:
+    """Log the active precision configuration as a labeled section.
+
+    Output format mirrors the ``hamiltonian_data`` info section: a title
+    line, top ``=`` separator, the summary at INFO level, the per-zone
+    detail at DEBUG level, and a bottom ``=`` separator.
+    """
+    logger.info("=" * num_sep_line)
+    logger.info("Printing out precision information.")
+    logger.info("=" * num_sep_line)
+    logger.info("Precision: %s", precision_mode_label())
+    if logger.isEnabledFor(DEBUG):
+        logger.debug("Zone detail:")
+        for line in precision_zone_detail().split("\n"):
+            logger.debug(line)
+    logger.info("=" * num_sep_line)
+    logger.info("")
+
+
 def _cli():
     """Main function."""
     if len(sys.argv) == 1:
         raise ValueError("Please specify input toml file.")
-    elif len(sys.argv) > 2:
+    if len(sys.argv) > 2:
         raise ValueError("More than one input toml files are not acceptable.")
-    else:
-        toml_file = sys.argv[1]
-        if not os.path.isfile(toml_file):
-            raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
-        else:
-            with open(toml_file, "r") as f:
-                dict_toml = toml.load(f)
+    toml_file = sys.argv[1]
+    if not os.path.isfile(toml_file):
+        raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
+    with open(toml_file) as f:
+        dict_toml = toml.load(f)
 
     # MPI related
     mpi_comm = MPI.COMM_WORLD
@@ -212,6 +233,12 @@ def _cli():
         logger.info("")
         jax_distributed_is_initialized = False
 
+    # Surface silently-failed distributed init: ``initialize`` may swallow
+    # exceptions (the try/except above) but if we are actually under
+    # ``mpirun -n N>=2`` and JAX still sees only 1 process, every downstream
+    # device-collective call would silently produce per-rank-local results.
+    check_mpi4py_jax_distribution_consistency()
+
     if jax_distributed_is_initialized:
         # global JAX device
         global_device_info = jax.devices()
@@ -241,6 +268,21 @@ def _cli():
         for key, item in dict_item.items():
             logger.info(f"  {key}={item}")
         logger.info("")
+
+    # --- precision configuration ---
+    precision_section = dict_toml.get("precision", {})
+    if not isinstance(precision_section, dict):
+        raise ValueError("The [precision] section must be a TOML table.")
+    precision_mode = precision_section.get("mode", "full")
+    extra_keys = set(precision_section.keys()) - {"mode"}
+    if extra_keys:
+        logger.warning(
+            "Per-zone precision overrides are no longer supported and will be "
+            "ignored: %s. Edit jqmc/_precision.py directly to change zone "
+            "assignments.",
+            sorted(extra_keys),
+        )
+    configure_precision(precision_mode)
 
     # default parameters
     parameters = cli_parameters.copy()
@@ -316,6 +358,8 @@ def _cli():
                 comput_log_WF_param_deriv=parameter_derivatives,
                 use_swct=use_swct,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         mcmc.hamiltonian_data._logger_info()
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -448,8 +492,14 @@ def _cli():
                 comput_log_WF_param_deriv=True,
                 comput_e_L_param_deriv=_need_eL_deriv,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         mcmc.hamiltonian_data._logger_info()
+        # Pick the SR backend per JAX device: GPU favours the on-device
+        # (jax.shard_map + NCCL) path, CPU favours the legacy mpi4py + SciPy
+        # path. Anything else falls back to the CPU path.
+        use_device_collectives = jax.default_backend() == "gpu"
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -468,6 +518,7 @@ def _cli():
             opt_lambda_basis_coeff=opt_lambda_basis_coeff,
             max_time=max_time,
             optimizer_kwargs=optimizer_kwargs,
+            use_device_collectives=use_device_collectives,
         )
         logger.info("")
 
@@ -559,6 +610,8 @@ def _cli():
                 epsilon_PW=epsilon_PW,
                 use_swct=use_swct,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -661,6 +714,8 @@ def _cli():
                 epsilon_PW=epsilon_PW,
                 use_swct=use_swct,
             )
+        _log_precision_section()
+        logger.info("=" * num_sep_line)
         logger.info("Printing out information in hamitonian_data instance.")
         lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)

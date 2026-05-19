@@ -32,6 +32,7 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import os
 import sys
 from pathlib import Path
 
@@ -46,13 +47,12 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import (  # noqa: E402
+from jqmc.atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
 )
-from jqmc.molecular_orbital import (  # noqa: E402
+from jqmc.molecular_orbital import (
     MOs_data,
-    _cart_to_spherical_matrix,
     _compute_MOs_debug,
     _compute_MOs_grad_autodiff,
     _compute_MOs_grad_debug,
@@ -61,16 +61,12 @@ from jqmc.molecular_orbital import (  # noqa: E402
     compute_MOs,
     compute_MOs_grad,
     compute_MOs_laplacian,
+    compute_MOs_value_grad_lap,
 )
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    rtol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    rtol_auto_vs_numerical_deriv,
-    atol_debug_vs_production,
-    rtol_debug_vs_production,
-)
-from jqmc.structure import Structure_data  # noqa: E402
+from jqmc._jqmc_utility import _cart_to_spherical_matrix
+from jqmc._precision import get_dtype_jnp, get_tolerance, get_tolerance_min
+from jqmc.structure import Structure_data
+from jqmc.trexio_wrapper import read_trexio_file
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -90,8 +86,8 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     magnetic_quantum_numbers = [0, 0, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -132,9 +128,12 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
+    # Path crosses ao_eval (fp32 in mixed) -> mo_eval (fp64); use the looser
+    # of the two so the test reflects the achievable agreement.
+    atol, rtol = get_tolerance_min(["ao_eval", "mo_eval"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_ans_all_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_ans_all_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol, rtol=rtol)
 
     num_el = 10
     num_mo = 5
@@ -147,8 +146,8 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     magnetic_quantum_numbers = [0, 1, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -190,12 +189,13 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     assert not np.any(np.isnan(np.asarray(mo_ans_all_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_ans_all_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_ans_all_debug, mo_ans_all_jax, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_MOs_comparing_auto_and_numerical_grads():
     """Test the MO gradient computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -209,8 +209,8 @@ def test_MOs_comparing_auto_and_numerical_grads():
     magnetic_quantum_numbers = [0, 0, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -254,22 +254,17 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("mo_grad", "strict")
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol, rtol=rtol)
 
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol, rtol=rtol)
 
     num_el = 10
     num_mo = 5
@@ -282,8 +277,8 @@ def test_MOs_comparing_auto_and_numerical_grads():
     magnetic_quantum_numbers = [0, 1, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -329,24 +324,19 @@ def test_MOs_comparing_auto_and_numerical_grads():
 
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_x_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_y_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_grad_z_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(
-        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
-    )
+    np.testing.assert_allclose(mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 @pytest.mark.activate_if_skip_heavy
+@pytest.mark.numerical_diff
 def test_MOs_comparing_auto_and_numerical_laplacians():
     """Test the MO Laplacian computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -360,8 +350,8 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
     magnetic_quantum_numbers = [0, 0, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -401,13 +391,14 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    atol, rtol = get_tolerance("mo_lap", "medium")
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_matrix_laplacian_numerical))), "NaN detected in second argument"
     np.testing.assert_allclose(
         mo_matrix_laplacian_auto,
         mo_matrix_laplacian_numerical,
-        atol=atol_auto_vs_numerical_deriv,
-        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol,
+        rtol=rtol,
     )
 
     jax.clear_caches()
@@ -427,8 +418,8 @@ def test_MOs_comparing_analytic_and_auto_grads():
     magnetic_quantum_numbers = [0, 1, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -466,15 +457,20 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    # Autodiff differentiates compute_MOs -> compute_AOs (ao_eval, fp32 in
+    # mixed mode); analytic path uses compute_AOs_grad (ao_grad_lap, fp64).
+    # Achievable agreement is bounded by ao_eval (the fp32 forward kernel the
+    # autodiff side runs through), not by ao_grad_lap or mo_grad.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap", "mo_grad"], "strict")
     assert not np.any(np.isnan(np.asarray(grad_x_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_x_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(grad_x_an, grad_x_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(grad_y_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_y_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_y_an, grad_y_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(grad_y_an, grad_y_auto, atol=atol, rtol=rtol)
     assert not np.any(np.isnan(np.asarray(grad_z_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_z_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(grad_z_an, grad_z_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(grad_z_an, grad_z_auto, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
@@ -493,8 +489,8 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
     magnetic_quantum_numbers = [0, 1, -1]
 
     orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
+    exponents = np.array(exponents, dtype=np.float64)
+    coefficients = np.array(coefficients, dtype=np.float64)
     angular_momentums = tuple(angular_momentums)
     magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
 
@@ -532,16 +528,20 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
+    # Autodiff differentiates compute_MOs -> compute_AOs (ao_eval, fp32 in
+    # mixed mode); analytic path uses compute_AOs_laplacian (ao_grad_lap,
+    # fp64). Achievable agreement is bounded by ao_eval (the fp32 forward
+    # kernel the autodiff side runs through), not by ao_grad_lap or mo_lap.
+    atol, rtol = get_tolerance_min(["ao_eval", "ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_lap_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_lap_auto))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(mo_lap_an, mo_lap_auto, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 
 
 def test_MOs_sphe_to_cart():
     """Ensure spherical -> Cartesian conversion preserves MO values up to l=6."""
-
     rng = np.random.default_rng(0)
 
     nucleus_index = []
@@ -586,8 +586,8 @@ def test_MOs_sphe_to_cart():
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=tuple(orbital_indices),
-        exponents=tuple(exponents),
-        coefficients=tuple(coefficients),
+        exponents=np.array(exponents, dtype=np.float64),
+        coefficients=np.array(coefficients, dtype=np.float64),
         angular_momentums=tuple(angular_momentums),
         magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
     )
@@ -602,31 +602,36 @@ def test_MOs_sphe_to_cart():
     mo_sphe = compute_MOs(mos_data=mos_sphe, r_carts=r_carts)
     mo_cart = compute_MOs(mos_data=mos_cart, r_carts=r_carts)
 
+    # Path crosses ao_eval (fp32 in mixed) -> mo_eval; use min for value cmp.
+    atol, rtol = get_tolerance_min(["ao_eval", "mo_eval"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_cart, mo_sphe, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_cart, mo_sphe, atol=atol, rtol=rtol)
 
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
 
+    # grad path crosses ao_grad_lap (fp64) -> mo_grad.
+    atol_g, rtol_g = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in second argument"
-        np.testing.assert_allclose(g_cart, g_sphe, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(g_cart, g_sphe, atol=atol_g, rtol=rtol_g)
 
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
 
+    # lap path crosses ao_grad_lap (fp64) -> mo_lap (fp64).
+    atol_l, rtol_l = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(lap_cart, lap_sphe, atol=atol_l, rtol=rtol_l)
 
     jax.clear_caches()
 
 
 def test_MOs_cart_to_sphe():
     """Ensure Cartesian -> spherical conversion preserves MO values up to l=6."""
-
     rng = np.random.default_rng(1)
 
     nucleus_index = []
@@ -642,7 +647,7 @@ def test_MOs_cart_to_sphe():
     ao_idx = 0
     for l in range(7):  # l = 0..6
         shell_indices: list[int] = []
-        for nx, ny, nz in [(nx, ny, l - nx - ny) for nx in range(l, -1, -1) for ny in range(l - nx, -1, -1)]:
+        for nx, ny, nz in [(_nx, _ny, l - _nx - _ny) for _nx in range(l, -1, -1) for _ny in range(l - _nx, -1, -1)]:
             nucleus_index.append(0)
             orbital_indices.append(ao_idx)
             exponents.append(float(l + 1))
@@ -685,8 +690,8 @@ def test_MOs_cart_to_sphe():
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=tuple(orbital_indices),
-        exponents=tuple(exponents),
-        coefficients=tuple(coefficients),
+        exponents=np.array(exponents, dtype=np.float64),
+        coefficients=np.array(coefficients, dtype=np.float64),
         angular_momentums=tuple(angular_momentums),
         polynominal_order_x=tuple(polynominal_order_x),
         polynominal_order_y=tuple(polynominal_order_y),
@@ -703,24 +708,112 @@ def test_MOs_cart_to_sphe():
     mo_cart = compute_MOs(mos_data=mos_cart, r_carts=r_carts)
     mo_sphe = compute_MOs(mos_data=mos_sphe, r_carts=r_carts)
 
+    # Path crosses ao_eval (fp32 in mixed) -> mo_eval; use min for value cmp.
+    atol, rtol = get_tolerance_min(["ao_eval", "mo_eval"], "strict")
     assert not np.any(np.isnan(np.asarray(mo_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mo_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(mo_sphe, mo_cart, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(mo_sphe, mo_cart, atol=atol, rtol=rtol)
 
     grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
     grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
 
+    # grad path crosses ao_grad_lap (fp64) -> mo_grad.
+    atol_g, rtol_g = get_tolerance_min(["ao_grad_lap", "mo_grad"], "strict")
     for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
         assert not np.any(np.isnan(np.asarray(g_sphe))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(g_cart))), "NaN detected in second argument"
-        np.testing.assert_allclose(g_sphe, g_cart, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+        np.testing.assert_allclose(g_sphe, g_cart, atol=atol_g, rtol=rtol_g)
 
     lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
     lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
 
+    # lap path crosses ao_grad_lap (fp64) -> mo_lap (fp64).
+    atol_l, rtol_l = get_tolerance_min(["ao_grad_lap", "mo_lap"], "strict")
     assert not np.any(np.isnan(np.asarray(lap_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_cart))), "NaN detected in second argument"
-    np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(lap_sphe, lap_cart, atol=atol_l, rtol=rtol_l)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    [
+        "water_ccecp_ccpvqz.h5",  # spherical
+        "H2_ae_ccpvdz_cart.h5",  # Cartesian
+        "N_ae_ccpvdz_cart.h5",
+    ],
+)
+def test_MOs_value_grad_lap(trexio_file: str):
+    """Fused ``compute_MOs_value_grad_lap`` matches the standalone APIs.
+
+    All outputs (val/grad/lap) are bounded by ULP-level differences in
+    the ``mo_eval`` / ``ao_eval`` zones: the fused MO function applies
+    the same ``mo_coefficients @ ao_*`` matmul as the standalone kernels,
+    but XLA may reassociate the upstream FMA chains across the different
+    ``@jit`` boundaries.
+    """
+    parsed = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    _structure, _aos, mos_data_up, *_rest = parsed
+
+    rng = np.random.default_rng(20260430)
+    r_carts = (rng.standard_normal((6, 3)) * 1.5).astype(np.float64)
+
+    val_f, gx_f, gy_f, gz_f, lap_f = compute_MOs_value_grad_lap(mos_data=mos_data_up, r_carts=r_carts)
+    val_s = compute_MOs(mos_data=mos_data_up, r_carts=r_carts)
+    gx_s, gy_s, gz_s = compute_MOs_grad(mos_data=mos_data_up, r_carts=r_carts)
+    lap_s = compute_MOs_laplacian(mos_data=mos_data_up, r_carts=r_carts)
+
+    for arr in (val_f, gx_f, gy_f, gz_f, lap_f, val_s, gx_s, gy_s, gz_s, lap_s):
+        assert not np.any(np.isnan(np.asarray(arr)))
+
+    # All outputs share the mo_eval/ao_eval zone tolerance; XLA may
+    # reassociate FMA chains across @jit boundaries producing strictly
+    # ULP-level differences.
+    atol_val, rtol_val = get_tolerance_min(["ao_eval", "mo_eval"], "strict")
+    np.testing.assert_allclose(np.asarray(gx_f), np.asarray(gx_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(gy_f), np.asarray(gy_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(gz_f), np.asarray(gz_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(lap_f), np.asarray(lap_s), atol=atol_val, rtol=rtol_val)
+    np.testing.assert_allclose(np.asarray(val_f), np.asarray(val_s), atol=atol_val, rtol=rtol_val)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    [
+        "water_ccecp_ccpvqz.h5",
+        "H2_ae_ccpvdz_cart.h5",
+    ],
+)
+def test_fused_MOs_dtypes_match_zones(trexio_file: str):
+    """``compute_MOs_value_grad_lap`` outputs are pinned to their zones.
+
+    val <-> ``mo_eval`` (fp32 mixed / fp64 full); gx/gy/gz <-> ``mo_grad``
+    (fp64); lap <-> ``mo_lap`` (fp64).
+    """
+    parsed = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    _structure, _aos, mos_data_up, *_rest = parsed
+
+    rng = np.random.default_rng(20260430)
+    r_carts = (rng.standard_normal((4, 3)) * 1.5).astype(np.float64)
+    val_f, gx_f, gy_f, gz_f, lap_f = compute_MOs_value_grad_lap(mos_data=mos_data_up, r_carts=r_carts)
+
+    eval_dtype = get_dtype_jnp("mo_eval")
+    grad_dtype = get_dtype_jnp("mo_grad")
+    lap_dtype = get_dtype_jnp("mo_lap")
+    assert val_f.dtype == eval_dtype, f"val.dtype = {val_f.dtype}, expected {eval_dtype}"
+    assert gx_f.dtype == grad_dtype, f"gx.dtype = {gx_f.dtype}, expected {grad_dtype}"
+    assert gy_f.dtype == grad_dtype, f"gy.dtype = {gy_f.dtype}, expected {grad_dtype}"
+    assert gz_f.dtype == grad_dtype, f"gz.dtype = {gz_f.dtype}, expected {grad_dtype}"
+    assert lap_f.dtype == lap_dtype, f"lap.dtype = {lap_f.dtype}, expected {lap_dtype}"
 
     jax.clear_caches()
 

@@ -4,12 +4,11 @@ from pathlib import Path
 
 
 def sync_readme(readme_path):
-    """
-    Reads a README file, looks for <!-- include: filepath --> markers,
+    """Reads a README file, looks for <!-- include: filepath --> markers,
     and updates the following code block with the content of the file.
     """
     try:
-        with open(readme_path, "r") as f:
+        with open(readme_path) as f:
             content = f.read()
     except FileNotFoundError:
         print(f"File not found: {readme_path}")
@@ -39,7 +38,7 @@ def sync_readme(readme_path):
             return match.group(0)  # Return original text if file not found
 
         try:
-            with open(source_path, "r") as src:
+            with open(source_path) as src:
                 new_content = src.read()
                 # Ensure the content ends with exactly one newline if it's not empty
                 new_content = new_content.rstrip() + "\n"

@@ -10,14 +10,62 @@ local_scheme = "no-local-version"
 [tool.ruff]
 line-length = 128
 lint.select = [
-    "F", # Flake8
-    "B", # Black
-    "I", # isort
-    "E", # pycodestyle-errors
-    "D", # pydocstyle
+    "F",      # pyflakes
+    "E", "W", # pycodestyle errors + warnings
+    "B",      # flake8-bugbear
+    "I",      # isort
+    "D",      # pydocstyle
+    "UP",     # pyupgrade
+    "C4",     # comprehensions
+    "PIE",    # idiom
+    "SIM",    # simplify
+    "RET",    # return
+    "G",      # logging-format
+    "T20",    # print
+    "NPY",    # numpy
+    "PT",     # pytest-style
+    "PERF",   # performance
+    "RUF",    # ruff-specific (includes RUF001-003)
 ]
-lint.extend-ignore = ["I001", "B008", "B023", "D417", "D100", "E501", "E741"]
-exclude = []
+lint.extend-ignore = [
+    # --- Pre-existing intentional ignores ---
+    "I001", "B008", "B023", "D417", "D100", "E501", "E741",
+    "G004",    # f-string in logger (jQMC convention)
+    "RUF012",  # mutable class default (flax struct.dataclass false positive)
+    "RUF013",  # implicit Optional (`X = None` then `if X is None` is OK)
+    "PERF203", # try-except in loop (sometimes required)
+    "PT011",   # pytest.raises too broad
+    "SIM108",  # ternary if-else (sometimes if-block is more readable)
+    # --- TODO: currently-violating rules; fix and remove from this list ---
+    # bugbear
+    "B007", "B904", "B905",
+    # flake8-comprehensions
+    "C401", "C408", "C409", "C414", "C416", "C419",
+    # pydocstyle
+    "D101", "D102", "D103", "D104", "D105", "D107",
+    "D205", "D301", "D415",
+    # pycodestyle errors
+    "E101", "E402", "E701", "E702", "E721", "E902",
+    # pyflakes
+    "F841",
+    # logging-format
+    "G003",
+    # numpy
+    "NPY002",
+    # performance
+    "PERF401", "PERF402",
+    # flake8-pytest-style
+    "PT006", "PT012", "PT018",
+    # flake8-return
+    "RET503", "RET504",
+    # ruff-specific (RUF001/002/003 are ENFORCED -- never add here)
+    "RUF005", "RUF022", "RUF046", "RUF059",
+    # flake8-simplify
+    "SIM101", "SIM102", "SIM103", "SIM105", "SIM115", "SIM118",
+    # flake8-print
+    "T201",
+]
+exclude = ["jqmc/obsolete", "prototypes"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -3,9 +3,9 @@
 Given a short pilot run and a desired target statistical error, estimates
 the number of measurement steps required for a production run.
 
-The central-limit-theorem scaling σ ∝ 1/√N is used:
+The central-limit-theorem scaling sigma prop 1/sqrtN is used:
 
-    N_required = ⌈ N_pilot × (σ_pilot / σ_target)² ⌉
+    N_required = ceil( N_pilot x (sigma_pilot / sigma_target)^2 )
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -70,27 +70,25 @@ def estimate_required_steps(
             \\times (\\sigma_{\\text{pilot}} / \\sigma_{\\text{target}})^2
             \\times W_{\\text{pilot}} / W_{\\text{prod}}
 
-    Parameters
-    ----------
-    pilot_steps : int
-        Number of measurement steps used in the pilot run.
-    pilot_error : float
-        Statistical error (standard error) obtained from the pilot run.
-    target_error : float
-        Desired statistical error for the production run.
-    walker_ratio : float
-        Ratio of effective walker counts: ``pilot_walkers / prod_walkers``.
-        When walkers-per-MPI is constant this equals
-        ``pilot_num_mpi / prod_num_mpi``.
-        Default 1.0 (same queue for pilot and production).
-    min_steps : int
-        Minimum number of steps to return (e.g. warmup + bin_blocks).
-        Default 0 (no minimum).
+    Args:
+        pilot_steps (int):
+            Number of measurement steps used in the pilot run.
+        pilot_error (float):
+            Statistical error (standard error) obtained from the pilot run.
+        target_error (float):
+            Desired statistical error for the production run.
+        walker_ratio (float):
+            Ratio of effective walker counts: ``pilot_walkers / prod_walkers``.
+            When walkers-per-MPI is constant this equals
+            ``pilot_num_mpi / prod_num_mpi``.
+            Default 1.0 (same queue for pilot and production).
+        min_steps (int):
+            Minimum number of steps to return (e.g. warmup + bin_blocks).
+            Default 0 (no minimum).
 
-    Returns
-    -------
-    int
-        Estimated number of steps for the production run.
+    Returns:
+        int:
+            Estimated number of steps for the production run.
     """
     if target_error <= 0:
         raise ValueError(f"target_error must be positive, got {target_error}")
@@ -127,26 +125,24 @@ def estimate_additional_steps(
     are needed to bring the error from *current_error* down to
     *target_error*.
 
-    Uses σ ∝ 1/√N:
+    Uses sigma prop 1/sqrtN:
 
-        N_total = ⌈ accumulated_steps × (current_error / target_error)² ⌉
-        additional = N_total − accumulated_steps
+        N_total = ceil( accumulated_steps x (current_error / target_error)^2 )
+        additional = N_total - accumulated_steps
 
-    Parameters
-    ----------
-    accumulated_steps : int
-        Total measurement steps already in the checkpoint.
-    current_error : float
-        Statistical error after *accumulated_steps*.
-    target_error : float
-        Desired statistical error.
-    min_additional : int
-        Floor on additional steps to avoid trivially short runs.
+    Args:
+        accumulated_steps (int):
+            Total measurement steps already in the checkpoint.
+        current_error (float):
+            Statistical error after *accumulated_steps*.
+        target_error (float):
+            Desired statistical error.
+        min_additional (int):
+            Floor on additional steps to avoid trivially short runs.
 
-    Returns
-    -------
-    int
-        Number of *additional* steps to run.
+    Returns:
+        int:
+            Number of *additional* steps to run.
     """
     if target_error <= 0:
         raise ValueError(f"target_error must be positive, got {target_error}")
@@ -171,12 +167,11 @@ def estimate_additional_steps(
 def suffixed_name(filename: str, index: int) -> str:
     """Insert an integer suffix before the file extension.
 
-    Examples
-    --------
-    >>> suffixed_name("input.toml", 0)
-    'input_0.toml'
-    >>> suffixed_name("out.o", 2)
-    'out_2.o'
+    Examples:
+        >>> suffixed_name("input.toml", 0)
+        'input_0.toml'
+        >>> suffixed_name("out.o", 2)
+        'out_2.o'
     """
     base, ext = os.path.splitext(filename)
     return f"{base}_{index}{ext}"
@@ -185,14 +180,13 @@ def suffixed_name(filename: str, index: int) -> str:
 def _format_duration(seconds: float) -> str:
     """Format a duration in seconds as a human-readable string.
 
-    Examples
-    --------
-    >>> _format_duration(90)
-    '1m 30s'
-    >>> _format_duration(3661)
-    '1h 1m 1s'
-    >>> _format_duration(86400)
-    '1d 0h 0m'
+    Examples:
+        >>> _format_duration(90)
+        '1m 30s'
+        >>> _format_duration(3661)
+        '1h 1m 1s'
+        >>> _format_duration(86400)
+        '1d 0h 0m'
     """
     seconds = max(0, seconds)
     if seconds < 60:
@@ -214,7 +208,7 @@ def _format_duration(seconds: float) -> str:
     return f"{days}d {h}h {m}m"
 
 
-# ── Patterns for "Net" times in jQMC output ──────────────────
+# -- Patterns for "Net" times in jQMC output ------------------
 
 # LRDMC: "Net GFMC time without pre-compilations =  2832.326 sec."
 _RE_NET_GFMC = re.compile(
@@ -236,22 +230,20 @@ def parse_net_time(output_file: str) -> float | None:
         Net GFMC time without pre-compilations = <value> sec.   (LRDMC)
         Net total time for MCMC = <value> sec.                  (MCMC/VMC)
 
-    Parameters
-    ----------
-    output_file : str
-        Path to the jQMC stdout/stderr output file.
+    Args:
+        output_file (str):
+            Path to the jQMC stdout/stderr output file.
 
-    Returns
-    -------
-    float or None
-        Net time in seconds, or *None* if the pattern is not found.
+    Returns:
+        float or None:
+            Net time in seconds, or *None* if the pattern is not found.
     """
     if not os.path.isfile(output_file):
         logger.debug(f"parse_net_time: file not found: {output_file}")
         return None
 
     try:
-        with open(output_file, "r", errors="replace") as fh:
+        with open(output_file, errors="replace") as fh:
             text = fh.read()
     except OSError as exc:
         logger.debug(f"parse_net_time: cannot read {output_file}: {exc}")

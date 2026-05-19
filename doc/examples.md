@@ -358,7 +358,7 @@ max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
-verbosity = "low" # Verbosity level. "low" or "high"
+verbosity = "high" # Verbosity level. "low" or "high"
 
 [vmc]
 num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
@@ -376,6 +376,10 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
+opt_J3_basis_exp = true
+opt_J3_basis_coeff = true
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please lunch the job.
@@ -420,7 +424,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `use_lm = false` in `optimizer_kwargs` to disable the linear method and use plain SR with a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the Linear Method (LM) and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -697,6 +701,10 @@ opt_J3_param = false
 opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 optimizer_kwargs = { method = "adam" }
 ```
 
@@ -787,6 +795,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -911,6 +920,10 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = true
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 The key differences from `example01` are:
@@ -937,7 +950,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `use_lm = false` in `optimizer_kwargs` to disable the linear method and use plain SR with a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the Linear Method (LM) and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -1026,18 +1039,18 @@ The directory structure will look like:
 
 ```
 water_dimer_qmc/
-├── 01_S22_water_monomer_1/   # monomer 1
-│   └── 01DFT/
-├── 02_S22_water_monomer_2/   # monomer 2
-│   └── 01DFT/
-└── 03_S22_water_dimer/       # dimer
-    ├── 01DFT/
-    ├── 02vmc_JSD/
-    ├── 03mcmc_JSD/
-    ├── 04lrdmc_JSD/
-    ├── 05vmc_JAGP/
-    ├── 06mcmc_JAGP/
-    └── 07lrdmc_JAGP/
+--- 01_S22_water_monomer_1/   # monomer 1
+-   --- 01DFT/
+--- 02_S22_water_monomer_2/   # monomer 2
+-   --- 01DFT/
+--- 03_S22_water_dimer/       # dimer
+    --- 01DFT/
+    --- 02vmc_JSD/
+    --- 03mcmc_JSD/
+    --- 04lrdmc_JSD/
+    --- 05vmc_JAGP/
+    --- 06mcmc_JAGP/
+    --- 07lrdmc_JAGP/
 ```
 
 ### Generate trial WFs (DFT)
@@ -1230,6 +1243,10 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please lunch the job.
@@ -1277,7 +1294,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `use_lm = false` in `optimizer_kwargs` to disable the linear method and use plain SR with a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -1450,6 +1467,10 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = false
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 > [!IMPORTANT]
@@ -1751,6 +1772,10 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please launch the job.
@@ -1830,6 +1855,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 1.2 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -1891,6 +1917,7 @@ num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e.
 num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
 E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
 atomic_force = true
+use_swct = false # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is false for LRDMC.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -1964,6 +1991,10 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 Please launch the job.
@@ -2039,6 +2070,7 @@ num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e.,
 Dt = 1.2 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
+use_swct = true # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -2097,6 +2129,7 @@ num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e.
 num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
 E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
 atomic_force = true
+use_swct = false # Apply Space Warp Coordinate Transformation (SWCT) to atomic forces. Default is false for LRDMC.
 ```
 
 Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -2444,17 +2477,17 @@ After running the pipeline, each bond length has the following structure:
 
 ```
 R_0.74/
-├── 00_pyscf/          # pySCF DFT calculation
-│   ├── run_pyscf.py
-│   ├── H2_R_0.74.h5   # TREXIO file
-│   └── H2_R_0.74.out  # pySCF output
-├── 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_20.h5
-├── 03_mcmc/           # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
+--- 00_pyscf/          # pySCF DFT calculation
+-   --- run_pyscf.py
+-   --- H2_R_0.74.h5   # TREXIO file
+-   --- H2_R_0.74.out  # pySCF output
+--- 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
+-   --- hamiltonian_data_opt_step_1.h5
+-   --- ...
+-   --- hamiltonian_data_opt_step_20.h5
+--- 03_mcmc/           # MCMC_Workflow: production sampling + forces
+--- 04_lrdmc/          # LRDMC_Workflow: LRDMC (a=0.2) + forces
 ```
 
 ### Workflow DAG
@@ -2462,8 +2495,8 @@ R_0.74/
 For each R, the dependency graph is:
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC
-                   └─--> LRDMC (a=0.2)
+pySCF --> WF --> VMC -----> MCMC
+                   ----> LRDMC (a=0.2)
 ```
 
 All 20 R values are independent and execute in parallel via `Launcher`.
@@ -2510,7 +2543,7 @@ The script prints a summary table after all calculations complete:
 
 ### Results
 
-![H2 PES — MCMC and LRDMC](../examples/jqmc-workflow-example01/H2_PES_mcmc_lrdmc.png)
+![H2 PES -- MCMC and LRDMC](../examples/jqmc-workflow-example01/H2_PES_mcmc_lrdmc.png)
 
 ### References
 
@@ -2538,7 +2571,7 @@ The workflow DAG is constructed programmatically in `run_pipelines.py` and execu
 #### Ansatz and optimization
 
 - **JSD** (Jastrow-Slater Determinant): J2 (two-body, exponential) + J3 (three-body, AO-small basis). No J1.
-- **VMC optimization**: 50 steps with SR optimizer (`use_lm = True`, `delta = 0.35`)
+- **VMC optimization**: 50 steps with SR optimizer (`adaptive_learning_rate = True`, `delta = 0.35`)
 - Determinant part is **not** optimized (`opt_with_projected_MOs = False`)
 
 #### Walker counts
@@ -2631,7 +2664,7 @@ VMC_Workflow(
         "method": "sr",
         "delta": 0.350,
         "epsilon": 0.001,
-        "use_lm": True,
+        "adaptive_learning_rate": True,
     },
 )
 ```
@@ -2665,35 +2698,35 @@ After running the pipeline:
 
 ```
 jqmc-workflow-example02/
-├── run_pipelines.py         # Main script
-├── run_pyscf.py             # Standalone pySCF script (reference)
-├── water_trexio.hdf5        # TREXIO file (pySCF output)
-├── jqmc_setting_local/      # Machine configuration
-├── 01_wf/                   # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/                  # VMC_Workflow: Jastrow optimization
-├── 03_mcmc/                 # MCMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
-├── 04_lrdmc/                # LRDMC production (per walker count)
-│   ├── w00008/
-│   ├── w00016/
-│   ├── ...
-│   └── w08192/
+--- run_pipelines.py         # Main script
+--- run_pyscf.py             # Standalone pySCF script (reference)
+--- water_trexio.hdf5        # TREXIO file (pySCF output)
+--- jqmc_setting_local/      # Machine configuration
+--- 01_wf/                   # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/                  # VMC_Workflow: Jastrow optimization
+--- 03_mcmc/                 # MCMC production (per walker count)
+-   --- w00008/
+-   --- w00016/
+-   --- ...
+-   --- w08192/
+--- 04_lrdmc/                # LRDMC production (per walker count)
+-   --- w00008/
+-   --- w00016/
+-   --- ...
+-   --- w08192/
 ```
 
 ### Workflow DAG
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC  (w8)    ─┐
-                   ├─--> MCMC  (w16)    │
-                   ├─--> ...            ├─--> Summary table
-                   ├─--> MCMC  (w8192)  │
-                   ├─--> LRDMC (w8)     │
-                   ├─--> LRDMC (w16)    │
-                   ├─--> ...            │
-                   └─--> LRDMC (w8192)  ─┘
+pySCF --> WF --> VMC -----> MCMC  (w8)    --
+                   ----> MCMC  (w16)    -
+                   ----> ...            ----> Summary table
+                   ----> MCMC  (w8192)  -
+                   ----> LRDMC (w8)     -
+                   ----> LRDMC (w16)    -
+                   ----> ...            -
+                   ----> LRDMC (w8192)  --
 ```
 
 ### Machine configuration
@@ -2702,8 +2735,8 @@ This example assumes a cluster where each node has 4 NVIDIA GPUs. The benchmark 
 
 | Component | Specification |
 |-----------|---------------|
-| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90–3.50 GHz) × 2 sockets |
-| GPU       | NVIDIA H100 (Hopper) × 4 sockets |
+| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90-3.50 GHz) x 2 sockets |
+| GPU       | NVIDIA H100 (Hopper) x 4 sockets |
 
 To run on a different cluster, change `SERVER`, `QUEUE_LABEL_s`, and `QUEUE_LABEL_l` in `run_pipelines.py` and provide the appropriate machine configuration in `jqmc_setting_local/`.
 
@@ -2750,7 +2783,7 @@ The workflow DAG is constructed programmatically in `run_pipelines.py` and execu
 #### Ansatz and optimization
 
 - **JSD** (Jastrow-Slater Determinant): J2 (two-body, exponential) + J3 (three-body, AO-small basis). No J1.
-- **VMC optimization**: 100 steps with SR optimizer (`use_lm = True`, `delta = 0.35`)
+- **VMC optimization**: 100 steps with SR optimizer (`adaptive_learning_rate = True`, `delta = 0.35`)
 - Determinant part is **not** optimized (`opt_with_projected_MOs = False`)
 - 1024 walkers per MPI process
 
@@ -2838,7 +2871,7 @@ VMC_Workflow(
         "method": "sr",
         "delta": 0.350,
         "epsilon": 0.001,
-        "use_lm": True,
+        "adaptive_learning_rate": True,
     },
     max_time=76000,
     max_continuation=2,
@@ -2859,7 +2892,6 @@ MCMC_Workflow(
     atomic_force=True,
     max_time=76000,
     max_continuation=2,
-    cleanup_patterns=["restart.h5"],  # delete large checkpoint on success
 )
 
 LRDMC_Workflow(
@@ -2872,7 +2904,6 @@ LRDMC_Workflow(
     num_gfmc_collect_steps=20,
     max_time=76000,
     max_continuation=2,
-    cleanup_patterns=["restart.h5"],  # delete large checkpoint on success
 )
 ```
 
@@ -2882,21 +2913,21 @@ After running the pipeline:
 
 ```
 jqmc-workflow-example03/
-├── run_pipelines.py          # Main script
-├── 01_wf/                    # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_100.h5
-├── 03_mcmc/                  # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
+--- run_pipelines.py          # Main script
+--- 01_wf/                    # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
+-   --- hamiltonian_data_opt_step_1.h5
+-   --- ...
+-   --- hamiltonian_data_opt_step_100.h5
+--- 03_mcmc/                  # MCMC_Workflow: production sampling + forces
+--- 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
 ```
 
 ### Workflow DAG
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC  (energy + force)
-                   └─--> LRDMC (energy + force)
+pySCF --> WF --> VMC -----> MCMC  (energy + force)
+                   ----> LRDMC (energy + force)
 ```
 
 ### Machine configuration

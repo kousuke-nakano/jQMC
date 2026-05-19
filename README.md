@@ -25,14 +25,13 @@ What sets **jQMC** apart:
 - Written in `Python`, **jQMC** is designed to be user-friendly for executing simulations and easily extensible for developers implementing and testing new QMC methods.
 - By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations **especially on GPUs** while remaining portable across CPUs, GPUs, and TPUs.
 - MPI support enables the execution of large-scale computations on HPC facilities.
-- **Automated workflows**: The `jqmc-workflow` module automates the entire simulation pipeline — from pilot runs and step-count estimation through production runs and convergence monitoring — allowing users to obtain publication-quality results with minimal manual intervention.
+- **Automated workflows**: The `jqmc-workflow` module automates the entire simulation pipeline -- from pilot runs and step-count estimation through production runs and convergence monitoring -- allowing users to obtain publication-quality results with minimal manual intervention.
 - To minimize bugs, the code is written in a loosely coupled manner and includes comprehensive unit tests and regression tests (managed by `pytest`).
 
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
 
 ## Known issues
-- On CPUs, **`jQMC` is slower than other QMC packages written in compiled languages (e.g., C++ or Fortran). On GPUs, however, `jQMC` achieves performance comparable to (or even faster than) compiled-language QMC codes**, thanks to `JAX`'s just-in-time compilation and hardware-level optimizations. Please use **GPUs** with a large number of walkers to fully exploit the performance.
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
 
@@ -122,6 +121,8 @@ git-commit. Pre-commit is set-up and used in the following way:
 - Installed by `pip install pre-commit`, `conda install pre_commit` or see
   https://pre-commit.com/#install.
 - pre-commit hook is installed by `pre-commit install`.
+- commit-msg hook (rejects non-ASCII bytes in commit messages) is
+  installed by `pre-commit install --hook-type commit-msg`.
 - pre-commit hook is run by `pre-commit run --all-files`.
 
 Unless running pre-commit, pre-commit.ci may push the fix at PR by github
@@ -180,7 +181,7 @@ If you used `jQMC` in your reseach project, please cite the following articles. 
     %volume  = {},
     %number  = {},
     %pages   = {},
-    year    = {2025},
+    year    = {2026},
     %doi     = {}
   }
   ```

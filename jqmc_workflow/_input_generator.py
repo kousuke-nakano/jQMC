@@ -49,19 +49,17 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 def resolve_with_defaults(section_name: str, explicit_params: dict) -> dict:
     """Resolve *None* values using ``jqmc_miscs`` defaults and log them.
 
-    Parameters
-    ----------
-    section_name : str
-        TOML section name (``"vmc"``, ``"mcmc"``, ``"lrdmc-bra"``, ``"control"``).
-    explicit_params : dict
-        ``{param_name: value_or_None}``.  *None* entries are replaced
-        by the corresponding default from ``cli_parameters``.
+    Args:
+        section_name (str):
+            TOML section name (``"vmc"``, ``"mcmc"``, ``"lrdmc-bra"``, ``"control"``).
+        explicit_params (dict):
+            ``{param_name: value_or_None}``.  *None* entries are replaced
+            by the corresponding default from ``cli_parameters``.
 
-    Returns
-    -------
-    dict
-        Resolved parameters with no *None* values (unless the default
-        itself is *None*, which means the field is required).
+    Returns:
+        dict:
+            Resolved parameters with no *None* values (unless the default
+            itself is *None*, which means the field is required).
     """
     defaults = cli_parameters.get(section_name, {})
     resolved = {}
@@ -82,15 +80,13 @@ def get_default_parameters(job_type: str) -> dict:
     The returned dict has two sections: ``"control"`` and the job-type
     section (e.g. ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``).
 
-    Parameters
-    ----------
-    job_type : str
-        One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
+    Args:
+        job_type (str):
+            One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
 
-    Returns
-    -------
-    dict
-        ``{"control": {...}, job_type: {...}}``
+    Returns:
+        dict:
+            ``{"control": {...}, job_type: {...}}``
     """
     if job_type not in cli_parameters:
         raise ValueError(
@@ -112,30 +108,27 @@ def generate_input_toml(
 ) -> str:
     """Generate a jqmc TOML input file.
 
-    Parameters
-    ----------
-    job_type : str
-        One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
-    overrides : dict, optional
-        Nested dict of values to override, e.g.
-        ``{"control": {"number_of_walkers": 8}, "mcmc": {"num_mcmc_steps": 1000}}``.
-    filename : str
-        Output filename.
-    with_comments : bool
-        If True, insert inline comments from ``cli_parameters["*_comments"]``.
+    Args:
+        job_type (str):
+            One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
+        overrides (dict, optional):
+            Nested dict of values to override, e.g.
+            ``{"control": {"number_of_walkers": 8}, "mcmc": {"num_mcmc_steps": 1000}}``.
+        filename (str):
+            Output filename.
+        with_comments (bool):
+            If True, insert inline comments from ``cli_parameters["*_comments"]``.
 
-    Returns
-    -------
-    str
-        The absolute path of the written file.
+    Returns:
+        str:
+            The absolute path of the written file.
 
-    Examples
-    --------
-    >>> generate_input_toml(
-    ...     "mcmc",
-    ...     overrides={"mcmc": {"num_mcmc_steps": 500, "Dt": 1.5}},
-    ...     filename="mcmc.toml",
-    ... )
+    Examples:
+        >>> generate_input_toml(
+        ...     "mcmc",
+        ...     overrides={"mcmc": {"num_mcmc_steps": 500, "Dt": 1.5}},
+        ...     filename="mcmc.toml",
+        ... )
     """
     params = get_default_parameters(job_type)
     overrides = overrides or {}
@@ -201,16 +194,15 @@ def _toml_value(v) -> str:
     """Format a Python value as a TOML literal."""
     if isinstance(v, bool):
         return "true" if v else "false"
-    elif isinstance(v, str):
+    if isinstance(v, str):
         return f'"{v}"'
-    elif isinstance(v, (int, float)):
+    if isinstance(v, (int, float)):
         return str(v)
-    elif isinstance(v, dict):
+    if isinstance(v, dict):
         # Inline table
         inner = ", ".join(f"{k} = {_toml_value(val)}" for k, val in v.items())
         return "{" + inner + "}"
-    elif isinstance(v, list):
+    if isinstance(v, list):
         inner = ", ".join(_toml_value(item) for item in v)
         return f"[{inner}]"
-    else:
-        return repr(v)
+    return repr(v)

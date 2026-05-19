@@ -48,7 +48,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg as jsp_linalg
 import numpy as np
 from functools import partial
-from jax import jit, lax, vmap
+from jax import jit, vmap
 
 from jqmc.atomic_orbital import AOs_cart_data
 from jqmc.coulomb_potential import (
@@ -116,7 +116,7 @@ if _libcudart is None:
 # Try ``pip install nvtx`` package first (bundles its own .so),
 # then fall back to ctypes libnvToolsExt.so from CUDA toolkit.
 try:
-    import nvtx as _nvtx_mod  # noqa: F811
+    import nvtx as _nvtx_mod
 
     print("[INFO] NVTX ranges enabled via ``nvtx`` pip package.")
 except ImportError:

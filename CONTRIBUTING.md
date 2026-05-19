@@ -6,8 +6,8 @@ The following items provide guidance for developers who wish to contribute to `j
 
 In `jQMC`, our top priorities are:
 
-1. **Sustainability** – maintainability of the codebase
-2. **Ease of development** – simplicity of implementing new features or theories
+1. **Sustainability** - maintainability of the codebase
+2. **Ease of development** - simplicity of implementing new features or theories
 
 We are willing to sacrifice some computational speed to achieve these goals. To that end, please follow these guidelines when contributing:
 
@@ -21,18 +21,19 @@ We are willing to sacrifice some computational speed to achieve these goals. To 
   * **Data** are defined as static classes using `flax.struct.dataclass`.
   * **Algorithms** are implemented as standalone functions that accept these dataclass instances as arguments.
 * Related dataclasses and their algorithms live in the same `Python` file and module, preserving the spirit of OOP while ensuring clarity.
-* This design not only improves readability but also aligns with `JAX`’s requirement for side-effect-free functions.
+* This design not only improves readability but also aligns with `JAX`'s requirement for side-effect-free functions.
 
 ---
 
 ### Testing
 
-* Robust testing is central to `jQMC`. For every functionality, `jQMC` provides two implementations:
+* Robust testing is central to `jQMC`. For every functionality, `jQMC` provides multiple implementations:
 
   1. A **`_debug`** version, written for human readability and easy tracing of the logic flow.
-  2. A **`_jax`** version, optimized and decorated with `@jit` for high performance (though its control flow may be less obvious).
-* In **`pytest`**, we verify that `_debug` and `_jax` produce numerically identical results.
-* **When adding any new method**, you must implement both `_debug` and `_jax` variants. Pull requests lacking either will not be approved.
+  2. A **production** version (no suffix), optimized and decorated with `@jit` for high performance -- using analytical derivatives where derivatives are involved (though its control flow may be less obvious).
+  3. Where applicable, an **`_auto`** version, which is also `@jit`-optimized but relies on `JAX`'s automatic differentiation instead of analytical derivatives. This serves as an independent cross-check of the analytical implementation.
+* In **`pytest`**, we verify that the `_debug`, production, and (when present) `_auto` variants produce numerically identical results.
+* **When adding any new method**, you must implement both the `_debug` and production variants. If the method involves derivatives, an `_auto` variant should also be provided as a cross-check. Pull requests lacking the required variants will not be approved.
 
 ---
 

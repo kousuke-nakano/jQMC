@@ -39,6 +39,7 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
 # Add the project root directory to sys.path to allow executing this script directly
@@ -48,22 +49,24 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.coulomb_potential import (  # noqa: E402
+from jqmc.coulomb_potential import (
     _compute_bare_coulomb_potential_debug,
     _compute_ecp_coulomb_potential_debug,
     compute_bare_coulomb_potential,
     compute_ecp_coulomb_potential,
 )
-from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
-from jqmc.structure import _find_nearest_index_jnp  # noqa: E402
-from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_wavefunction  # noqa: E402
+from jqmc.determinant import compute_geminal_all_elements
+from jqmc.hamiltonians import Hamiltonian_data
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from jqmc.structure import _find_nearest_index_jnp
+from jqmc.trexio_wrapper import read_trexio_file
+from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_wavefunction
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
+
+pytestmark = pytest.mark.external_reference
 
 Nv = 6
 NN = 1

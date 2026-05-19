@@ -1,4 +1,8 @@
-"""setting."""
+"""Setting module.
+
+Contains physical constants, numerical stability parameters, and
+test tolerance definitions used across jQMC.
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -31,6 +35,8 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
+import numpy as np
 
 # Unit conversion
 Bohr_to_Angstrom = 0.529177210903
@@ -68,8 +74,61 @@ rtol_debug_vs_production = 1.0e-6
 atol_consistency = 1.0e-8
 rtol_consistency = 1.0e-6
 
-# Numerical stability settings for AO
-EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
+# --- Test tolerance dict (dtype-aware) ---
+#
+# Accessed via ``_precision.get_tolerance(zone, level)`` which resolves the
+# zone's current dtype and returns ``(atol, rtol)``.
+#
+# Levels:
+#   strict   -- two exact implementations of the same quantity (debug vs
+#               production, analytic vs autodiff).  Difference is pure
+#               floating-point round-off.
+#   medium   -- analytic / autodiff vs 4th-order central finite differences
+#               of a Laplacian (or higher-derivative-sensitive quantity),
+#               *or* analytic vs autodiff of a quantity whose autodiff path
+#               inherits a fp32 forward zone (e.g. ao_eval) and therefore
+#               carries fp32 grad/lap noise the analytic path does not see.
+#               4th-order FD has a round-off floor of ~eps_mach / h^2 with
+#               h = 1e-3 (~5e-9) and a truncation term ~h^4 * f^(6) that can
+#               grow O(1e-6) for sharp basis sets / cusp regions (e.g.
+#               all-electron Z >= 7).  Use for numerical_diff tests where the
+#               FD side is a 2nd derivative.
+_TOLERANCE: dict[str, dict[str, tuple[float, float]]] = {
+    "strict": {"float64": (1e-8, 1e-6), "float32": (1e-5, 1e-3)},
+    "medium": {"float64": (1e-7, 1e-5), "float32": (1e-4, 1e-2)},
+}
+
+# --- Dtype-aware EPS constants ---
+#
+# Some EPS values are tuned for float64 and break under float32 (underflow,
+# loss of stabilization).  Use ``get_eps(name, dtype)`` to obtain the
+# appropriate value for the current precision zone.
+#
+# Constants:
+#   machine_precision -- floor for safe ratio in diagnostics.
+#   rcond_svd         -- threshold for SVD pseudoinverse of the geminal matrix.
+_EPS_DTYPE_AWARE: dict[str, dict[str, float]] = {
+    "machine_precision": {"float64": 1e-38, "float32": 1e-38},
+    "rcond_svd": {"float64": 1e-20, "float32": 1e-16},
+}
+
+
+def get_eps(name: str, dtype) -> float:
+    """Return a dtype-aware numerical stability constant.
+
+    Args:
+        name: One of ``"machine_precision"``, ``"rcond_svd"``.
+        dtype: A NumPy/JAX dtype (e.g. ``jnp.float32``, ``np.float64``).
+
+    Returns:
+        The appropriate epsilon value for the given dtype.
+
+    Raises:
+        KeyError: If *name* is not a known EPS constant.
+    """
+    dtype_key = "float32" if np.dtype(dtype) == np.float32 else "float64"
+    return _EPS_DTYPE_AWARE[name][dtype_key]
+
 
 # Threshold for SVD pseudoinverse of the geminal matrix G.
 # Singular values below EPS_rcond_SVD * s_max are zeroed to avoid 1/~0 NaN.

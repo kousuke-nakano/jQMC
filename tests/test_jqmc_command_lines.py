@@ -43,8 +43,8 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.jqmc_cli import _cli  # noqa: E402
-from jqmc.jqmc_tool import (  # noqa: E402
+from jqmc.jqmc_cli import _cli
+from jqmc.jqmc_tool import (
     lrdmc_compute_energy,
     lrdmc_extrapolate_energy,
     lrdmc_generate_input,
@@ -87,7 +87,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch, trexio_file: str):
     # generate input
     os.chdir(root_dir)
     mcmc_generate_input(flag=True, filename=os.path.join(tmp_path, "mcmc_input.toml"), exclude_comment=True)
-    with open(os.path.join(tmp_path, "mcmc_input.toml"), "r") as f:
+    with open(os.path.join(tmp_path, "mcmc_input.toml")) as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = False
         dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
@@ -116,7 +116,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch, trexio_file: str):
 
     # run MCMC(restart)
     os.chdir(root_dir)
-    with open(os.path.join(tmp_path, "mcmc_input.toml"), "r") as f:
+    with open(os.path.join(tmp_path, "mcmc_input.toml")) as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = True
         dict_toml["control"]["hamiltonian_h5"] = None
@@ -148,7 +148,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch, trexio_file: str):
     # generate input
     os.chdir(root_dir)
     vmc_generate_input(flag=True, filename=os.path.join(tmp_path, "vmc_input.toml"), exclude_comment=True)
-    with open(os.path.join(tmp_path, "vmc_input.toml"), "r") as f:
+    with open(os.path.join(tmp_path, "vmc_input.toml")) as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = False
         dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
@@ -170,7 +170,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch, trexio_file: str):
 
     # run VMCopt(restart)
     os.chdir(root_dir)
-    with open(os.path.join(tmp_path, "vmc_input.toml"), "r") as f:
+    with open(os.path.join(tmp_path, "vmc_input.toml")) as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = True
         dict_toml["control"]["hamiltonian_chk"] = None
@@ -208,7 +208,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch, trexio_file: str):
         )
         os.chdir(root_dir)
         lrdmc_generate_input(flag=True, filename=os.path.join(tmp_alat_path, "lrdmc_input.toml"), exclude_comment=True)
-        with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "r") as f:
+        with open(os.path.join(tmp_alat_path, "lrdmc_input.toml")) as f:
             dict_toml = toml.load(f)
             dict_toml["control"]["restart"] = False
             dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
@@ -262,7 +262,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch, trexio_file: str):
     os.chdir(root_dir)
     for alat in alat_list:
         tmp_alat_path = os.path.join(tmp_path, str(alat))
-        with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "r") as f:
+        with open(os.path.join(tmp_alat_path, "lrdmc_input.toml")) as f:
             dict_toml = toml.load(f)
             dict_toml["control"]["restart"] = True
             dict_toml["control"]["hamiltonian_h5"] = None

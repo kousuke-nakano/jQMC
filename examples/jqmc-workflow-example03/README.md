@@ -152,21 +152,21 @@ After running the pipeline:
 
 ```
 jqmc-workflow-example03/
-├── run_pipelines.py          # Main script
-├── 01_wf/                    # WF_Workflow: TREXIO --> hamiltonian_data.h5
-├── 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
-│   ├── hamiltonian_data_opt_step_1.h5
-│   ├── ...
-│   └── hamiltonian_data_opt_step_100.h5
-├── 03_mcmc/                  # MCMC_Workflow: production sampling + forces
-└── 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
+--- run_pipelines.py          # Main script
+--- 01_wf/                    # WF_Workflow: TREXIO --> hamiltonian_data.h5
+--- 02_vmc/                   # VMC_Workflow: Jastrow optimization (100 steps)
+-   --- hamiltonian_data_opt_step_1.h5
+-   --- ...
+-   --- hamiltonian_data_opt_step_100.h5
+--- 03_mcmc/                  # MCMC_Workflow: production sampling + forces
+--- 04_lrdmc/                 # LRDMC_Workflow: LRDMC (a=0.30) + forces
 ```
 
 ## Workflow DAG
 
 ```
-pySCF --> WF --> VMC ─┬─--> MCMC  (energy + force)
-                   └─--> LRDMC (energy + force)
+pySCF --> WF --> VMC -----> MCMC  (energy + force)
+                   ----> LRDMC (energy + force)
 ```
 
 ## Machine configuration

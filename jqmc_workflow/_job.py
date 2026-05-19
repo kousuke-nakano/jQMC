@@ -56,17 +56,15 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 def load_queue_data(server_machine_name: str, queue_label: str) -> dict:
     """Load a single queue section from ``queue_data.toml``.
 
-    Parameters
-    ----------
-    server_machine_name : str
-        Machine name (directory under ``~/.jqmc_setting/``).
-    queue_label : str
-        Section key in ``queue_data.toml``.
+    Args:
+        server_machine_name (str):
+            Machine name (directory under ``~/.jqmc_setting/``).
+        queue_label (str):
+            Section key in ``queue_data.toml``.
 
-    Returns
-    -------
-    dict
-        The TOML table for *queue_label*.
+    Returns:
+        dict:
+            The TOML table for *queue_label*.
     """
     machine = Machine(server_machine_name)
     cfg = get_config_dir()
@@ -81,7 +79,7 @@ def load_queue_data(server_machine_name: str, queue_label: str) -> dict:
 def get_num_mpi(queue_data: dict) -> int:
     """Extract the number of MPI processes from a queue configuration.
 
-    Tries ``num_cores`` first, then ``mpi_per_node × nodes``.
+    Tries ``num_cores`` first, then ``mpi_per_node x nodes``.
     Defaults to 1 if neither key is present.
     """
     if "num_cores" in queue_data:
@@ -118,7 +116,7 @@ class JobSubmission:
             shutil.copytree(template_dir, cfg)
             raise ValueError(f"Please configure {cfg} first.")
 
-        # ── Queue settings ────────────────────────────────────────
+        # -- Queue settings ----------------------------------------
         self.queue_label = queue_label
         queue_data_path = os.path.join(
             cfg,
@@ -136,17 +134,17 @@ class JobSubmission:
         except KeyError:
             raise KeyError(f"queue_label='{queue_label}' not found in {queue_data_path}.")
 
-        # ── Job template ──────────────────────────────────────────
+        # -- Job template ------------------------------------------
         self.job_submission_template = self.queue_data["submit_template"]
 
-        # ── Job parameters ────────────────────────────────────────
+        # -- Job parameters ----------------------------------------
         self.jobname = jobname
         self.run_id = run_id
         self.input_file = input_file
         self.output_file = output_file
         self.safe_mode = safe_mode
 
-        # ── Job state ─────────────────────────────────────────────
+        # -- Job state ---------------------------------------------
         self.max_job_submit = self.queue_data.get("max_job_submit", 1000)
         self.job_number = None
         self.job_running = False
@@ -154,23 +152,22 @@ class JobSubmission:
         self.job_submit_date = None
         self.job_check_last_time = None
         self.job_fetch_date = None
-        # ── Scheduler stdout/stderr file paths (TASK 9) ──────────
+        # -- Scheduler stdout/stderr file paths (TASK 9) ----------
         _id_suffix = f"_{run_id}" if run_id else ""
         self.job_stdout: str = f"job_{jobname}{_id_suffix}.o"
         self.job_stderr: str = f"job_{jobname}{_id_suffix}.e"
 
-    # ── Script generation ─────────────────────────────────────────
+    # -- Script generation -----------------------------------------
 
     def generate_script(self, submission_script: str = "submit.sh", *, work_dir=None):
         """Generate job submission script from template + queue_data.toml vars.
 
-        Parameters
-        ----------
-        submission_script : str
-            Filename of the generated script (basename).
-        work_dir : str, optional
-            Directory where the script is written.  When *None*,
-            falls back to the current working directory.
+        Args:
+            submission_script (str):
+                Filename of the generated script (basename).
+            work_dir (str, optional):
+                Directory where the script is written.  When *None*,
+                falls back to the current working directory.
         """
         cfg = get_config_dir()
         template_path = os.path.join(
@@ -178,7 +175,7 @@ class JobSubmission:
             self.server_machine.name,
             self.job_submission_template,
         )
-        with open(template_path, "r") as f:
+        with open(template_path) as f:
             lines = f.readlines()
 
         def replace_kw(lines, keyword, value):
@@ -206,20 +203,19 @@ class JobSubmission:
         with open(script_path, "w") as f:
             f.writelines(lines)
 
-    # ── Job submission ────────────────────────────────────────────
+    # -- Job submission --------------------------------------------
 
     def job_submit(self, submission_script: str = "submit.sh", from_objects=None, *, work_dir=None):
         """Submit the job.
 
-        Parameters
-        ----------
-        submission_script : str
-            Basename of the submit script in *work_dir*.
-        from_objects : list[str], optional
-            Basenames of extra files to upload.
-        work_dir : str, optional
-            Absolute path to the local job directory.  When *None*,
-            falls back to ``os.getcwd()`` for backward compatibility.
+        Args:
+            submission_script (str):
+                Basename of the submit script in *work_dir*.
+            from_objects (list[str], optional):
+                Basenames of extra files to upload.
+            work_dir (str, optional):
+                Absolute path to the local job directory.  When *None*,
+                falls back to ``os.getcwd()`` for backward compatibility.
         """
         from_objects = from_objects or []
 
@@ -233,7 +229,7 @@ class JobSubmission:
 
             local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 
-            # ── Submit via queuing system or remote submit script ──
+            # -- Submit via queuing system or remote submit script --
             command = f"{self.server_machine.jobsubmit} {submission_script}"
 
             if self.server_machine.machine_type == "local":
@@ -272,7 +268,7 @@ class JobSubmission:
         finally:
             self._close_ssh()
 
-    # ── Job checking ──────────────────────────────────────────────
+    # -- Job checking ----------------------------------------------
 
     def jobcheck(self) -> bool:
         """Return True if the job is still running.
@@ -342,24 +338,23 @@ class JobSubmission:
 
         return count < self.max_job_submit
 
-    # ── Fetch results ─────────────────────────────────────────────
+    # -- Fetch results ---------------------------------------------
 
     def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Fetch job results from the remote machine.
 
-        Parameters
-        ----------
-        from_objects : list[str], optional
-            Basenames or glob patterns of files to download.
-        exclude_patterns : list[str], optional
-            Glob patterns to exclude.
-        work_dir : str, optional
-            Absolute path to the local job directory.  When *None*,
-            falls back to ``os.getcwd()`` for backward compatibility.
-        optional_patterns : list[str], optional
-            Basenames or glob patterns of non-essential files.
-            Missing files matching these patterns produce a warning
-            instead of an error.
+        Args:
+            from_objects (list[str], optional):
+                Basenames or glob patterns of files to download.
+            exclude_patterns (list[str], optional):
+                Glob patterns to exclude.
+            work_dir (str, optional):
+                Absolute path to the local job directory.  When *None*,
+                falls back to ``os.getcwd()`` for backward compatibility.
+            optional_patterns (list[str], optional):
+                Basenames or glob patterns of non-essential files.
+                Missing files matching these patterns produce a warning
+                instead of an error.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
@@ -376,29 +371,28 @@ class JobSubmission:
         self.job_fetch_date = datetime.today()
         self._close_ssh()
 
-    # ── Delete a running job ──────────────────────────────────────
+    # -- Delete a running job --------------------------------------
 
     def delete_job(self):
         self.server_machine.delete_job(jobid=self.job_number)
         self.job_running = False
         self._close_ssh()
 
-    # ── Job accounting (TASK 8) ────────────────────────────────
+    # -- Job accounting (TASK 8) --------------------------------
 
     def job_acct(self) -> tuple[str, str, str] | None:
         """Run the scheduler accounting command and return raw output.
 
         Reads the ``jobacct`` field from ``machine_data.yaml`` and
         executes ``{jobacct} {job_id}``.  No parsing or flag-injection
-        is performed — the user specifies the complete command with
+        is performed -- the user specifies the complete command with
         flags in the config.
 
-        Returns
-        -------
-        tuple[str, str, str] | None
-            ``(command, stdout, stderr)`` on success.
-            ``None`` if ``jobacct`` is not configured, the machine does
-            not use a queuing system, or the command fails.
+        Returns:
+            tuple[str, str, str] | None:
+                ``(command, stdout, stderr)`` on success.
+                ``None`` if ``jobacct`` is not configured, the machine does
+                not use a queuing system, or the command fails.
         """
         if not self.server_machine.queuing:
             return None
@@ -413,7 +407,7 @@ class JobSubmission:
             logger.warning(f"job_acct failed for job {self.job_number}: {e}")
             return None
 
-    # ── Helper ────────────────────────────────────────────────────
+    # -- Helper ----------------------------------------------------
 
     def _close_ssh(self):
         self.server_machine.ssh_close()
