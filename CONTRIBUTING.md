@@ -54,7 +54,7 @@ We are willing to sacrifice some computational speed to achieve these goals. To 
 
 * Submit a **Pull Request** (PR).
 * Upon PR creation or update, GitHub Actions will run the test suite.
-* If all tests pass, @kousuke-nakano (a main maintainer) will review your changes.
+* If all tests pass, @kousuke-nakano or another maintainer of @jqmc-project will review your changes.
 * Once approved, your PR will be merged into `main`.
 
 ---
@@ -68,13 +68,13 @@ We are willing to sacrifice some computational speed to achieve these goals. To 
   * `scipy`
   * `jax`
   * `flax`
-* Other third-party packages should be avoided unless absolutely necessary. Any new dependency must be approved by @kousuke-nakano.
+* Other third-party packages should be avoided unless absolutely necessary. Any new dependency must be approved by @kousuke-nakano or another maintainer of @jqmc-project.
 
 ---
 
 ### Release Process
 
-* All official package releases are performed by @kousuke-nakano as needed.
+* All official package releases are performed by @kousuke-nakano or another maintainer of @jqmc-project as needed.
 
 ---
 
