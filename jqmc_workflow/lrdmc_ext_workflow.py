@@ -426,6 +426,23 @@ class LRDMC_Ext_Workflow(Workflow):
         """
         self._ensure_project_dir()
         _wd = self.project_dir
+
+        # When num_projection_per_measurement comes through ValueFrom,
+        # the launcher resolves it via setattr after __init__, so the
+        # __init__-time list-of-records normalization is bypassed.
+        # Re-apply it here so _make_lrdmc_workflow sees a dict.
+        if isinstance(self.num_projection_per_measurement, list):
+            try:
+                self.num_projection_per_measurement = {
+                    float(entry["alat"]): int(entry["nmpm"]) for entry in self.num_projection_per_measurement
+                }
+            except (KeyError, TypeError) as exc:
+                raise ValueError(
+                    f"num_projection_per_measurement list entries must be "
+                    f"dicts with keys 'alat' and 'nmpm'; got "
+                    f"{self.num_projection_per_measurement!r}"
+                ) from exc
+
         sorted_alats = sorted(self.alat_list, reverse=True)
 
         # -- helper: run a single alat, return a uniform result tuple ------
