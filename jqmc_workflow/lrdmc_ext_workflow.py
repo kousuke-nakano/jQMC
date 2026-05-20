@@ -47,6 +47,7 @@ import re
 import subprocess
 from logging import getLogger
 
+from ._output_parser import parse_lrdmc_output
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -118,10 +119,19 @@ class LRDMC_Ext_Workflow(Workflow):
             find its own optimal ``num_projection_per_measurement``.
             Set to *None* to disable auto-calibration (requires explicit
             *num_projection_per_measurement*).  Activates GFMC_n mode.
-        num_projection_per_measurement (int, optional):
+        num_projection_per_measurement (int | dict[float, int] | list[dict], optional):
             GFMC projections per measurement.  When given explicitly,
             automatic calibration is disabled and this value is used
-            for every ``alat``.  Activates GFMC_n mode.
+            for every ``alat``.  Activates GFMC_n mode.  Accepted forms:
+
+            * ``int`` -- the same value for every alat.
+            * ``dict[float, int]`` -- per-alat values; keys must cover
+              every alat in ``alat_list`` exactly.
+            * ``list[dict]`` -- per-alat values as records
+              ``{"alat": float, "nmpm": int}``.  This form is TOML-safe
+              (no float dict keys) and is the recommended shape when
+              wired through ``ValueFrom`` from an upstream workflow.
+              Normalized to the dict form internally.
         non_local_move (str, optional):
             Non-local move treatment.  Default from ``jqmc_miscs``.
         E_scf (float, optional):
@@ -205,6 +215,12 @@ class LRDMC_Ext_Workflow(Workflow):
             Statistical error on ``extrapolated_energy`` (Ha).
         per_alat_results (dict):
             Per-alat energy/error results keyed by ``alat``.
+        nmpm_per_alat (list[dict]):
+            Averaged GFMC projections per alat as records
+            ``{"alat": float, "nmpm": int}``.  Suitable for piping into
+            a downstream GFMC_n ``LRDMC_Ext_Workflow`` via ``ValueFrom``
+            as ``num_projection_per_measurement``.  Only present when
+            sub-run outputs could be parsed.
         errors (list[str]):
             Error messages for alat runs that failed.
         error (str):
@@ -287,6 +303,19 @@ class LRDMC_Ext_Workflow(Workflow):
         #   None    -- GFMC_t mode (uses time_projection_tau)
         #   int     -- same value for every alat
         #   dict    -- per-alat values; keys must cover every alat in alat_list
+        #   list of {"alat": float, "nmpm": int}  -- TOML-safe wire form
+        #             (used by ValueFrom upstream).  Normalized to dict here.
+        if isinstance(num_projection_per_measurement, list):
+            try:
+                num_projection_per_measurement = {
+                    float(entry["alat"]): int(entry["nmpm"]) for entry in num_projection_per_measurement
+                }
+            except (KeyError, TypeError) as exc:
+                raise ValueError(
+                    f"num_projection_per_measurement list entries must be "
+                    f"dicts with keys 'alat' and 'nmpm'; got "
+                    f"{num_projection_per_measurement!r}"
+                ) from exc
         if isinstance(num_projection_per_measurement, dict):
             missing = [a for a in self.alat_list if a not in num_projection_per_measurement]
             if missing:
@@ -473,6 +502,29 @@ class LRDMC_Ext_Workflow(Workflow):
             return self.status, [], {"error": msg}
 
         self.output_values["per_alat_results"] = per_alat_results
+
+        # Publish averaged GFMC projections per alat as a TOML-safe
+        # list of {"alat": float, "nmpm": int} records.  A downstream
+        # GFMC_n LRDMC_Ext_Workflow can consume this via ValueFrom and
+        # pass it back as num_projection_per_measurement (the __init__
+        # accepts this list form and normalizes to dict[float, int]).
+        nmpm_per_alat: list[dict] = []
+        for alat in self.alat_list:
+            alat_dir = os.path.join(self.project_dir, f"lrdmc_alat_{alat:.3f}")
+            try:
+                diag = parse_lrdmc_output(alat_dir)
+            except Exception:
+                diag = None
+            if diag is not None and getattr(diag, "avg_num_projections", None) is not None:
+                nmpm_per_alat.append(
+                    {
+                        "alat": float(alat),
+                        "nmpm": max(int(round(float(diag.avg_num_projections))), 1),
+                    }
+                )
+        if nmpm_per_alat:
+            self.output_values["nmpm_per_alat"] = nmpm_per_alat
+
         self.output_files = restart_chks
         self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
