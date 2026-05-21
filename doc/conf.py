@@ -50,7 +50,7 @@ def _generate_examples_page():
         "# Examples\n"
         "\n"
         "Example files for **jQMC** are found at\n"
-        "<https://github.com/kousuke-nakano/jQMC/tree/main/examples>.\n"
+        "<https://github.com/jqmc-project/jQMC/tree/main/examples>.\n"
         "\n"
     )
 
@@ -212,7 +212,7 @@ pygments_style = "sphinx"
 # documentation.
 html_theme_options = {
     "icon_links": [
-        {"name": "GitHub", "url": "https://github.com/kousuke-nakano/jQMC", "icon": "fa-brands fa-github"},
+        {"name": "GitHub", "url": "https://github.com/jqmc-project/jQMC", "icon": "fa-brands fa-github"},
     ],
 }
 # html_theme_options = {

@@ -3,7 +3,7 @@
 # Examples
 
 Example files for **jQMC** are found at
-<https://github.com/kousuke-nakano/jQMC/tree/main/examples>.
+<https://github.com/jqmc-project/jQMC/tree/main/examples>.
 
 ## jqmc-example01:
 
