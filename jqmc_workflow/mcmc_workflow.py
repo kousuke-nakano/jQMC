@@ -49,6 +49,7 @@ from ._error_estimator import (
     estimate_additional_steps,
     estimate_required_steps,
     parse_net_time,
+    read_accumulated_measurement_steps,
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
@@ -677,45 +678,51 @@ class MCMC_Workflow(Workflow):
         # -- Phase B: re-estimate from accumulated data --
         accumulated_measurement = 0  # measurement steps only (excl. warmup)
         if first_new_run > 1:
-            cached_accum = estimation.get("accumulated_measurement_steps")
-            if cached_accum is not None:
-                accumulated_measurement = int(cached_accum)
-            else:
-                accumulated_measurement = (first_new_run - 1) * max(estimated_steps - warmup, 0)
-
             _re_chk = self._find_restart_chk(_wd)
-            if _re_chk:
-                _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
-                if _re_energy is not None and _re_error is not None:
-                    if _re_error <= self.target_error * 1.05:
-                        logger.info(
-                            f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha"
-                        )
-                        self.output_values.update(
-                            energy=_re_energy,
-                            energy_error=_re_error,
-                            restart_chk=_re_chk,
-                        )
-                        if self.atomic_force:
-                            forces = self._compute_force(_re_chk, work_dir=_wd)
-                            if forces is not None:
-                                self.output_values["forces"] = forces
-                        first_new_run = self.max_continuation + 1  # skip loop
-                    else:
-                        _additional = estimate_additional_steps(
-                            accumulated_measurement,
-                            _re_error,
-                            self.target_error,
-                        )
-                        estimated_steps = _additional + warmup
-                        logger.info(
-                            f"  Resuming after {first_new_run - 1} prior run(s): "
-                            f"error={_re_error:.6g} Ha > target "
-                            f"{self.target_error:.6g} Ha -> "
-                            f"{estimated_steps} steps "
-                            f"(measurement: {_additional}, warmup: {warmup}, "
-                            f"accumulated measurement: {accumulated_measurement})"
-                        )
+            if _re_chk is None:
+                raise RuntimeError(
+                    f"Phase B: {first_new_run - 1} prior run(s) marked fetched but no restart checkpoint found in {_wd}."
+                )
+            # mcmc_counter in restart.h5 is the only trustworthy source
+            # for accumulated samples (planned step counts over-count
+            # when prior runs were cut short by max_time).
+            actual = read_accumulated_measurement_steps(
+                os.path.join(_wd, _re_chk),
+                warmup=warmup,
+            )
+            if actual is None:
+                raise RuntimeError(f"Phase B: cannot read mcmc_counter from {_re_chk} in {_wd}.")
+            accumulated_measurement = actual
+
+            _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
+            if _re_energy is not None and _re_error is not None:
+                if _re_error <= self.target_error * 1.05:
+                    logger.info(f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha")
+                    self.output_values.update(
+                        energy=_re_energy,
+                        energy_error=_re_error,
+                        restart_chk=_re_chk,
+                    )
+                    if self.atomic_force:
+                        forces = self._compute_force(_re_chk, work_dir=_wd)
+                        if forces is not None:
+                            self.output_values["forces"] = forces
+                    first_new_run = self.max_continuation + 1  # skip loop
+                else:
+                    _additional = estimate_additional_steps(
+                        accumulated_measurement,
+                        _re_error,
+                        self.target_error,
+                    )
+                    estimated_steps = _additional + warmup
+                    logger.info(
+                        f"  Resuming after {first_new_run - 1} prior run(s): "
+                        f"error={_re_error:.6g} Ha > target "
+                        f"{self.target_error:.6g} Ha -> "
+                        f"{estimated_steps} steps "
+                        f"(measurement: {_additional}, warmup: {warmup}, "
+                        f"accumulated measurement: {accumulated_measurement})"
+                    )
 
         # -- Phase C: production loop --
         _prev_run_steps = None
@@ -785,33 +792,42 @@ class MCMC_Workflow(Workflow):
                 run_id=run_id_i,
             )
             step_files[i] = (input_i, output_i, run_id_i)
-            accumulated_measurement += estimated_steps - warmup
             _prev_run_steps = estimated_steps
             last_run = i
 
             # -- Side-effects: compute energy from checkpoint (if any) --
             restart_chk = self._find_restart_chk(_wd)
-            energy = error = None
-            if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
-                if energy is not None:
-                    self.output_values["energy"] = energy
-                    self.output_values["energy_error"] = error
-                    self.output_values["restart_chk"] = restart_chk
-                    logger.info(f"  MCMC energy: {energy} +- {error} Ha")
-                    if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
-                        if forces is not None:
-                            self.output_values["forces"] = forces
+            if restart_chk is None:
+                raise RuntimeError(f"Phase C: run {i} completed but no restart checkpoint found in {_wd}.")
+            # mcmc_counter in restart.h5 is the only trustworthy source for
+            # accumulated samples (planned step counts over-count when the
+            # run was cut short by max_time).
+            actual = read_accumulated_measurement_steps(
+                os.path.join(_wd, restart_chk),
+                warmup=warmup,
+            )
+            if actual is None:
+                raise RuntimeError(f"Phase C: cannot read mcmc_counter from {restart_chk} in {_wd}.")
+            accumulated_measurement = actual
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
+            if energy is not None:
+                self.output_values["energy"] = energy
+                self.output_values["energy_error"] = error
+                self.output_values["restart_chk"] = restart_chk
+                logger.info(f"  MCMC energy: {energy} +- {error} Ha")
+                if self.atomic_force:
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
 
-                    set_estimation(
-                        _wd,
-                        last_energy=energy,
-                        last_energy_error=error,
-                        accumulated_measurement_steps=accumulated_measurement,
-                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
-                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
-                    )
+                set_estimation(
+                    _wd,
+                    last_energy=energy,
+                    last_energy_error=error,
+                    accumulated_measurement_steps=accumulated_measurement,
+                    last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                    last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                )
 
             # -- Termination decision -- single source of truth --
             vstatus, vmsg = validate_completion(

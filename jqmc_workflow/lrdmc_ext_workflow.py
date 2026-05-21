@@ -528,19 +528,23 @@ class LRDMC_Ext_Workflow(Workflow):
         nmpm_per_alat: list[dict] = []
         for alat in self.alat_list:
             alat_dir = os.path.join(self.project_dir, f"lrdmc_alat_{alat:.3f}")
-            try:
-                diag = parse_lrdmc_output(alat_dir)
-            except Exception:
-                diag = None
-            if diag is not None and getattr(diag, "avg_num_projections", None) is not None:
-                nmpm_per_alat.append(
-                    {
-                        "alat": float(alat),
-                        "nmpm": max(int(round(float(diag.avg_num_projections))), 1),
-                    }
+            diag = parse_lrdmc_output(alat_dir)
+            if diag is None or getattr(diag, "avg_num_projections", None) is None:
+                msg = (
+                    f"Cannot read avg_num_projections for alat={alat:.3f} from {alat_dir}; "
+                    "sub-run completed but output is missing or unparseable."
                 )
-        if nmpm_per_alat:
-            self.output_values["nmpm_per_alat"] = nmpm_per_alat
+                logger.error(msg)
+                self.status = WorkflowStatus.FAILED
+                self.output_values["error"] = msg
+                return self.status, [], {"error": msg}
+            nmpm_per_alat.append(
+                {
+                    "alat": float(alat),
+                    "nmpm": max(int(round(float(diag.avg_num_projections))), 1),
+                }
+            )
+        self.output_values["nmpm_per_alat"] = nmpm_per_alat
 
         self.output_files = restart_chks
         self.status = WorkflowStatus.COMPLETED
