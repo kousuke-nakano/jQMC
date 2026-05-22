@@ -60,7 +60,7 @@ from ._state import (
     get_estimation,
     get_job_by_step,
     read_state,
-    reconcile_fetched_jobs,
+    reconcile_fetched_jobs_recursive,
     set_estimation,
     validate_completion,
 )
@@ -388,9 +388,11 @@ class MCMC_Workflow(Workflow):
         # Reconcile any orphaned "submitted"/"completed" job records whose
         # output file already landed locally with a "Program ends" marker
         # (e.g. workflow killed between job completion and fetch-finalize).
-        # Without this, Phase A would break out at the orphan record and
-        # the safety-net energy computation would read a stale earlier step.
-        n_reconciled = reconcile_fetched_jobs(_wd)
+        # Walks the pilot subdirectory (``_pilot/``) too, since it carries
+        # its own state file.  Without this, Phase A would break out at
+        # the orphan record and the safety-net energy computation would
+        # read a stale earlier step.
+        n_reconciled = reconcile_fetched_jobs_recursive(_wd)
         if n_reconciled:
             logger.info(f"  Reconciled {n_reconciled} job record(s) to 'fetched' from existing output.")
 
@@ -728,34 +730,37 @@ class MCMC_Workflow(Workflow):
             accumulated_measurement = actual
 
             _re_energy, _re_error = self._compute_energy_cached(_re_chk, work_dir=_wd, accumulated=actual)
-            if _re_energy is not None and _re_error is not None:
-                if _re_error <= self.target_error * 1.05:
-                    logger.info(f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha")
-                    self.output_values.update(
-                        energy=_re_energy,
-                        energy_error=_re_error,
-                        restart_chk=_re_chk,
-                    )
-                    if self.atomic_force:
-                        forces = self._compute_force(_re_chk, work_dir=_wd)
-                        if forces is not None:
-                            self.output_values["forces"] = forces
-                    first_new_run = self.max_continuation + 1  # skip loop
-                else:
-                    _additional = estimate_additional_steps(
-                        accumulated_measurement,
-                        _re_error,
-                        self.target_error,
-                    )
-                    estimated_steps = _additional + warmup
-                    logger.info(
-                        f"  Resuming after {first_new_run - 1} prior run(s): "
-                        f"error={_re_error:.6g} Ha > target "
-                        f"{self.target_error:.6g} Ha -> "
-                        f"{estimated_steps} steps "
-                        f"(measurement: {_additional}, warmup: {warmup}, "
-                        f"accumulated measurement: {accumulated_measurement})"
-                    )
+            if _re_energy is None or _re_error is None:
+                raise RuntimeError(
+                    f"Phase B: compute-energy failed for {_re_chk} in {_wd}. Cannot decide whether to resume or stop."
+                )
+            if _re_error <= self.target_error * 1.05:
+                logger.info(f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha")
+                self.output_values.update(
+                    energy=_re_energy,
+                    energy_error=_re_error,
+                    restart_chk=_re_chk,
+                )
+                if self.atomic_force:
+                    forces = self._compute_force(_re_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
+                first_new_run = self.max_continuation + 1  # skip loop
+            else:
+                _additional = estimate_additional_steps(
+                    accumulated_measurement,
+                    _re_error,
+                    self.target_error,
+                )
+                estimated_steps = _additional + warmup
+                logger.info(
+                    f"  Resuming after {first_new_run - 1} prior run(s): "
+                    f"error={_re_error:.6g} Ha > target "
+                    f"{self.target_error:.6g} Ha -> "
+                    f"{estimated_steps} steps "
+                    f"(measurement: {_additional}, warmup: {warmup}, "
+                    f"accumulated measurement: {accumulated_measurement})"
+                )
 
         # -- Phase C: production loop --
         _prev_run_steps = None
@@ -1017,18 +1022,31 @@ class MCMC_Workflow(Workflow):
             tuple:
                 ``(energy, error)`` or ``(None, None)`` on failure.
         """
-        cmd = f"jqmc-tool mcmc compute-energy {restart_chk} -b {self.num_mcmc_bin_blocks} -w {self.num_mcmc_warmup_steps}"
-        logger.info(f"  Running: {cmd}")
+        cmd = [
+            "jqmc-tool",
+            "mcmc",
+            "compute-energy",
+            restart_chk,
+            "-b",
+            str(self.num_mcmc_bin_blocks),
+            "-w",
+            str(self.num_mcmc_warmup_steps),
+        ]
+        logger.info(f"  Running: {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 check=True,
                 cwd=work_dir,
             )
             return self._parse_energy_output(result.stdout)
+        except FileNotFoundError as e:
+            logger.error(f"compute-energy: '{cmd[0]}' not found on PATH ({e})")
+            return None, None
         except subprocess.CalledProcessError as e:
             logger.error(f"compute-energy failed: {e.stderr}")
             return None, None
@@ -1086,14 +1104,24 @@ class MCMC_Workflow(Workflow):
                     pass
 
         # Fallback: jqmc-tool
-        cmd = f"jqmc-tool mcmc compute-force {restart_chk} -b {self.num_mcmc_bin_blocks} -w {self.num_mcmc_warmup_steps}"
-        logger.info(f"  Running: {cmd}")
+        cmd = [
+            "jqmc-tool",
+            "mcmc",
+            "compute-force",
+            restart_chk,
+            "-b",
+            str(self.num_mcmc_bin_blocks),
+            "-w",
+            str(self.num_mcmc_warmup_steps),
+        ]
+        logger.info(f"  Running: {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 check=True,
                 cwd=work_dir,
             )
@@ -1108,6 +1136,9 @@ class MCMC_Workflow(Workflow):
                         f" Ha/bohr"
                     )
             return forces
+        except FileNotFoundError as e:
+            logger.error(f"compute-force: '{cmd[0]}' not found on PATH ({e})")
+            return None
         except subprocess.CalledProcessError as e:
             logger.error(f"compute-force failed: {e.stderr}")
             return None

@@ -1,8 +1,27 @@
 # Machine definitions for jqmc-workflow
 # Edit this file to match your environment.
-# Each machine needs at least: machine_type (local or remote), queuing (true or false), workspace_root (path).
-# Remote machines also require: ssh_host (Host alias in ~/.ssh/config).
-# The top-level key (e.g., "my-cluster") is a nickname; it does NOT have to match the SSH host.
+#
+# Required fields for every machine:
+#   machine_type    : "local" or "remote"
+#   queuing         : true or false
+#   workspace_root  : absolute path where job working dirs live
+#   jobsubmit       : command used to invoke the submit script (required
+#                     even when queuing=false -- for a plain local run use
+#                     "bash" or "sh"; for a scheduler use "qsub" / "sbatch")
+#
+# Required additionally when queuing: true:
+#   jobcheck        : command that lists jobs in the queue (e.g. "qstat")
+#   jobdel          : command that cancels a job by id (e.g. "qdel")
+#   jobnum_index    : 0-based token index of the job-id field in
+#                     jobsubmit's stdout (qsub prints "1234.host" -> 0;
+#                     sbatch prints "Submitted batch job 1234" -> 3)
+#
+# Required additionally when machine_type: remote:
+#   ssh_host        : Host alias in ~/.ssh/config (the top-level YAML key
+#                     above is a nickname and does NOT need to match)
+#
+# Optional:
+#   jobacct         : scheduler accounting command (e.g. "qstat -fx")
 
 # Local execution without a batch scheduler (synchronous).
 # queuing: false  ->  bash runs submit.sh synchronously; no PID tracking needed.
@@ -10,7 +29,7 @@ localhost:
   machine_type: local
   queuing: false
   workspace_root: /home/username/jqmc_work
-  jobsubmit: "bash"
+  jobsubmit: "bash"   # required: command that runs the submit script
 
 # Local execution without a batch scheduler (asynchronous / background).
 # queuing: true   ->  bash launches submit.sh in the background and prints PID;

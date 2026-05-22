@@ -102,7 +102,6 @@ class JobSubmission:
         queue_label: str = "default",
         jobname: str = "jqmc-wf",
         run_id: str = "",
-        safe_mode: bool = False,
     ):
         self.data_transfer = Data_transfer(
             server_machine_name=server_machine_name,
@@ -142,7 +141,6 @@ class JobSubmission:
         self.run_id = run_id
         self.input_file = input_file
         self.output_file = output_file
-        self.safe_mode = safe_mode
 
         # -- Job state ---------------------------------------------
         self.max_job_submit = self.queue_data.get("max_job_submit", 1000)
@@ -410,5 +408,8 @@ class JobSubmission:
     # -- Helper ----------------------------------------------------
 
     def _close_ssh(self):
-        self.server_machine.ssh_close()
+        # data_transfer owns the same Machine instance and recursively
+        # calls ssh_close() on it via Machines_handler; one call suffices.
+        # ssh_close is idempotent (no-op after the first call), so a
+        # second close here would just be wasted work.
         self.data_transfer.ssh_close()

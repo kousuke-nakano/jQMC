@@ -55,6 +55,7 @@ from ._state import (
     WorkflowStatus,
     get_estimation,
     get_job_by_step,
+    reconcile_fetched_jobs_recursive,
     set_estimation,
     validate_completion,
 )
@@ -468,6 +469,17 @@ class VMC_Workflow(Workflow):
         """
         self._ensure_project_dir()
         _wd = self.project_dir
+
+        # Reconcile any orphaned "submitted"/"completed" job records whose
+        # output file already landed locally with a "Program ends" marker
+        # (e.g. workflow killed between job completion and fetch-finalize).
+        # Walks the pilot subdirectory (``_pilot/``) too, since it carries
+        # its own state file.  SNR / slope convergence checks parse those
+        # output files, so a stale "submitted" record would otherwise hide
+        # the latest data.
+        n_reconciled = reconcile_fetched_jobs_recursive(_wd)
+        if n_reconciled:
+            logger.info(f"  Reconciled {n_reconciled} job record(s) to 'fetched' from existing output.")
 
         # -- Fixed-step mode ---------------------------------------
         if self.num_mcmc_steps is not None:
@@ -1022,13 +1034,18 @@ class VMC_Workflow(Workflow):
         if not os.path.isfile(output_file):
             return []
         try:
-            with open(output_file) as f:
+            with open(output_file, errors="replace") as f:
                 text = f.read()
             from ._output_parser import _parse_vmc_log_text
 
             steps = _parse_vmc_log_text(text)
             return [(s.energy, s.energy_error) for s in steps if s.energy is not None and s.energy_error is not None]
+        except OSError as exc:
+            logger.warning(f"_parse_all_energies: cannot read {output_file}: {exc}")
+            return []
         except Exception:
+            # Log unexpected parser failures rather than swallowing silently.
+            logger.exception(f"_parse_all_energies: unexpected error parsing {output_file}")
             return []
 
     @staticmethod
@@ -1056,6 +1073,11 @@ class VMC_Workflow(Workflow):
 
         E = np.asarray(energies, dtype=float)
         sigma = np.asarray(energy_errors, dtype=float)
+        # Replace non-positive sigmas with the median positive sigma so
+        # they get a finite (non-inf) weight rather than dividing by zero.
+        positive = sigma[sigma > 0]
+        floor = float(np.median(positive)) if positive.size else 1.0
+        sigma = np.where(sigma > 0, sigma, floor)
         w = 1.0 / sigma**2
         k = np.arange(len(E), dtype=float)
 

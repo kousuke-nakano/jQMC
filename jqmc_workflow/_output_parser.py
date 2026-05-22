@@ -211,11 +211,12 @@ def repair_forces_from_output(work_dir: str) -> bool:
     if forces is None:
         return False
 
-    # Update the TOML
-    state = toml.load(state_path)
+    # Update the TOML atomically via the canonical state API.
+    from ._state import _write, read_state
+
+    state = read_state(work_dir)
     state.setdefault("result", {})["forces"] = forces
-    with open(state_path, "w") as f:
-        toml.dump(state, f)
+    _write(work_dir, state)
 
     logger.info(f"  Repaired forces in {work_dir} from {os.path.basename(last_out)}")
     return True
@@ -382,6 +383,11 @@ def _find_input_files(work_dir: str) -> list:
 
     Reads ``workflow_state.toml`` ``[[jobs]]`` records and returns the
     ``input_file`` paths that exist on disk, ordered by ``step``.
+
+    Only jobs in ``"fetched"`` or ``"completed"`` status are considered:
+    cancelled / failed / still-submitted jobs may have stale inputs
+    that would mislead downstream parsing (e.g. the wrong hamiltonian
+    file reference).
     """
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if not os.path.isfile(state_path):
@@ -392,6 +398,8 @@ def _find_input_files(work_dir: str) -> list:
         return []
     files = []
     for job in state.get("jobs", []):
+        if job.get("status") not in ("fetched", "completed"):
+            continue
         name = job.get("input_file", "")
         if name:
             path = os.path.join(work_dir, name)
@@ -496,6 +504,11 @@ def _find_output_files(work_dir: str) -> list:
 
     Reads ``workflow_state.toml`` ``[[jobs]]`` records and returns the
     ``output_file`` paths that exist on disk, ordered by ``step``.
+
+    Only jobs in ``"fetched"`` or ``"completed"`` status are considered:
+    partial output left behind by cancelled / failed / still-submitted
+    jobs would otherwise pollute parser aggregations (timing breakdowns,
+    SNR series, force tables) with garbage data.
     """
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if not os.path.isfile(state_path):
@@ -506,6 +519,8 @@ def _find_output_files(work_dir: str) -> list:
         return []
     files = []
     for job in state.get("jobs", []):
+        if job.get("status") not in ("fetched", "completed"):
+            continue
         name = job.get("output_file", "")
         if name:
             path = os.path.join(work_dir, name)

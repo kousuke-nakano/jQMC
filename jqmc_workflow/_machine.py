@@ -36,10 +36,12 @@ and the Machines_handler class for SFTP-based file transfer.
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import concurrent.futures
 import os
 import pathlib
 import random
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -151,6 +153,13 @@ class Machine:
             logger.debug(f"SSH already open (id={id(self.ssh)})")
             return
 
+        # Note: this is a *synchronous* sleep, even when ``ssh_open`` is
+        # reached from an asyncio coroutine (e.g. ``_submit_and_wait``).
+        # It blocks the event loop for 3-6 s.  Parallel workflows
+        # (Launcher / LRDMC_Ext) effectively serialise here.  Replacing
+        # this whole layer with asyncssh + ``await asyncio.sleep`` would
+        # restore parallelism; until then, prefer fewer SSH opens per
+        # workflow rather than tighter polling intervals.
         rw = random.randint(3, 6)
         logger.info(f"  Wait {rw}s before opening SSH to {self.name}")
         time.sleep(rw)
@@ -215,11 +224,13 @@ class Machine:
             except paramiko.ssh_exception.SSHException:
                 # Clean up the ProxyCommand from this failed attempt
                 self._kill_proxy_process(proxy_cmd)
-                logger.warning(f"SSH connect failed (attempt {tt + 1}). Retrying in {self.ssh_retry_time}s.")
-                time.sleep(self.ssh_retry_time)
                 if tt == self.ssh_retry_max_num - 1:
+                    # Re-raise immediately on the final attempt; no point
+                    # sleeping ssh_retry_time only to give up afterwards.
                     logger.error("SSH connect failed after all retries.")
                     raise
+                logger.warning(f"SSH connect failed (attempt {tt + 1}). Retrying in {self.ssh_retry_time}s.")
+                time.sleep(self.ssh_retry_time)
 
         self.sftp = self.ssh.open_sftp()
         self.ssh_status = True
@@ -344,7 +355,7 @@ class Machine:
             return self._run_local(command_r)
         return self._run_remote(command_r)
 
-    def _run_local(self, command_r: str, max_retries: int = 10):
+    def _run_local(self, command_r: str, max_retries: int = 3):
         for attempt in range(max_retries):
             for sub_attempt in range(3):
                 try:
@@ -368,32 +379,64 @@ class Machine:
                     logger.warning(f"Local command timeout (sub-attempt {sub_attempt})")
                     time.sleep(60)
 
-            logger.warning(f"Local command failed (attempt {attempt}). Retrying in {self.ssh_retry_time}s.")
-            time.sleep(self.ssh_retry_time)
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Local command failed (attempt {attempt + 1}/{max_retries}). Retrying in {self.ssh_retry_time}s."
+                )
+                time.sleep(self.ssh_retry_time)
 
         raise RuntimeError(f"Local command failed after {max_retries} retries: {command_r}")
 
+    remote_command_timeout_sec = 1200  # match _run_local default
+
     def _run_remote(self, command_r: str):
+        """Execute *command_r* on the remote host with a hard wall-time guard.
+
+        ``recv_exit_status`` waits on a paramiko ``status_event`` that is
+        *not* connected to socket-level keepalive, so a dead SSH session
+        can hang the call indefinitely.  We run the entire exec/read
+        sequence in a worker thread and enforce a timeout via
+        :class:`concurrent.futures.Future`; on timeout the SSH session is
+        torn down so the next call reconnects cleanly.
+        """
         self.ssh_open()
+
+        def _do_exec():
+            try:
+                pstdin, pstdout, pstderr = self.ssh.exec_command(command=command_r)
+            except (paramiko.SSHException, OSError, EOFError):
+                # Connection may have died (e.g. keepalive timeout during
+                # a long asyncio.sleep between polls).  Reconnect once.
+                logger.warning("SSH connection lost during exec_command; reconnecting...")
+                self.ssh_close()
+                self.ssh_open()
+                pstdin, pstdout, pstderr = self.ssh.exec_command(command=command_r)
+            try:
+                exit_status = pstdout.channel.recv_exit_status()
+                stdout = pstdout.read().decode("utf-8").strip()
+                stderr = pstderr.read().decode("utf-8").strip()
+            finally:
+                for ch in (pstdin, pstdout, pstderr):
+                    try:
+                        ch.close()
+                    except Exception:
+                        pass
+            return exit_status, stdout, stderr
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_do_exec)
         try:
-            pstdin, pstdout, pstderr = self.ssh.exec_command(command=command_r)
-        except (paramiko.SSHException, OSError, EOFError):
-            # Connection may have died (e.g. keepalive timeout during
-            # a long asyncio.sleep between polls).  Reconnect once.
-            logger.warning("SSH connection lost during exec_command; reconnecting...")
-            self.ssh_close()
-            self.ssh_open()
-            pstdin, pstdout, pstderr = self.ssh.exec_command(command=command_r)
-        try:
-            exit_status = pstdout.channel.recv_exit_status()
-            stdout = pstdout.read().decode("utf-8").strip()
-            stderr = pstderr.read().decode("utf-8").strip()
+            exit_status, stdout, stderr = future.result(timeout=self.remote_command_timeout_sec)
+        except concurrent.futures.TimeoutError as exc:
+            logger.error(f"Remote command timed out after {self.remote_command_timeout_sec}s: {command_r}")
+            try:
+                self.ssh_close()
+            except Exception:
+                pass
+            raise RuntimeError(f"Remote command timed out after {self.remote_command_timeout_sec}s: {command_r}") from exc
         finally:
-            for ch in (pstdin, pstdout, pstderr):
-                try:
-                    ch.close()
-                except Exception:
-                    pass
+            executor.shutdown(wait=False)
+
         if exit_status != 0:
             logger.error(f"Remote command failed: {command_r}")
             logger.error(f"stdout={stdout}")
@@ -423,13 +466,19 @@ class Machine:
     def is_file(self, file_name: str) -> bool:
         if self.machine_type == "local":
             return os.path.isfile(file_name)
-        fileattr = self._sftp_lstat_with_retry(file_name)
+        try:
+            fileattr = self._sftp_lstat_with_retry(file_name)
+        except (RuntimeError, OSError):
+            return False
         return stat.S_ISREG(fileattr.st_mode)
 
     def is_dir(self, dir_name: str) -> bool:
         if self.machine_type == "local":
             return os.path.isdir(dir_name)
-        fileattr = self._sftp_lstat_with_retry(dir_name)
+        try:
+            fileattr = self._sftp_lstat_with_retry(dir_name)
+        except (RuntimeError, OSError):
+            return False
         return stat.S_ISDIR(fileattr.st_mode)
 
     def exist(self, object_name: str) -> bool:
@@ -451,7 +500,7 @@ class Machine:
         return stdout.split("\n")
 
     def delete_job(self, jobid):
-        stdout, _ = self.run_command(f"{self.jobdel} {jobid}")
+        stdout, _ = self.run_command(f"{self.jobdel} {shlex.quote(str(jobid))}")
         return stdout.split("\n")
 
 
@@ -493,7 +542,7 @@ class Machines_handler:
     def _put_sftp_file(self, source, target, exclude_patterns):
         if exclude_patterns and any(re.match(p, os.path.basename(source)) for p in exclude_patterns):
             return
-        self.server_machine.run_command(f"mkdir -p {os.path.dirname(target)}")
+        self.server_machine.run_command(f"mkdir -p {shlex.quote(os.path.dirname(target))}")
         self.server_machine.ssh_open()
         self.server_machine.sftp.put(source, target)
 
@@ -513,7 +562,7 @@ class Machines_handler:
                 self._get_sftp_dir(remote_path, local_path, exclude_patterns)
 
     def _put_sftp_dir(self, source, target, exclude_patterns):
-        self.server_machine.run_command(f"mkdir -p {target}")
+        self.server_machine.run_command(f"mkdir -p {shlex.quote(target)}")
         self.server_machine.ssh_open()
         sftp = self.server_machine.sftp
         for item in os.listdir(source):
@@ -539,7 +588,7 @@ class Machines_handler:
         # Ensure target directory exists
         to_dir = os.path.dirname(to_path) if not dir_transfer else to_path
         if direction == "put":
-            self.server_machine.run_command(f"mkdir -p {to_dir}")
+            self.server_machine.run_command(f"mkdir -p {shlex.quote(to_dir)}")
         else:
             os.makedirs(to_dir, exist_ok=True)
 

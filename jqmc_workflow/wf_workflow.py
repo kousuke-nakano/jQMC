@@ -40,7 +40,6 @@ This workflow runs **locally** (no remote job submission).
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-import shlex
 import subprocess
 from logging import getLogger
 
@@ -132,8 +131,8 @@ class WF_Workflow(Workflow):
             raise ValueError(f"ao_conv_to must be None, 'cart', or 'sphe', got {ao_conv_to!r}")
         self.ao_conv_to = ao_conv_to
 
-    def _build_command(self) -> str:
-        """Build the ``jqmc-tool trexio convert-to`` CLI command."""
+    def _build_command(self) -> list[str]:
+        """Build the ``jqmc-tool trexio convert-to`` CLI command (argv list)."""
         cmd = ["jqmc-tool", "trexio", "convert-to", self.trexio_file]
         cmd += ["-o", self.hamiltonian_file]
 
@@ -154,7 +153,7 @@ class WF_Workflow(Workflow):
         if self.ao_conv_to is not None:
             cmd += ["--ao-conv-to", str(self.ao_conv_to)]
 
-        return shlex.join(cmd)
+        return cmd
 
     def configure(self) -> dict:
         """Validate parameters and return configuration summary."""
@@ -179,20 +178,25 @@ class WF_Workflow(Workflow):
         _wd = self.project_dir
 
         command = self._build_command()
-        logger.info(f"  Running: {command}")
+        logger.info(f"  Running: {' '.join(command)}")
 
         try:
             result = subprocess.run(
                 command,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 check=True,
                 cwd=_wd,
             )
             logger.info(result.stdout)
             if result.stderr:
                 logger.warning(f"stderr: {result.stderr}")
+        except FileNotFoundError as e:
+            logger.error(f"Command failed: '{command[0]}' not found on PATH ({e})")
+            self.status = WorkflowStatus.FAILED
+            return self.status, [], {}
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed (rc={e.returncode}): {e.stderr}")
             self.status = WorkflowStatus.FAILED

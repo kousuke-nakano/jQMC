@@ -296,7 +296,7 @@ class Launcher:
         from ._state import get_workflow_summary
 
         workflows = {}
-        completed = failed = 0
+        completed = failed = cancelled = 0
         running_labels: list[str] = []
         pending_labels: list[str] = []
 
@@ -311,6 +311,8 @@ class Launcher:
                 completed += 1
             elif s == "failed":
                 failed += 1
+            elif s == "cancelled":
+                cancelled += 1
             elif s in ("running", "submitted"):
                 running_labels.append(cw.label)
             else:
@@ -322,6 +324,7 @@ class Launcher:
             "progress": {
                 "completed": completed,
                 "failed": failed,
+                "cancelled": cancelled,
                 "running": running_labels,
                 "pending": pending_labels,
                 "total": len(self.workflows),
@@ -450,7 +453,7 @@ class Launcher:
                 logger.info("-" * 50)
                 logger.info(f"  [{label}] Launching...")
                 logger.info("-" * 50)
-                task = asyncio.create_task(self._run_workflow(label, cw))
+                task = asyncio.create_task(self._run_workflow(label, cw), name=label)
                 running[label] = task
 
             if not running:
@@ -463,16 +466,19 @@ class Launcher:
             done_tasks, _ = await asyncio.wait(running.values(), return_when=asyncio.FIRST_COMPLETED)
 
             for task in done_tasks:
-                # Find which label this task corresponds to
-                label = None
-                for lbl, t in list(running.items()):
-                    if t is task:
-                        label = lbl
-                        break
-                if label is None:
+                label = task.get_name()
+                if label not in running:
                     continue
-
                 del running[label]
+
+                # Task.exception() raises CancelledError on a cancelled
+                # task -- check cancellation BEFORE inspecting exception
+                # so the Launcher's main loop doesn't crash if a single
+                # workflow task is cancelled.
+                if task.cancelled():
+                    logger.warning(f"[{label}] CANCELLED")
+                    failed.add(label)
+                    continue
 
                 exc = task.exception()
                 if exc:
