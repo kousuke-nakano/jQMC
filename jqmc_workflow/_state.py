@@ -198,6 +198,57 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
     return abnormal
 
 
+def reconcile_fetched_jobs(directory: str) -> int:
+    """Promote orphaned ``[[jobs]]`` records to ``"fetched"``.
+
+    A job whose status is ``"submitted"`` or ``"completed"`` but whose
+    ``output_file`` is present locally and contains the ``Program ends``
+    marker is treated as fetched.  Handles the case where the workflow
+    process was killed between job completion and the fetch-finalize
+    state update, while the actual output and restart files have since
+    landed locally (e.g. via rsync or a separate fetch).
+
+    Without this reconciliation, the production loop sees a stale
+    ``submitted`` record, the safety-net energy computation falls back
+    to an earlier step's output, and the persisted ``[result]`` reflects
+    a partial run rather than the full accumulated statistics.
+
+    Returns the number of jobs reconciled.
+    """
+    state = read_state(directory)
+    jobs = state.get("jobs", [])
+    reconciled = 0
+    for job in jobs:
+        status = job.get("status")
+        if status not in ("submitted", "completed"):
+            continue
+        output_file = job.get("output_file", "")
+        if not output_file:
+            continue
+        filepath = os.path.join(directory, output_file)
+        if not os.path.isfile(filepath):
+            continue
+        try:
+            with open(filepath, errors="replace") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 8192))
+                tail = f.read()
+        except OSError:
+            continue
+        if "Program ends" not in tail:
+            continue
+        now = _now_iso()
+        job["status"] = "fetched"
+        job.setdefault("completed_at", now)
+        job["fetched_at"] = now
+        reconciled += 1
+    if reconciled:
+        state.setdefault("workflow", {})["updated_at"] = _now_iso()
+        _write(directory, state)
+    return reconciled
+
+
 def validate_completion(
     directory: str,
     output_values: dict | None = None,

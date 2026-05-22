@@ -80,6 +80,8 @@ from ._state import (
     WorkflowStatus,
     get_estimation,
     get_job_by_step,
+    read_state,
+    reconcile_fetched_jobs,
     set_estimation,
     validate_completion,
 )
@@ -481,6 +483,28 @@ class LRDMC_Workflow(Workflow):
             "max_continuation": self.max_continuation,
         }
 
+    def can_resume_after_completed(self, proj_dir: str) -> bool:
+        """Return True when a re-launch could still reduce ``energy_error`` toward target.
+
+        A prior ``"completed"`` state may have been written by
+        :meth:`_launch_auto` after exhausting ``max_continuation`` without
+        meeting ``target_error``.  When the user raises ``max_continuation``
+        (or tightens ``target_error``) and relaunches, the recorded
+        ``[result].energy_error`` will still exceed ``target_error*1.20``
+        and this method returns True so ``Container`` bypasses its
+        short-circuit and re-enters the production loop.
+
+        Fixed-step mode (``num_gfmc_projections`` set) has no convergence
+        criterion and is never resumed automatically.
+        """
+        if self.target_error is None or self.num_gfmc_projections is not None:
+            return False
+        result = read_state(proj_dir).get("result", {})
+        err = result.get("energy_error")
+        if err is None:
+            return False
+        return err > self.target_error * 1.20
+
     async def run(self) -> tuple:
         """Run the LRDMC workflow.
 
@@ -501,6 +525,15 @@ class LRDMC_Workflow(Workflow):
         """
         self._ensure_project_dir()
         _wd = self.project_dir
+
+        # Reconcile any orphaned "submitted"/"completed" job records whose
+        # output file already landed locally with a "Program ends" marker
+        # (e.g. workflow killed between job completion and fetch-finalize).
+        # Without this, Phase A would break out at the orphan record and
+        # the safety-net energy computation would read a stale earlier step.
+        n_reconciled = reconcile_fetched_jobs(_wd)
+        if n_reconciled:
+            logger.info(f"  Reconciled {n_reconciled} job record(s) to 'fetched' from existing output.")
 
         # -- Fixed-step mode ---------------------------------------
         if self.num_gfmc_projections is not None:
@@ -589,7 +622,7 @@ class LRDMC_Workflow(Workflow):
             # Post-process energy (informational only, no convergence check)
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
@@ -623,7 +656,7 @@ class LRDMC_Workflow(Workflow):
         last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
@@ -815,7 +848,7 @@ class LRDMC_Workflow(Workflow):
             if not restart_chk:
                 raise RuntimeError("No checkpoint found after pilot run. Cannot estimate required steps.")
 
-            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_b_dir, output_file=output_pb)
+            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_b_dir)
             if pilot_error is None:
                 raise RuntimeError("Could not parse energy error from pilot run.")
 
@@ -988,7 +1021,7 @@ class LRDMC_Workflow(Workflow):
                 raise RuntimeError(f"Phase B: cannot read mcmc_counter from {_re_chk} in {_wd}.")
             accumulated_measurement = actual
 
-            _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
+            _re_energy, _re_error = self._compute_energy_cached(_re_chk, work_dir=_wd, accumulated=actual)
             if _re_energy is not None and _re_error is not None:
                 if _re_error <= self.target_error * 1.20:
                     logger.info(f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.20:.6g} Ha")
@@ -1105,7 +1138,7 @@ class LRDMC_Workflow(Workflow):
             if actual is None:
                 raise RuntimeError(f"Phase C: cannot read mcmc_counter from {restart_chk} in {_wd}.")
             accumulated_measurement = actual
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
+            energy, error = self._compute_energy_cached(restart_chk, work_dir=_wd, accumulated=actual)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
@@ -1168,7 +1201,7 @@ class LRDMC_Workflow(Workflow):
         last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
+            energy, error = self._compute_energy_cached(restart_chk, work_dir=_wd)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
@@ -1212,45 +1245,85 @@ class LRDMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: str | None = None):
-        """Parse energy from *output_file* or run ``jqmc-tool lrdmc compute-energy``.
+    def _compute_energy_cached(self, restart_chk: str, work_dir: str, accumulated: int | None = None):
+        """Return (energy, error) using ``[estimation]`` cache when fresh.
 
-        When *output_file* is given the energy is read directly from
-        the ``jqmc`` stdout (``Total Energy: E = ... +- ... Ha.``).
-        This avoids the overhead of re-running ``jqmc-tool`` when
-        the post-processing parameters (-b, -w, -c) are the same as
-        in the input TOML -- which is always the case for a fresh run.
+        The cache (``last_energy`` / ``last_energy_error`` in
+        ``workflow_state.toml``) is considered fresh when the recorded
+        ``accumulated_measurement_steps`` matches the current
+        ``restart.h5`` ``mcmc_counter`` *and* the post-processing
+        parameters (``-b``, ``-w``, ``-c``) match the workflow's
+        current settings.  On a hit, no subprocess is launched.
 
-        Falls back to ``jqmc-tool`` when *output_file* is *None* or
-        when stdout parsing fails.
+        On a miss, :meth:`_compute_energy` is invoked and the cache is
+        refreshed via :func:`set_estimation` so that subsequent
+        invocations within the same or later workflow runs short-circuit.
 
         Args:
             restart_chk (str):
                 Checkpoint filename (basename).
             work_dir (str):
                 Directory in which to run the command.
-            output_file (str, optional):
-                Stdout filename (basename) of the ``jqmc`` run.
+            accumulated (int, optional):
+                Pre-read ``mcmc_counter`` from ``restart.h5``.  Pass when
+                the caller has already computed it (Phase B / Phase C) to
+                avoid a redundant HDF5 read.
+        """
+        if accumulated is None:
+            accumulated = read_accumulated_measurement_steps(
+                os.path.join(work_dir, restart_chk),
+                warmup=self.num_gfmc_warmup_steps,
+                collect_steps=self.num_gfmc_collect_steps,
+            )
+        est = get_estimation(work_dir)
+        if (
+            accumulated is not None
+            and est.get("last_energy") is not None
+            and est.get("last_energy_error") is not None
+            and est.get("accumulated_measurement_steps") == accumulated
+            and est.get("last_num_gfmc_bin_blocks") == self.num_gfmc_bin_blocks
+            and est.get("last_num_gfmc_warmup_steps") == self.num_gfmc_warmup_steps
+            and est.get("last_num_gfmc_collect_steps") == self.num_gfmc_collect_steps
+        ):
+            e, err = est["last_energy"], est["last_energy_error"]
+            logger.info(
+                f"  Energy cached: E = {e} +- {err} Ha "
+                f"(acc={accumulated}, b={self.num_gfmc_bin_blocks}, "
+                f"w={self.num_gfmc_warmup_steps}, c={self.num_gfmc_collect_steps})"
+            )
+            return e, err
+        energy, error = self._compute_energy(restart_chk, work_dir=work_dir)
+        if energy is not None and accumulated is not None:
+            set_estimation(
+                work_dir,
+                last_energy=energy,
+                last_energy_error=error,
+                accumulated_measurement_steps=accumulated,
+                last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+            )
+        return energy, error
+
+    def _compute_energy(self, restart_chk: str, work_dir: str):
+        """Run ``jqmc-tool lrdmc compute-energy`` against *restart_chk*.
+
+        Always invokes ``jqmc-tool`` so that the returned (energy, error)
+        carry full numerical precision.  Parsing jqmc's printed
+        ``Total Energy: E = ... +- ... Ha.`` line is lossy (``%.5f``
+        formatting), which is unsuitable for values persisted to
+        ``workflow_state.toml`` or compared against ``target_error``.
+
+        Args:
+            restart_chk (str):
+                Checkpoint filename (basename).
+            work_dir (str):
+                Directory in which to run the command.
 
         Returns:
             tuple:
-                ``(energy, error)`` or ``(None, None)``.
+                ``(energy, error)`` or ``(None, None)`` on failure.
         """
-        # Fast path: parse from jqmc stdout
-        if output_file is not None:
-            out_path = os.path.join(work_dir, output_file)
-            if os.path.isfile(out_path):
-                try:
-                    with open(out_path) as fh:
-                        text = fh.read()
-                    energy, error = self._parse_energy_output(text)
-                    if energy is not None:
-                        logger.info(f"  Energy from {output_file} (jqmc-tool skipped): E = {energy} +- {error} Ha")
-                        return energy, error
-                except OSError:
-                    pass
-
-        # Fallback: jqmc-tool
         cmd = (
             f"jqmc-tool lrdmc compute-energy {restart_chk} "
             f"-b {self.num_gfmc_bin_blocks} "

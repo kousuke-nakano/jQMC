@@ -328,6 +328,20 @@ class Workflow:
         self._ensure_project_dir()
         return self.status, self.output_files, self.output_values
 
+    def can_resume_after_completed(self, proj_dir: str) -> bool:
+        """Return True if a re-launch from a ``"completed"`` state could improve the result.
+
+        ``Container`` consults this before short-circuiting on a
+        previously completed workflow.  Subclasses with a target-error
+        convergence criterion (LRDMC, MCMC) override this to allow a
+        bumped ``max_continuation`` or tightened ``target_error`` to
+        actually re-trigger production runs, instead of silently
+        accepting the prior under-converged result.
+
+        Default: False (the workflow is genuinely done).
+        """
+        return False
+
     # -- Full lifecycle (backward-compatible) ----------------------
 
     async def async_launch(self):
@@ -878,10 +892,16 @@ class Container:
         set_input_fingerprints(proj, self._compute_input_fingerprints())
 
         if prev_status == "completed":
-            logger.info(f"[{self.label}] Already completed, no re-run.")
-            self.status = WorkflowStatus.COMPLETED
-            self._collect_outputs()
-            return self.status, self.output_files, self.output_values
+            if self.workflow.can_resume_after_completed(proj):
+                logger.info(
+                    f"[{self.label}] Previously 'completed' but workflow indicates "
+                    f"the result can still be improved (target not yet met); resuming."
+                )
+            else:
+                logger.info(f"[{self.label}] Already completed, no re-run.")
+                self.status = WorkflowStatus.COMPLETED
+                self._collect_outputs()
+                return self.status, self.output_files, self.output_values
 
         # Validate required files before running.
         self._validate_input_files(proj)
