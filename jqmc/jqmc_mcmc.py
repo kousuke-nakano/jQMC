@@ -133,7 +133,9 @@ mpi_size = mpi_comm.Get_size()
 #   - wide + direct : (X X^T + eps I) y = X F       via psum
 #   - wide + CG     :  same system, conjugate gradient with psum'd matvec
 #   - tall + direct : (X^T X + eps I) z = F, theta = X z   via all_gather
-#   - tall + CG     :  same system, conjugate gradient on replicated inputs
+#   - tall + CG     :  same system, conjugate gradient via psum on
+#                      sharded (N_local,) state -- ``X`` stays sharded so
+#                      per-rank memory is independent of ``mpi_size``.
 #
 # Compiled kernels are cached at module level so the JIT cost is paid once
 # per process. The same code path runs on:
@@ -358,7 +360,21 @@ def _get_sr_tall_direct_kernel():
 
 
 def _get_sr_tall_cg_kernel():
-    """Tall-matrix CG SR solve via push-through identity."""
+    """Tall-matrix CG SR solve via push-through identity.
+
+    ``X`` stays sharded as ``(P, N_local)`` on every rank; the only
+    communications are
+
+    * ``psum`` of ``X v_local`` to form the ``(P,)`` projection used by
+      ``apply_A``;
+    * ``psum`` of the CG inner products (scalars);
+    * ``psum`` of ``X y_local`` to assemble the final ``theta``;
+    * one ``all_gather`` of ``y_local`` (size ``N_total``, vector) so
+      the returned warm-start dual has the canonical replicated shape.
+
+    Per-rank peak memory therefore stays proportional to ``P * N_local``
+    plus ``O(P) + O(N_total)`` scratch, independent of ``mpi_size``.
+    """
     cached = getattr(_get_sr_tall_cg_kernel, "_cached", None)
     if cached is not None:
         return cached
@@ -377,66 +393,8 @@ def _get_sr_tall_cg_kernel():
             PSpec(),  # tol
             PSpec(),  # x0 (N_total,) replicated
         ),
-        out_specs=(PSpec(), PSpec(), PSpec(), PSpec()),
-        check_vma=False,  # all_gather output is replicated but not statically inferrable
-    )
-    def _solve(X, F, epsilon, max_iter, tol, x0):
-        X_full = jax.lax.all_gather(X, "rank", axis=1, tiled=True)
-        F_full = jax.lax.all_gather(F, "rank", tiled=True)
-
-        def apply_A(v):
-            return X_full.T @ (X_full @ v) + epsilon * v
-
-        y, residual, num_iter = _cg_while_loop(F_full, apply_A, x0, max_iter, tol, X.dtype)
-        # Return y (sample-space CG solution) too so the caller can persist
-        # it as a warm-start for the next optimization step.
-        return X_full @ y, y, residual, num_iter
-
-    _get_sr_tall_cg_kernel._cached = _solve
-    return _solve
-
-
-def _get_sr_tall_cg_distributed_kernel():
-    """Distributed tall-matrix CG SR solve -- no ``all_gather(X)``.
-
-    Same math as :func:`_get_sr_tall_cg_kernel` but avoids replicating
-    the design matrix.  ``X`` stays sharded as ``(P, N_local)`` on every
-    rank; the only communications are
-
-    * ``psum`` of ``X v_local`` to form the ``(P,)`` projection used by
-      ``apply_A``;
-    * ``psum`` of the CG inner products (scalars);
-    * ``psum`` of ``X y_local`` to assemble the final ``theta``;
-    * one ``all_gather`` of ``y_local`` (size ``N_total``, vector) so
-      the returned warm-start has the same wire format as the legacy
-      kernel.
-
-    Per-rank peak memory therefore stays proportional to ``P * N_local``
-    plus ``O(P) + O(N_total)`` scratch, independent of ``mpi_size`` --
-    in contrast to the legacy kernel whose ``X_full`` replication
-    multiplies ``P * N_local`` by ``mpi_size``.
-    """
-    cached = getattr(_get_sr_tall_cg_distributed_kernel, "_cached", None)
-    if cached is not None:
-        return cached
-    from jax.sharding import PartitionSpec as PSpec
-
-    mesh = _get_sr_mesh()
-
-    @partial(
-        jax.shard_map,
-        mesh=mesh,
-        in_specs=(
-            PSpec(None, "rank"),  # X (P, N_local)
-            PSpec("rank"),  # F (N_local,)
-            PSpec(),  # epsilon
-            PSpec(),  # max_iter
-            PSpec(),  # tol
-            PSpec(),  # x0 (N_total,) replicated  -- wire-compat with legacy
-        ),
         # All four outputs replicated: theta (P,) via psum; y (N_total,)
-        # via final all_gather so callers see the same shape; residual and
-        # num_iter are scalars.
+        # via final all_gather; residual and num_iter are scalars.
         out_specs=(PSpec(), PSpec(), PSpec(), PSpec()),
         check_vma=False,  # final all_gather output is replicated but not statically inferrable
     )
@@ -461,14 +419,14 @@ def _get_sr_tall_cg_distributed_kernel():
         theta = jax.lax.psum(X @ y_local, "rank")  # (P,) replicated
 
         # Gather y to (N_total,) replicated so the host-side warm-start
-        # stored by the caller stays bit-compatible with the legacy kernel.
-        # This is a (N_total,)-sized broadcast, which is negligible vs the
-        # (P, N_total) we are avoiding.
+        # dual stored by the caller is the canonical full-sample vector.
+        # This is a (N_total,)-sized broadcast -- negligible vs the
+        # (P, N_total) we would otherwise pay to replicate X.
         y_full = jax.lax.all_gather(y_local, "rank", tiled=True)
 
         return theta, y_full, residual, num_iter
 
-    _get_sr_tall_cg_distributed_kernel._cached = _solve
+    _get_sr_tall_cg_kernel._cached = _solve
     return _solve
 
 
@@ -2913,35 +2871,11 @@ class MCMC:
         ``x0`` and ``y`` live in the sample space, shape ``(N_total,)``;
         ``y`` is the CG solution (suitable as warm-start next iteration).
         ``theta = X y`` lives in parameter space, shape ``(P,)``.
+
+        Uses ``psum`` collectives (not ``all_gather(X)``) so per-rank peak
+        memory does not scale with ``mpi_size``.
         """
         solver = _get_sr_tall_cg_kernel()
-        X_g, F_g = self._shard_X_F(X_local, F_local)
-        x0_g = self._replicated_jax_array(np.asarray(x0, dtype=X_local.dtype))
-        eps_jnp = jnp.asarray(epsilon, dtype=X_g.dtype)
-        max_iter_jnp = jnp.asarray(int(max_iter), dtype=jnp.int32)
-        tol_jnp = jnp.asarray(tol, dtype=X_g.dtype)
-        theta, y, residual, num_iter = solver(X_g, F_g, eps_jnp, max_iter_jnp, tol_jnp, x0_g)
-        theta.block_until_ready()
-        return np.asarray(theta), np.asarray(y), float(residual), int(num_iter)
-
-    def _sr_solve_tall_cg_device_distributed(
-        self,
-        X_local: npt.NDArray,
-        F_local: npt.NDArray,
-        epsilon: float,
-        max_iter: int,
-        tol: float,
-        x0: npt.NDArray,
-    ) -> tuple[npt.NDArray, npt.NDArray, float, int]:
-        """Distributed tall-matrix CG SR solve (no ``all_gather(X)``).
-
-        Numerically equivalent to :meth:`_sr_solve_tall_cg_device` but uses
-        ``psum`` collectives instead of replicating the design matrix, so
-        per-rank peak memory does not scale with ``mpi_size``.  Wire format
-        is identical: ``x0`` and the returned ``y`` live in the global
-        sample space ``(N_total,)``, identical on every rank.
-        """
-        solver = _get_sr_tall_cg_distributed_kernel()
         X_g, F_g = self._shard_X_F(X_local, F_local)
         x0_g = self._replicated_jax_array(np.asarray(x0, dtype=X_local.dtype))
         eps_jnp = jnp.asarray(epsilon, dtype=X_g.dtype)
@@ -3875,8 +3809,7 @@ class MCMC:
                         else:
                             logger.info(
                                 "Using conjugate gradient for the inverse of S "
-                                "(device-resident, shard_map + psum, push-through identity; "
-                                "X not replicated -- per-rank memory independent of mpi_size)."
+                                "(device-resident, shard_map + psum, push-through identity)."
                             )
                             logger.info(f"  [CG] threshold {sr_cg_tol}.")
                             logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
@@ -3885,7 +3818,7 @@ class MCMC:
                                 x0 = sr_cg_warm_start_dual
                             else:
                                 x0 = np.zeros(num_samples_total_local, dtype=dtype_mcmc_np)
-                            theta_all, y_sample, final_residual, num_steps = self._sr_solve_tall_cg_device_distributed(
+                            theta_all, y_sample, final_residual, num_steps = self._sr_solve_tall_cg_device(
                                 X_local=X_local,
                                 F_local=F_local,
                                 epsilon=epsilon,
