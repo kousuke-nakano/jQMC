@@ -420,7 +420,16 @@ class Launcher:
         """
         completed = set()
         failed = set()
+        skipped = set()  # failed transitively because an upstream dep failed
         pending = set(self.workflows_by_label.keys())
+        # label -> {"reason": str, "where": str, "kind": str}
+        failure_info: dict[str, dict] = {}
+
+        def _where(label: str) -> str:
+            cw = self.workflows_by_label.get(label)
+            if cw is None:
+                return "(unknown)"
+            return getattr(cw, "project_dir", None) or getattr(cw, "dirname", None) or "(unknown)"
 
         logger.info("")
         logger.info("=" * 50)
@@ -436,10 +445,17 @@ class Launcher:
             for label in list(pending):
                 deps = self.dependency_dict[label]
                 # If any dep failed, this workflow cannot run
-                if any(d in failed for d in deps):
-                    logger.error(f"[{label}] Skipping -- dependency failed: {[d for d in deps if d in failed]}")
+                failed_deps = [d for d in deps if d in failed]
+                if failed_deps:
+                    logger.error(f"[{label}] Skipping -- dependency failed: {failed_deps}")
                     pending.discard(label)
                     failed.add(label)
+                    skipped.add(label)
+                    failure_info[label] = {
+                        "kind": "skipped",
+                        "reason": f"upstream dependency failed: {failed_deps}",
+                        "where": _where(label),
+                    }
                     continue
                 # All deps done?
                 if all(d in completed for d in deps):
@@ -459,6 +475,14 @@ class Launcher:
             if not running:
                 if pending:
                     logger.error(f"Deadlock! Remaining: {pending}")
+                    for label in pending:
+                        failure_info[label] = {
+                            "kind": "deadlock",
+                            "reason": "deadlock: dependencies could not be resolved",
+                            "where": _where(label),
+                        }
+                    failed.update(pending)
+                    pending.clear()
                     break
                 break
 
@@ -478,17 +502,38 @@ class Launcher:
                 if task.cancelled():
                     logger.warning(f"[{label}] CANCELLED")
                     failed.add(label)
+                    failure_info[label] = {
+                        "kind": "cancelled",
+                        "reason": "task cancelled",
+                        "where": _where(label),
+                    }
                     continue
 
                 exc = task.exception()
                 if exc:
                     logger.error(f"[{label}] FAILED: {exc}")
                     failed.add(label)
+                    failure_info[label] = {
+                        "kind": "exception",
+                        "reason": f"{type(exc).__name__}: {exc}",
+                        "where": _where(label),
+                    }
                 else:
                     cw = self.workflows_by_label[label]
                     if getattr(cw, "status", None) == "failed":
-                        logger.error(f"[{label}] FAILED (status=failed)")
+                        err = ""
+                        try:
+                            err = (cw.output_values or {}).get("error", "")
+                        except Exception:
+                            err = ""
+                        msg = err or "workflow returned status=failed (no detail)"
+                        logger.error(f"[{label}] FAILED (status=failed): {msg}")
                         failed.add(label)
+                        failure_info[label] = {
+                            "kind": "status_failed",
+                            "reason": msg,
+                            "where": _where(label),
+                        }
                     else:
                         logger.info(f"[{label}] Completed.")
                         completed.add(label)
@@ -499,8 +544,25 @@ class Launcher:
         logger.info("  DAG execution summary")
         logger.info("-" * 50)
         logger.info(f"  Completed : {len(completed)}")
-        logger.info(f"  Failed    : {len(failed)}")
-        logger.info(f"  Skipped   : {len(pending)}")
+        logger.info(f"  Failed    : {len(failed)}  (of which skipped due to upstream: {len(skipped)})")
+        logger.info(f"  Pending   : {len(pending)}")
+        if failure_info:
+            logger.info("-" * 50)
+            logger.info("  Failure details")
+            logger.info("-" * 50)
+            # Show direct failures first, then transitively-skipped ones,
+            # so the root cause is easy to spot at the top.
+            order = {"exception": 0, "status_failed": 1, "cancelled": 2, "deadlock": 3, "skipped": 4}
+            for label in sorted(failure_info, key=lambda lb: (order.get(failure_info[lb]["kind"], 99), lb)):
+                info = failure_info[label]
+                logger.info(f"  - [{label}]  ({info['kind']})")
+                logger.info(f"      where : {info['where']}")
+                # Truncate very long reason strings so the summary stays readable;
+                # the full message is already in the body of the log above.
+                reason = info["reason"]
+                if len(reason) > 400:
+                    reason = reason[:400] + " ...[truncated]"
+                logger.info(f"      reason: {reason}")
         logger.info("=" * 50)
 
         from ._header_footer import _print_footer

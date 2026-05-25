@@ -64,6 +64,39 @@ from .workflow import Workflow
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
 
+def _last_opt_energy_from_log(output_file: str) -> tuple[float | None, float | None]:
+    """Return ``(energy, energy_error)`` of the last VMC opt step in *output_file*.
+
+    Single source of truth shared by :meth:`VMC_Workflow._parse_output`
+    and :meth:`VMC_Workflow._parse_last_opt_energy`.  Both used to keep
+    their own copy of the ``E = ... +- ...`` regex, which drifted
+    independently and silently dropped ``nan``/``inf`` lines.  This
+    helper instead delegates to the canonical
+    :func:`_output_parser._parse_vmc_log_text` parser so any future
+    format change lives in exactly one place.
+
+    A ``nan``/``inf`` energy is returned as a (non-finite) float -- not
+    ``None`` -- so the caller's ``math.isfinite`` check in
+    :func:`validate_completion` can flag diverged runs.
+    """
+    try:
+        with open(output_file, errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None, None
+    from ._output_parser import _parse_vmc_log_text
+
+    steps = _parse_vmc_log_text(text)
+    # Prefer the last opt-step block that actually contains an ``E =``
+    # line; the very last block may be a header-only stub from a
+    # partial write.  Note: ``nan`` is not ``None`` so a diverged final
+    # step is still selected, which is the whole point.
+    for s in reversed(steps):
+        if s.energy is not None and s.energy_error is not None:
+            return s.energy, s.energy_error
+    return None, None
+
+
 class VMC_Workflow(Workflow):
     r"""VMC (Variational Monte Carlo) Jastrow / orbital optimisation workflow.
 
@@ -557,6 +590,12 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
+            # Refresh output_values["energy"] from THIS iteration's log
+            # before validating -- otherwise validate_completion sees a
+            # stale or unset energy and the non-finite check at
+            # _state.py:387 silently passes for diverged runs.
+            self._parse_output(os.path.join(_wd, output_i))
+
             # -- Abnormal-termination guard (single source of truth) --
             # target_error=None -> only Program-ends / non-finite-energy
             # checks are active. VMC's SNR/slope convergence is decided
@@ -817,6 +856,12 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
+            # Refresh output_values["energy"] from THIS iteration's log
+            # before validating -- otherwise validate_completion sees a
+            # stale or unset energy and the non-finite check at
+            # _state.py:387 silently passes for diverged runs.
+            self._parse_output(os.path.join(_wd, output_i))
+
             # -- Abnormal-termination guard (single source of truth) --
             # target_error=None -> only Program-ends / non-finite-energy
             # checks; SNR/slope convergence is evaluated separately below.
@@ -972,27 +1017,19 @@ class VMC_Workflow(Workflow):
     # -- Output parsing --------------------------------------------
 
     def _parse_output(self, output_file=None):
-        """Extract the last optimization energy from *output_file*."""
-        if output_file is None:
-            return
-        if not os.path.isfile(output_file):
-            return
+        """Extract the last optimization step's energy from *output_file*.
 
-        energy_pattern = re.compile(r"E\s*=\s*([+-]?\d+\.\d+(?:[eE][+-]?\d+)?)\s*\+\-\s*(\d+\.\d+(?:[eE][+-]?\d+)?)")
-        last_match = None
-        try:
-            with open(output_file) as f:
-                for line in f:
-                    m = energy_pattern.search(line)
-                    if m:
-                        last_match = m
-        except Exception:
+        Delegates to :func:`_output_parser._parse_vmc_log_text` so there
+        is a single source of truth for VMC log parsing -- any future
+        format change (or fix like nan/inf support) lives in one place.
+        """
+        if output_file is None or not os.path.isfile(output_file):
             return
-
-        if last_match:
-            self.output_values["energy"] = float(last_match.group(1))
-            self.output_values["energy_error"] = float(last_match.group(2))
-            logger.info(f"  VMC energy: {self.output_values['energy']} +- {self.output_values['energy_error']} Ha")
+        e, err = _last_opt_energy_from_log(output_file)
+        if e is not None and err is not None:
+            self.output_values["energy"] = e
+            self.output_values["energy_error"] = err
+            logger.info(f"  VMC energy: {e} +- {err} Ha")
 
     @staticmethod
     def _parse_all_snr(output_file):
@@ -1094,29 +1131,14 @@ class VMC_Workflow(Workflow):
 
     @staticmethod
     def _parse_last_opt_energy(output_file):
-        """Parse the last ``E = <val> +- <err>`` from a VMC output file.
-
-        Extracts the energy from the *last* optimization step, which
-        reflects the optimized wavefunction quality.
+        """Parse the last optimization step's energy from a VMC output file.
 
         Returns:
             tuple:
-                ``(energy, error)`` or ``(None, None)``.
+                ``(energy, error)`` or ``(None, None)``.  ``nan``/``inf``
+                are returned as :class:`float` (not ``None``), so callers
+                can apply ``math.isfinite`` to detect diverged runs.
         """
         if not os.path.isfile(output_file):
             return None, None
-
-        energy_pattern = re.compile(r"E\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*\+\-\s*(\d+\.?\d*(?:[eE][+-]?\d+)?)")
-        last_match = None
-        try:
-            with open(output_file) as f:
-                for line in f:
-                    m = energy_pattern.search(line)
-                    if m:
-                        last_match = m
-        except Exception:
-            return None, None
-
-        if last_match:
-            return float(last_match.group(1)), float(last_match.group(2))
-        return None, None
+        return _last_opt_energy_from_log(output_file)

@@ -570,30 +570,65 @@ class LRDMC_Ext_Workflow(Workflow):
 
         self.output_values["per_alat_results"] = per_alat_results
 
-        # Publish averaged GFMC projections per alat as a TOML-safe
-        # list of {"alat": float, "nmpm": int} records.  A downstream
+        # Publish GFMC projections per alat as a TOML-safe list of
+        # ``{"alat": float, "nmpm": int}`` records.  A downstream
         # GFMC_n LRDMC_Ext_Workflow can consume this via ValueFrom and
-        # pass it back as num_projection_per_measurement (the __init__
-        # accepts this list form and normalizes to dict[float, int]).
+        # pass it back as ``num_projection_per_measurement`` (the
+        # ``__init__`` accepts this list form and normalizes to
+        # ``dict[float, int]``).
+        #
+        # Two source-of-truth cases, in priority order:
+        #   1) GFMC_n / ``lrdmc-bra`` -- the per-alat sub-workflow ran
+        #      with a *fixed* nmpm (user-set or calibrated against
+        #      ``target_survived_walkers_ratio``) and publishes it via
+        #      ``output_values["num_projection_per_measurement"]``.
+        #      jqmc's GFMC_n branch does NOT emit
+        #      ``"Average of the number of projections"`` because nmpm
+        #      is an input, not a measurement, so output-file parsing
+        #      cannot recover it.
+        #   2) GFMC_t / ``lrdmc-tau`` -- nmpm is variable along the
+        #      continuous-time projection and jqmc prints the averaged
+        #      diagnostic for downstream calibration.  Parse it from
+        #      the output file.
+        out_values_by_alat: dict[float, dict] = {}
+        for _enc, _status, _out_files, _out_values, _error in all_results:
+            if _error is None and _status == WorkflowStatus.COMPLETED:
+                _a = _out_values.get("alat")
+                if _a is not None:
+                    out_values_by_alat[float(_a)] = _out_values
+
         nmpm_per_alat: list[dict] = []
         for alat in self.alat_list:
-            alat_dir = os.path.join(self.project_dir, f"lrdmc_alat_{alat:.3f}")
-            diag = parse_lrdmc_output(alat_dir)
-            if diag is None or getattr(diag, "avg_num_projections", None) is None:
-                msg = (
-                    f"Cannot read avg_num_projections for alat={alat:.3f} from {alat_dir}; "
-                    "sub-run completed but output is missing or unparseable."
-                )
-                logger.error(msg)
-                self.status = WorkflowStatus.FAILED
-                self.output_values["error"] = msg
-                return self.status, [], {"error": msg}
-            nmpm_per_alat.append(
-                {
-                    "alat": float(alat),
-                    "nmpm": max(int(round(float(diag.avg_num_projections))), 1),
-                }
-            )
+            nmpm_val: int | None = None
+
+            ov = out_values_by_alat.get(float(alat))
+            if ov is not None:
+                nmpm_raw = ov.get("num_projection_per_measurement")
+                if nmpm_raw is not None:
+                    try:
+                        nmpm_val = max(int(nmpm_raw), 1)
+                    except (TypeError, ValueError):
+                        nmpm_val = None
+
+            if nmpm_val is None:
+                # Fall back to parsing the GFMC_t averaged diagnostic.
+                alat_dir = os.path.join(self.project_dir, f"lrdmc_alat_{alat:.3f}")
+                diag = parse_lrdmc_output(alat_dir)
+                if diag is None or getattr(diag, "avg_num_projections", None) is None:
+                    msg = (
+                        f"Cannot determine num_projection_per_measurement for alat={alat:.3f} "
+                        f"from {alat_dir}: neither "
+                        f"output_values['num_projection_per_measurement'] (GFMC_n) "
+                        f"nor a parseable 'Average of the number of projections' line "
+                        f"(GFMC_t) was available."
+                    )
+                    logger.error(msg)
+                    self.status = WorkflowStatus.FAILED
+                    self.output_values["error"] = msg
+                    return self.status, [], {"error": msg}
+                nmpm_val = max(int(round(float(diag.avg_num_projections))), 1)
+
+            nmpm_per_alat.append({"alat": float(alat), "nmpm": nmpm_val})
         self.output_values["nmpm_per_alat"] = nmpm_per_alat
 
         self.output_files = restart_chks
