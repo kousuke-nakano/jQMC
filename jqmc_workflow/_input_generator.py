@@ -37,6 +37,7 @@ merges user-supplied overrides before writing a TOML file.
 # POSSIBILITY OF SUCH DAMAGE.
 
 import copy
+import os
 from logging import getLogger
 
 import toml
@@ -152,13 +153,21 @@ def generate_input_toml(
                         f"Required parameter '{k}' in [{section}] was not set. Please provide it via the 'overrides' dict."
                     )
 
+    # Atomic write: tmpfile + fsync + os.replace.  A partial input TOML
+    # would otherwise block the next workflow run with a parse error.
+    tmp = filename + ".tmp"
     if with_comments:
         text = _dump_with_comments(params, job_type)
-        with open(filename, "w") as f:
+        with open(tmp, "w") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
     else:
-        with open(filename, "w") as f:
+        with open(tmp, "w") as f:
             toml.dump(params, f)
+            f.flush()
+            os.fsync(f.fileno())
+    os.replace(tmp, filename)
 
     logger.info(f"Generated {filename} (job_type={job_type})")
     return filename
@@ -195,7 +204,11 @@ def _toml_value(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, str):
-        return f'"{v}"'
+        # JSON-compatible escaping matches TOML basic-string rules
+        # (backslash, quotes, control characters).
+        import json
+
+        return json.dumps(v, ensure_ascii=False)
     if isinstance(v, (int, float)):
         return str(v)
     if isinstance(v, dict):

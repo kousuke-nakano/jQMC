@@ -38,6 +38,7 @@ The client is always localhost, so only server_machine_name is required.
 import fnmatch
 import glob
 import os
+import shlex
 from logging import getLogger
 
 from ._machine import Machine, Machines_handler
@@ -239,7 +240,13 @@ class Data_transfer:
 
     # -- remove (local + remote) ----------------------------------
 
-    def remove_objects(self, patterns: list[str], *, work_dir: str | None = None) -> None:
+    def remove_objects(
+        self,
+        patterns: list[str],
+        *,
+        work_dir: str | None = None,
+        protected_basenames: "frozenset[str] | set[str] | None" = None,
+    ) -> None:
         """Delete files matching *patterns* from local and (if remote) server.
 
         Matching is **recursive** -- each pattern is applied to *work_dir*
@@ -252,16 +259,26 @@ class Data_transfer:
                 the top-level directory **and** all subdirectories.
             work_dir (str, optional):
                 Local directory.  When *None*, falls back to ``os.getcwd()``.
+            protected_basenames (frozenset[str], optional):
+                Basenames that must never be deleted, even when matched by
+                a pattern.  Used by :meth:`Workflow._cleanup_files` to
+                preserve ``workflow_state.toml`` against over-broad
+                patterns like ``"*.toml"``.
         """
         local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
+        protected = frozenset(protected_basenames or ())
 
         # -- Local deletion (always, recursive) -------------------
         for pattern in patterns:
             for fpath in sorted(glob.glob(os.path.join(local_cwd, "**", pattern), recursive=True)):
-                if os.path.isfile(fpath):
-                    os.remove(fpath)
-                    relpath = os.path.relpath(fpath, local_cwd)
-                    logger.info(f"  Cleanup: removed local file {relpath}")
+                if not os.path.isfile(fpath):
+                    continue
+                if os.path.basename(fpath) in protected:
+                    logger.warning(f"  Cleanup: refusing to delete protected file {os.path.relpath(fpath, local_cwd)}")
+                    continue
+                os.remove(fpath)
+                relpath = os.path.relpath(fpath, local_cwd)
+                logger.info(f"  Cleanup: removed local file {relpath}")
 
         # -- Remote deletion (only for non-local machines) --------
         if self.server_machine.machine_type == "local":
@@ -278,9 +295,15 @@ class Data_transfer:
             return
 
         server_dir = local_cwd.replace(local_root, server_root)
+        # Build a `find ... -name X ! -name P1 ! -name P2 ... -delete` clause
+        # so protected files are spared remotely as well.
+        protect_clause = " ".join(f"! -name {shlex.quote(p)}" for p in sorted(protected))
         for pattern in patterns:
             try:
-                self.server_machine.run_command(f"find {server_dir} -name '{pattern}' -type f -delete")
+                # Quote both the directory and the user-supplied glob to
+                # prevent shell-meta-character injection.
+                cmd = (f"find {shlex.quote(server_dir)} -name {shlex.quote(pattern)} {protect_clause} -type f -delete").rstrip()
+                self.server_machine.run_command(cmd)
                 logger.info(f"  Cleanup: removed remote files matching {pattern} (recursive)")
             except Exception as exc:
                 logger.warning(f"  Cleanup: failed to remove remote '{pattern}': {exc}")

@@ -2510,12 +2510,18 @@ This example uses local execution (`jqmc_setting_local/`):
 localhost:
   machine_type: local
   queuing: false
+  jobsubmit: bash    # required even for queuing=false: command used to invoke the submit script
+                     # (use "bash" or "sh"; for queuing=true add jobcheck / jobdel / jobnum_index)
 
 ## Remote machines require ssh_host:
 ## cluster:
 ##   ssh_host: my-cluster    # Host alias in ~/.ssh/config
 ##   machine_type: remote
 ##   queuing: true
+##   jobsubmit: qsub         # required: scheduler submit command (qsub / sbatch / ...)
+##   jobcheck: qstat         # required when queuing=true: status query command
+##   jobdel: qdel            # required when queuing=true: cancel command
+##   jobnum_index: 0         # required when queuing=true: index of the job-id token in jobsubmit's stdout
 ##   ...
 ```
 

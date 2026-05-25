@@ -2354,9 +2354,10 @@ class TestSolveLinearMethod:
         S_matrix = np.array([[1.0]])
         K_matrix = np.array([[-0.5]])
         B_matrix = np.array([[-0.1]])
-        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
+        c_vec, E_lm, v0_sq = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
         assert c_vec.shape == (1,)
         assert E_lm <= H_0 + 1e-10, f"E_lm={E_lm} should be <= H_0={H_0}"
+        assert 0.0 <= v0_sq <= 1.0 + 1e-10
 
     def test_diagonal_known_solution(self):
         """Diagonal H, S: verify c_vec has correct shape and E_lm is valid."""
@@ -2366,10 +2367,11 @@ class TestSolveLinearMethod:
         S_matrix = np.diag(np.linspace(0.1, 1.0, p))
         K_matrix = np.diag(np.linspace(-1.0, -0.1, p))
         B_matrix = np.diag(np.linspace(-0.5, -0.05, p))
-        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
+        c_vec, E_lm, v0_sq = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
         assert c_vec.shape == (p,)
         assert np.all(np.isfinite(c_vec))
         assert np.isfinite(E_lm)
+        assert 0.0 <= v0_sq <= 1.0 + 1e-10
 
     def test_epsilon_cutoff(self):
         """S eigenvalues below epsilon are cut; p' < p."""
@@ -2379,9 +2381,10 @@ class TestSolveLinearMethod:
         S_matrix = np.diag([1.0, 0.5, 1e-8, 1e-10])
         K_matrix = np.eye(p) * (-0.5)
         B_matrix = np.eye(p) * (-0.1)
-        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
+        c_vec, E_lm, v0_sq = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
         assert c_vec.shape == (p,)
         assert np.isfinite(E_lm)
+        assert 0.0 <= v0_sq <= 1.0 + 1e-10
 
     def test_all_diag_S_zero(self):
         """All diag(S) = 0 -> dgelscut removes all parameters -> zero update, E_lm == H_0."""
@@ -2391,9 +2394,10 @@ class TestSolveLinearMethod:
         S_matrix = np.zeros((p, p))
         K_matrix = np.eye(p) * (-0.5)
         B_matrix = np.eye(p) * (-0.1)
-        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
+        c_vec, E_lm, v0_sq = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
         np.testing.assert_array_equal(c_vec, np.zeros(p))
         assert E_lm == H_0
+        assert v0_sq == 0.0
 
     def test_v0_max_selection(self):
         """The eigenvector with max |v_0|^2 is selected."""
@@ -2404,9 +2408,10 @@ class TestSolveLinearMethod:
         S_matrix = np.eye(p)
         K_matrix = np.diag([-10.0, -0.1])
         B_matrix = np.zeros((p, p))
-        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
+        c_vec, E_lm, v0_sq = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
         assert c_vec.shape == (p,)
         assert np.isfinite(E_lm)
+        assert 0.0 <= v0_sq <= 1.0 + 1e-10
 
 
 # ---------------------------------------------------------------------------
@@ -2618,10 +2623,11 @@ def test_get_aH_and_solve_lm_debug_vs_production():
     # Use the production matrices for both to verify the two implementations
     # produce identical results when given the exact same input.
     epsilon_lm = 1e-6
-    c_debug, E_debug = _MCMC_debug.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
-    c_prod, E_prod = MCMC.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
+    c_debug, E_debug, v0_debug = _MCMC_debug.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
+    c_prod, E_prod, v0_prod = MCMC.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
     np.testing.assert_allclose(c_debug, c_prod, atol=atol, rtol=rtol)
     np.testing.assert_allclose(E_debug, E_prod, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(v0_debug, v0_prod, atol=atol, rtol=rtol)
 
     jax.clear_caches()
 

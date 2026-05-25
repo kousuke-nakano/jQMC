@@ -44,13 +44,13 @@ a tree view with status information.
 
 import os
 import shutil
-from datetime import datetime
 from logging import Formatter, StreamHandler, getLogger
 
 import toml
 import typer
 
 from ._config import get_config_dir, template_dir
+from ._state import WorkflowStatus, get_jobs, update_job, update_status
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
@@ -74,14 +74,25 @@ class Monitor:
         self.root_dir = root_dir
         self.job_counter = 0
         self.entries = []  # list of dicts with path, state info
+        self._visited: set[str] = set()
 
     def discover(self):
         """Walk tree and collect entries from workflow_state.toml."""
         self.entries = []
         self.job_counter = 0
+        self._visited.clear()
         self._walk(self.root_dir)
 
     def _walk(self, path):
+        # Guard against symlink cycles: dedupe by realpath.
+        try:
+            key = os.path.realpath(path)
+        except OSError:
+            return
+        if key in self._visited:
+            return
+        self._visited.add(key)
+
         state_file = os.path.join(path, "workflow_state.toml")
         if os.path.isfile(state_file):
             try:
@@ -112,9 +123,12 @@ class Monitor:
             except Exception as e:
                 logger.warning(f"Failed to read {state_file}: {e}")
 
-        # Recurse into subdirs
+        # Recurse into subdirs.  Pilot subdirectories (``_pilot*``) hold
+        # internal bookkeeping state for the parent workflow and should
+        # not be listed as separate user-facing jobs.  This matches the
+        # exclusion in :func:`_state.get_all_workflow_statuses`.
         try:
-            subdirs = sorted(d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d)))
+            subdirs = sorted(d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d)) and not d.startswith("_pilot"))
         except PermissionError:
             return
         for d in subdirs:
@@ -319,14 +333,16 @@ class Monitor:
             except Exception as ex:
                 logger.error(f"  Failed to delete job on {server}: {ex}")
 
-        # Update workflow_state.toml
-        state_file = os.path.join(e["dir"], "workflow_state.toml")
-        if os.path.isfile(state_file):
-            data = toml.load(state_file)
-            data.setdefault("workflow", {})["status"] = "cancelled"
-            data["workflow"]["updated_at"] = datetime.now().isoformat()
-            with open(state_file, "w") as f:
-                toml.dump(data, f)
+        # Update workflow_state.toml via the canonical API so that
+        # [[jobs]] (latest record) and [workflow] stay consistent.
+        if os.path.isfile(os.path.join(e["dir"], "workflow_state.toml")):
+            jobs = get_jobs(e["dir"])
+            if jobs:
+                last_job = jobs[-1]
+                input_file = last_job.get("input_file")
+                if input_file and last_job.get("status") in ("submitted", "completed"):
+                    update_job(e["dir"], input_file, status="cancelled")
+            update_status(e["dir"], WorkflowStatus.CANCELLED)
 
         logger.info(f"  Status set to 'cancelled' for JOB-ID {job_id}.")
 
