@@ -2479,7 +2479,7 @@ class MCMC:
         K_matrix: npt.NDArray,
         B_matrix: npt.NDArray,
         epsilon: float,
-    ) -> tuple[npt.NDArray, float]:
+    ) -> tuple[npt.NDArray, float, float]:
         r"""Solve the Linear Method generalized eigenvalue problem.
 
         Constructs extended matrices :math:`\bar H` and :math:`\bar S` of
@@ -2487,7 +2487,9 @@ class MCMC:
         and solves :math:`\bar H v = E \bar S v`.
 
         The eigenvector with the largest :math:`|v_0|^2` is selected, and the
-        parameter update is :math:`c_k = v_k / v_0`.
+        parameter update is :math:`c_k = v_k / v_0`.  :math:`|v_0|^2` is also
+        returned so the caller can guard against updates that fall outside
+        the linear regime (small overlap with the current wavefunction).
 
         Args:
             H_0: Current energy :math:`E_\alpha`.
@@ -2498,8 +2500,10 @@ class MCMC:
             epsilon: Eigenvalue cutoff for S matrix.
 
         Returns:
-            tuple: ``(c_vec, E_lm)`` where ``c_vec`` has shape ``(p,)``
-            (in the original parameter space) and ``E_lm`` is the selected eigenvalue.
+            tuple: ``(c_vec, E_lm, v0_sq_best)`` where ``c_vec`` has shape
+            ``(p,)`` (in the original parameter space), ``E_lm`` is the
+            selected eigenvalue, and ``v0_sq_best`` is the :math:`|v_0|^2`
+            of the selected eigenvector (in [0, 1]).
         """
         p = len(f_vec)
 
@@ -2526,7 +2530,7 @@ class MCMC:
 
         if not np.any(alive):
             logger.warning("  LM dgelscut: all parameters removed in Step 1; returning zero update.")
-            return np.zeros(p, dtype=dtype_mcmc_np), H_0
+            return np.zeros(p, dtype=dtype_mcmc_np), H_0, 0.0
 
         # ---- Step 2: Build correlation matrix for alive parameters ----
         alive_idx = np.where(alive)[0]
@@ -2539,7 +2543,7 @@ class MCMC:
             n_alive = len(idx)
             if n_alive == 0:
                 logger.warning("  LM dgelscut: all parameters removed; returning zero update.")
-                return np.zeros(p, dtype=dtype_mcmc_np), H_0
+                return np.zeros(p, dtype=dtype_mcmc_np), H_0, 0.0
 
             # Build correlation matrix for current alive set
             D_sub = D_inv_sqrt[idx]  # (n_alive,)
@@ -2599,7 +2603,7 @@ class MCMC:
 
         if p_prime == 0:
             logger.warning("  LM: no positive S eigenvalues after dgelscut; returning zero update.")
-            return np.zeros(p, dtype=dtype_mcmc_np), H_0
+            return np.zeros(p, dtype=dtype_mcmc_np), H_0, 0.0
 
         # P = U Lambda^{-1/2} (S-orthonormal basis)
         inv_sqrt_Lambda = 1.0 / np.sqrt(Lambda)
@@ -2623,9 +2627,15 @@ class MCMC:
         eigvals_lm, eigvecs_lm = np.linalg.eigh(H_bar)
 
         # ---- Select eigenvector with max |v_0|^2 ----
+        # |v_0|^2 measures the overlap with the current wavefunction; large
+        # overlap means the LM step stays in the linear regime.  The caller
+        # is expected to reject the update (e.g. fall back to plain SR) when
+        # ``v0_sq_best`` is below its safety threshold -- this routine only
+        # surfaces the value, it does not enforce a cutoff.
         v0_sq = eigvecs_lm[0, :] ** 2
         best_idx = int(np.argmax(v0_sq))
         E_lm = float(eigvals_lm[best_idx])
+        v0_sq_best = float(v0_sq[best_idx])
 
         # Diagnostic
         lowest_idx = 0
@@ -2635,13 +2645,10 @@ class MCMC:
                 eigvals_lm[lowest_idx],
                 v0_sq[lowest_idx],
                 E_lm,
-                v0_sq[best_idx],
+                v0_sq_best,
             )
         else:
-            logger.debug("  LM: selected eigenvalue E_LM = %.6f (|v0|^2 = %.4f)", E_lm, v0_sq[best_idx])
-
-        if v0_sq[best_idx] < 0.01:
-            logger.warning("  LM: max |v0|^2 = %.4f is small; update may be unreliable.", v0_sq[best_idx])
+            logger.debug("  LM: selected eigenvalue E_LM = %.6f (|v0|^2 = %.4f)", E_lm, v0_sq_best)
 
         w = eigvecs_lm[:, best_idx]
         w0 = w[0]
@@ -2655,12 +2662,12 @@ class MCMC:
         logger.info(
             "  LM: E_LM = %.6f (|v0|^2 = %.4f), ||c|| = %.3e, max|c| = %.3e",
             E_lm,
-            v0_sq[best_idx],
+            v0_sq_best,
             np.linalg.norm(c_vec),
             np.max(np.abs(c_vec)),
         )
 
-        return c_vec, E_lm
+        return c_vec, E_lm, v0_sq_best
 
     @staticmethod
     def _shard_X_F(X_local: npt.NDArray, F_local: npt.NDArray):
@@ -4065,13 +4072,26 @@ class MCMC:
                 )
 
                 # Solve LM eigenvalue problem
-                c_vec, E_lm = self.solve_linear_method(H_0_lm, f_vec_lm, S_mat, K_mat, B_mat, epsilon=lm_cond)
+                c_vec, E_lm, v0_sq_best = self.solve_linear_method(H_0_lm, f_vec_lm, S_mat, K_mat, B_mat, epsilon=lm_cond)
 
-                if E_lm > H_0_lm + 3.0 * E_std:
-                    logger.warning(
-                        f"LM: E_LM={E_lm:.6f} > E_0 + 3*sigma = {H_0_lm:.6f} + 3*{E_std:.6f} = {H_0_lm + 3.0 * E_std:.6f}; "
-                        f"LM does not predict improvement. Falling back to plain SR."
-                    )
+                # Safety thresholds:
+                #   (i)  E_LM exceeds current energy by > 3 sigma -- LM does not
+                #        predict an improvement; the linear model is unreliable.
+                #   (ii) |v_0|^2 of the selected eigenvector is small -- the LM
+                #        update sits far outside the linear regime, where the
+                #        first-order extrapolation can produce wild parameter
+                #        moves and downstream NaN/Inf energies.
+                # In either case fall back to a conservative plain-SR step.
+                _V0_SQ_MIN = 0.9
+                _e_lm_bad = E_lm > H_0_lm + 3.0 * E_std
+                _v0_bad = v0_sq_best < _V0_SQ_MIN
+                if _e_lm_bad or _v0_bad:
+                    reasons = []
+                    if _e_lm_bad:
+                        reasons.append(f"E_LM={E_lm:.6f} > E_0+3*sigma={H_0_lm:.6f}+3*{E_std:.6f}={H_0_lm + 3.0 * E_std:.6f}")
+                    if _v0_bad:
+                        reasons.append(f"|v0|^2={v0_sq_best:.4f} < {_V0_SQ_MIN} (LM update outside linear regime)")
+                    logger.warning("LM: " + "; ".join(reasons) + ". Falling back to plain SR.")
                     theta = 0.1 * g_sr
                 else:
                     # Back-transform: c_vec[0] = c_0 (SR direction), c_vec[1:] = c_k (individual params)
@@ -6702,7 +6722,7 @@ class _MCMC_debug:
         K_matrix: npt.NDArray,
         B_matrix: npt.NDArray,
         epsilon: float,
-    ) -> tuple[npt.NDArray, float]:
+    ) -> tuple[npt.NDArray, float, float]:
         r"""Debug implementation of the Linear Method with dgelscut preconditioning.
 
         This mirrors ``MCMC.solve_linear_method`` using the same dgelscut
@@ -6718,7 +6738,8 @@ class _MCMC_debug:
             epsilon: dgelscut threshold (correlation matrix min eigenvalue).
 
         Returns:
-            (c_vec, E_lm): parameter update in original space and selected eigenvalue.
+            (c_vec, E_lm, v0_sq_best): parameter update in original space,
+            selected eigenvalue, and ``|v_0|^2`` of the selected eigenvector.
         """
         # Delegate to MCMC.solve_linear_method -- the production version uses
         # the same dgelscut + S-orthonormalization + standard eigenvalue problem.
