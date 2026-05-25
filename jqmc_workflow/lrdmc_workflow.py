@@ -69,7 +69,7 @@ from ._lrdmc_calibration import (
     get_num_electrons,
     parse_survived_walkers_ratio,
 )
-from ._output_parser import parse_force_table
+from ._output_parser import parse_force_table, parse_lrdmc_output
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -686,6 +686,9 @@ class LRDMC_Workflow(Workflow):
             self.output_values["num_projection_per_measurement"] = self.num_projection_per_measurement
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
+            avg_nmpm = self._resolve_avg_nmpm(_wd)
+            if avg_nmpm is not None:
+                self.output_values["num_projection_per_measurement"] = avg_nmpm
 
         if self.status != WorkflowStatus.FAILED:
             self.status = WorkflowStatus.COMPLETED
@@ -961,11 +964,13 @@ class LRDMC_Workflow(Workflow):
                 )
                 # Mode-specific key: avoid writing None (which TOML
                 # silently drops, breaking downstream readers).
-                mode_extras = (
-                    {"num_projection_per_measurement": self.num_projection_per_measurement}
-                    if self._use_gfmc_n
-                    else {"time_projection_tau": self.time_projection_tau}
-                )
+                if self._use_gfmc_n:
+                    mode_extras = {"num_projection_per_measurement": self.num_projection_per_measurement}
+                else:
+                    mode_extras = {"time_projection_tau": self.time_projection_tau}
+                    avg_nmpm = self._resolve_avg_nmpm(_wd)
+                    if avg_nmpm is not None:
+                        mode_extras["num_projection_per_measurement"] = avg_nmpm
                 self.output_values.update(
                     energy=cached_energy,
                     energy_error=cached_error,
@@ -1242,12 +1247,35 @@ class LRDMC_Workflow(Workflow):
             self.output_values["num_projection_per_measurement"] = self.num_projection_per_measurement
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
+            avg_nmpm = self._resolve_avg_nmpm(_wd)
+            if avg_nmpm is not None:
+                self.output_values["num_projection_per_measurement"] = avg_nmpm
 
         if self.status != WorkflowStatus.FAILED:
             self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # -- Utility methods -------------------------------------------
+
+    def _resolve_avg_nmpm(self, work_dir: str) -> int | None:
+        """Parse the GFMC_t output log for the averaged number of projections.
+
+        Returns the rounded ``avg_num_projections`` as an int (>=1), or
+        None if the diagnostic is unavailable.  Used to expose the
+        averaged nmpm via ``output_values["num_projection_per_measurement"]``
+        so that downstream GFMC_n runs can consume it via ``ValueFrom``.
+        """
+        try:
+            diag = parse_lrdmc_output(work_dir)
+        except Exception:
+            return None
+        avg = getattr(diag, "avg_num_projections", None) if diag is not None else None
+        if avg is None:
+            return None
+        try:
+            return max(int(round(float(avg))), 1)
+        except (TypeError, ValueError):
+            return None
 
     def _find_restart_chk(self, work_dir: str) -> str | None:
         """Locate the LRDMC restart checkpoint file in *work_dir*."""
