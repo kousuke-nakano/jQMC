@@ -1543,6 +1543,7 @@ class GFMC_t:
                 _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
                 _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
             end_init_force = time.perf_counter()
+            timer_projection_init += end_init_force - start_init_force
             logger.info("End compilation of force gradient functions.")
             logger.info(f"Elapsed Time = {end_init_force - start_init_force:.2f} sec.")
             logger.info("")
