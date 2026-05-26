@@ -784,6 +784,7 @@ class MCMC:
         timer_MPI_barrier = 0.0
 
         # mcmc timer starts
+        mpi_comm.Barrier()
         mcmc_total_start = time.perf_counter()
 
         # toml(control) filename
@@ -961,12 +962,14 @@ class MCMC:
                 )
 
             self.__mcmc_kernels_warmed_up = True
+            mpi_comm.Barrier()
             mcmc_update_init_end = time.perf_counter()
             timer_mcmc_update_init += mcmc_update_init_end - mcmc_update_init_start
             logger.info("End compilation of the MCMC_update funciton.")
             logger.info(f"Elapsed Time = {mcmc_update_init_end - mcmc_update_init_start:.2f} sec.")
             logger.info("")
         else:
+            mpi_comm.Barrier()
             logger.info("Skipping compilation (JAX cache is warm from previous run).")
             logger.info("")
 

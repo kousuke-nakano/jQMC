@@ -659,6 +659,7 @@ class GFMC_t:
         timer_mpi_barrier = 0.0
         timer_collection = 0.0
         timer_reconfiguration = 0.0
+        mpi_comm.Barrier()
         gfmc_total_start = time.perf_counter()
 
         # toml(control) filename
@@ -1290,6 +1291,7 @@ class GFMC_t:
                 self.__alat,
                 self.__hamiltonian_data,
             )
+        mpi_comm.Barrier()
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -1677,6 +1679,7 @@ class GFMC_t:
                 self.__jax_PRNG_key_list,
                 _init_kinetic_state_list_compile,
             ).compile()
+        mpi_comm.Barrier()
         end_warmup = time.perf_counter()
         timer_projection_init += end_warmup - start_warmup
         logger.info("End compilation of the GFMC projection while_loop driver.")
@@ -5786,6 +5789,7 @@ class GFMC_n:
                 _ = _jit_vmap_swct_omega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
                 _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
                 _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+        mpi_comm.Barrier()
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
