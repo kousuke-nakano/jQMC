@@ -2295,6 +2295,9 @@ class GFMC_t:
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
                 self.__latest_r_up_carts, self.__latest_r_dn_carts
             )
+            # block before Barrier so the A_inv GPU work is included in timer_reconfiguration
+            # and dispatch-queue skew does not leak into the next step's barrier wait.
+            self.__latest_A_old_inv.block_until_ready()
 
             # Barrier after MPI operation
             mpi_comm.Barrier()
@@ -6365,6 +6368,9 @@ class GFMC_n:
             self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
             self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
             self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
+            # block before Barrier so the A_inv GPU work is included in timer_reconfiguration
+            # and dispatch-queue skew does not leak into the next step's barrier wait.
+            self.__latest_A_old_inv.block_until_ready()
 
             mpi_comm.Barrier()
 
