@@ -1,4 +1,4 @@
-name: publish jqmc gh-pages workflow
+name: Publish jqmc gh-pages workflow
 
 on:
   push:
