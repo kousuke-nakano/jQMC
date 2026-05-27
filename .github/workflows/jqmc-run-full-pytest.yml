@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10.14", "3.11.9", "3.12.3"]
 
     timeout-minutes: 720
 
@@ -31,19 +31,27 @@ jobs:
         hostname
         uname -a
         cat /etc/os-release
-        gcc --version
-        gfortran --version
 
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+    - name: Select Python
+        run: |
+          PY="$HOME/.pyenv/versions/${{ matrix.python-version }}/bin"
+          echo "$PY" >> "$GITHUB_PATH"
+          "$PY/python" --version
+
+    - name: Setup Open MPI
+        run: |
+          source /etc/profile.d/modules.sh
+          module load mpi/openmpi-x86_64
+          echo "$(dirname "$(which mpirun)")" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          mpirun --version
+          mpicc --version
 
     - name: Install jqmc
       run: |
-        python -m pip install -U pip
+        python -m pip install --upgrade pip
         python -m pip install pytest pytest-cov
         python -m pip install .
 
