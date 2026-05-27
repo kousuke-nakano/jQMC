@@ -7,7 +7,7 @@
 # To enforce additional ruff rules, fix the violations listed in
 # `lint.extend-ignore` in pyproject.toml and remove them from that list.
 
-name: jqmc lint (ruff + pre-commit)
+name: jqmc lint (ruff + pre-commit) workflow
 
 on:
   push:
@@ -17,6 +17,7 @@ on:
 
 jobs:
   lint:
+    name: jqmc lint (ruff + pre-commit)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3

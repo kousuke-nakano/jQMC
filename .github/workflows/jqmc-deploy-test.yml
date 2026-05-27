@@ -1,10 +1,12 @@
-name: Publish jQMC distributions to test-PyPI
+name: publish jQMC to test-PyPI workflow
 on:
   push:
     branches: [ "rc" ]
 
 jobs:
   deploy-test-pypi:
+    name: publish jqmc to test-pypi
+
     if: github.repository == 'jqmc-project/jQMC'
 
     runs-on: ubuntu-latest

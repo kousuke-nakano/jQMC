@@ -1,6 +1,6 @@
 # A long test of jqmc.
 
-name: jqmc long test
+name: jqmc long test workflow
 
 on:
   pull_request:
@@ -17,6 +17,7 @@ on:
 
 jobs:
   run:
+    name: jqmc long test / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
