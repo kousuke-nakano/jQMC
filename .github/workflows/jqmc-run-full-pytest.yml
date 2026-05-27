@@ -35,19 +35,19 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Select Python
-        run: |
-          PY="$HOME/.pyenv/versions/${{ matrix.python-version }}/bin"
-          echo "$PY" >> "$GITHUB_PATH"
-          "$PY/python" --version
+      run: |
+        PY="$HOME/.pyenv/versions/${{ matrix.python-version }}/bin"
+        echo "$PY" >> "$GITHUB_PATH"
+        "$PY/python" --version
 
     - name: Setup Open MPI
-        run: |
-          source /etc/profile.d/modules.sh
-          module load mpi/openmpi-x86_64
-          echo "$(dirname "$(which mpirun)")" >> "$GITHUB_PATH"
-          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
-          mpirun --version
-          mpicc --version
+      run: |
+        source /etc/profile.d/modules.sh
+        module load mpi/openmpi-x86_64
+        echo "$(dirname "$(which mpirun)")" >> "$GITHUB_PATH"
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+        mpirun --version
+        mpicc --version
 
     - name: Install jqmc
       run: |
