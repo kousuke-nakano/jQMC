@@ -96,16 +96,16 @@ jobs:
 
     - name: Test jqmc FP64 (QMC kernels without MPI, FP64)
       run: |
-        pytest -n 8 -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        # pytest -n 8 -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        # pytest -n 8 -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        # pytest -n 8 -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -n 4 -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        # pytest -n 4 -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        # pytest -n 4 -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        # pytest -n 4 -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Test jqmc FP32+FP64 (QMC kernels without MPI, FP32+FP64)
       run: |
-        pytest -n 8 -v tests/test_jqmc_mcmc.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        # pytest -n 8 -v tests/test_jqmc_gfmc_tau.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        # pytest -n 8 -v tests/test_jqmc_gfmc_bra.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -n 4 -v tests/test_jqmc_mcmc.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        # pytest -n 4 -v tests/test_jqmc_gfmc_tau.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        # pytest -n 4 -v tests/test_jqmc_gfmc_bra.py --precision-mode=mixed --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Test jqmc FP64 (QMC kernels with 2MPIs, FP64)
       run: |
@@ -119,16 +119,16 @@ jobs:
         # mpirun -np 4 pytest -v tests/test_jqmc_gfmc_tau.py --precision-mode=mixed
         # mpirun -np 4 pytest -v tests/test_jqmc_gfmc_bra.py --precision-mode=mixed
 
-    - name: Test jqmc-tool (Toolset for jqmc)
+    - name: Test jqmc-tool (Toolset for jqmc, FP64)
       run: |
-        pytest -n 8 -v tests/test_jqmc_tool.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -n 4 -v tests/test_jqmc_tool.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     # - name: Combine Codecov xml files
     #   run: |
     #     python -m coverage xml -o coverage.xml
 
     # - name: Upload coverage reports to Codecov
-    #   if: matrix.python-version == '3.12'
+    #   if: matrix.python-version == '3.12.3'
     #   uses: codecov/codecov-action@v5
     #   with:
     #     files: coverage.xml
