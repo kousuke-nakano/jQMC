@@ -121,7 +121,7 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     jastrow_nn_data = None
     if with_nn_jastrow:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
-            structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0, key=jax.random.PRNGKey(0)
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0, key=jax.random.PRNGKey(0)
         )
 
     jastrow_data = Jastrow_data(

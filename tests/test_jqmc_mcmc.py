@@ -127,7 +127,7 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     jastrow_nn_data = None
     if with_nn_jastrow:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
-            structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
         )
 
     jastrow_data = Jastrow_data(
@@ -278,7 +278,9 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
-    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+        structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
+    )
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,

@@ -432,7 +432,9 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
-    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+        structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
+    )
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,

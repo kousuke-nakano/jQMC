@@ -152,7 +152,7 @@ def test_lrdmc_force_with_SWCT_n(trexio_file: str, jastrow_parameters: dict, loc
     jastrow_nn_param = jastrow_parameters.get("jastrow_nn_param", False)
     if jastrow_nn_param:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
-            structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
         )
     else:
         jastrow_nn_data = None
@@ -269,7 +269,7 @@ def test_lrdmc_force_with_SWCT_t(trexio_file: str, jastrow_parameters: dict, loc
     jastrow_nn_param = jastrow_parameters.get("jastrow_nn_param", False)
     if jastrow_nn_param:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
-            structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
         )
     else:
         jastrow_nn_data = None
