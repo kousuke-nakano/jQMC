@@ -43,7 +43,7 @@ jobs:
     - name: Install pytest, pytest-xdist, pytest-cov
       run: |
         python -m pip install --upgrade pip
-        python -m pip install pytest, pytest-xdist, pytest-cov
+        python -m pip install pytest pytest-xdist pytest-cov
 
     - name: Install jqmc
       run: |
