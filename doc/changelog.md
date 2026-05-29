@@ -2,6 +2,61 @@
 
 # Change Log
 
+## May-29-2026: v0.2.2
+
+First stable release since v0.1.0. v0.2.2 ships everything accumulated across four alphas (v0.2.0a1, v0.2.1a1, v0.2.1a2, v0.2.2a1) plus a final round of polish. Per-alpha sections are preserved below; this entry is a roll-up of the highlights from v0.1.0 to v0.2.2.
+
+### Highlights (v0.1.0 -> v0.2.2)
+
+#### Optimization
+
+* **Linear Method (LM) optimizer** integrated under `method="sr"` with a unified `use_lm` / `lm_subspace_dim` hierarchy (plain SR / aSR / LM). New `|v_0|^2 < 0.9` fallback to plain SR keeps non-linear-regime updates from producing NaN energies.
+* **Adaptive learning rate** for Stochastic Reconfiguration.
+* **MO optimization** for JSD via the projection method with Attacalite-Sorella regularization, plus geminal AO -> MO projection.
+* **AO basis optimization** (`opt_J3_basis_coeff/exp`, `opt_lambda_basis_coeff/exp`) with shell-shared constraint and dual symmetrization.
+* **Distributed tall-CG SR** solver via `psum`, removing `mpi_size`-scaling memory in the SR solve.
+
+#### Performance
+
+* **Fast-update use** across MCMC / VMC / LRDMC, with mat-vec hot paths converted to GEMM for better GPU utilization.
+* **On-GPU VMC optimization** with `use_device_collectives` auto-selected by JAX backend; multi-GPU `run_optimize` supported.
+* **LU -> SVD** in determinant / geminal / GFMC_n / GFMC_t for ill-conditioned stability; Cartesian / Spherical AO conversion (Cartesian GTOs are substantially faster on GPU); ECP fast path (`compute_ecp_coulomb_potential_fast`).
+
+#### Numerical precision
+
+* **Mixed-precision support** with `"full"` / `"mixed"` modes and per-zone dtype control. Three explicit design principles. AGP/SD geminal stays fp64 to prevent `log|det|` amplification; electron-nucleus `r - R` differences are reconstructed in fp64 before downcast to avoid catastrophic cancellation. `ao_grad_lap` and `mo_grad_lap` zones are split for finer-grained control.
+
+#### Features
+
+* **LRDMC atomic forces** with the Pathak-Wagner regularization.
+* **Runtime-selectable Jastrow forms**: `jastrow_1b_type` and `jastrow_2b_type` (`exp` / `pade`).
+* **`use_swct` flag** to toggle Space Warp Coordinate Transformation in MCMC and GFMC_n / GFMC_t.
+
+#### `jqmc_workflow` automation package
+
+* **jqmc-workflow** is introduced as a multi-stage QMC pipeline orchestrator (WF conversion -> VMC opt -> MCMC / LRDMC production) with automatic step estimation, checkpointing, and remote job management.
+
+#### bug fixes
+
+* GFMC_n / GFMC_t spin-polarized (`n_up != n_dn`, `n_dn >= 1`) MPI bug.
+* MPI deadlock in `max_time` / `stop_flag` checks; `Allreduce` vs `allreduce` for scalars.
+* Optimizer step estimation; force NaN; MCMC memory overflow from `r_up_history` / `r_dn_history` storage.
+
+#### Infrastructure
+
+* **Restart files** migrated from pickle `.chk` to HDF5 `.h5` (no backward compatibility).
+* **Ruff lint pipeline** (`jqmc-lint-ruff.yml`) and pre-commit updates; non-ASCII cleanup across code and docstrings.
+* **Nightly CI + Codecov** activated with the `pytest-xdist` support.
+* **Examples**: 11 end-to-end tutorials (`jqmc-example01` to `jqmc-example08`, `jqmc-workflow-example01` to `jqmc-workflow-example03`).
+* **Project ownership** transferred to the `jqmc-project` GitHub organization; URLs updated.
+
+### Breaking changes since v0.1.0
+
+* Restart files: pickle `.chk` is no longer supported; HDF5 `.h5` is the only format.
+* Optimizer API: `num_param_opt`, `opt_filter_min_SN_ratio`, `adaptive_learning_rate`, and `method="lm"` are all removed or replaced; the Linear Method is now accessed via `method="sr"` with `use_lm=true` (and the new `lm_subspace_dim` / `lm_cond` parameters).
+
+See the per-alpha sections below for full details.
+
 ## May-18-2026: v0.2.2a1
 
 This release brings configurable mixed-precision support, deep kernel-level performance work (AOs, Jastrow, det/Jastrow ratios, GFMC), on-GPU VMC optimization, and a project-wide lint/cleanup.
