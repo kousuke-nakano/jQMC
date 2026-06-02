@@ -6,7 +6,6 @@ on:
 jobs:
   deploy-test-pypi:
     name: publish jqmc to test-pypi
-
     if: github.repository == 'jqmc-project/jQMC'
 
     runs-on: ubuntu-latest
