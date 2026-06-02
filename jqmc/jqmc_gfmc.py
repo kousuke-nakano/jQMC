@@ -63,7 +63,6 @@ from ._setting import (
     GFMC_MIN_WARMUP_STEPS,
     GFMC_ON_THE_FLY_BIN_BLOCKS,
     GFMC_ON_THE_FLY_COLLECT_STEPS,
-    GFMC_ON_THE_FLY_WARMUP_STEPS,
     get_eps,
 )
 from .coulomb_potential import (
@@ -660,6 +659,7 @@ class GFMC_t:
         timer_mpi_barrier = 0.0
         timer_collection = 0.0
         timer_reconfiguration = 0.0
+        mpi_comm.Barrier()
         gfmc_total_start = time.perf_counter()
 
         # toml(control) filename
@@ -1291,6 +1291,7 @@ class GFMC_t:
                 self.__alat,
                 self.__hamiltonian_data,
             )
+        mpi_comm.Barrier()
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -1544,6 +1545,7 @@ class GFMC_t:
                 _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
                 _ = _jit_vmap_swct_domega_t(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
             end_init_force = time.perf_counter()
+            timer_projection_init += end_init_force - start_init_force
             logger.info("End compilation of force gradient functions.")
             logger.info(f"Elapsed Time = {end_init_force - start_init_force:.2f} sec.")
             logger.info("")
@@ -1677,6 +1679,7 @@ class GFMC_t:
                 self.__jax_PRNG_key_list,
                 _init_kinetic_state_list_compile,
             ).compile()
+        mpi_comm.Barrier()
         end_warmup = time.perf_counter()
         timer_projection_init += end_warmup - start_warmup
         logger.info("End compilation of the GFMC projection while_loop driver.")
@@ -2295,6 +2298,9 @@ class GFMC_t:
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
                 self.__latest_r_up_carts, self.__latest_r_dn_carts
             )
+            # block before Barrier so the A_inv GPU work is included in timer_reconfiguration
+            # and dispatch-queue skew does not leak into the next step's barrier wait.
+            self.__latest_A_old_inv.block_until_ready()
 
             # Barrier after MPI operation
             mpi_comm.Barrier()
@@ -5783,6 +5789,7 @@ class GFMC_n:
                 _ = _jit_vmap_swct_omega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
                 _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts)
                 _ = _jit_vmap_swct_domega_n(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts)
+        mpi_comm.Barrier()
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -6365,6 +6372,9 @@ class GFMC_n:
             self.__latest_r_up_carts = jnp.asarray(latest_r_up_carts_after_branching, dtype=jnp.float64)
             self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
             self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
+            # block before Barrier so the A_inv GPU work is included in timer_reconfiguration
+            # and dispatch-queue skew does not leak into the next step's barrier wait.
+            self.__latest_A_old_inv.block_until_ready()
 
             mpi_comm.Barrier()
 
@@ -6376,10 +6386,10 @@ class GFMC_n:
             start_update_E_scf = time.perf_counter()
 
             ## parameters for E_scf
-            eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
             num_gfmc_collect_steps = GFMC_ON_THE_FLY_COLLECT_STEPS
             num_gfmc_bin_blocks = GFMC_ON_THE_FLY_BIN_BLOCKS
 
+            # (A) accumulate __G_L / __G_e_L every step (after enough stored_w_L)
             if mpi_rank == 0:
                 if i_mcmc_step >= num_gfmc_collect_steps:
                     e_L = self.__stored_e_L[self.__mcmc_counter + num_mcmc_done]
@@ -6390,40 +6400,46 @@ class GFMC_n:
                     self.__G_L.append(G_L)
                     self.__G_e_L.append(G_L * e_L)
 
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                if i_mcmc_step > eq_steps:
-                    if mpi_rank == 0:
-                        num_gfmc_warmup_steps = np.minimum(eq_steps, i_mcmc_step - eq_steps)
-                        logger.debug(f"    Computing E_scf at step {i_mcmc_step}.")
-                        G_eq = np.array(self.__G_L[num_gfmc_warmup_steps:])
-                        G_e_L_eq = np.array(self.__G_e_L[num_gfmc_warmup_steps:])
-                        G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
-                        G_e_L_binned = np.array([np.sum(G_e_L_list) for G_e_L_list in G_e_L_split])
-                        G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
-                        G_binned = np.array([np.sum(G_list) for G_list in G_split])
-                        G_e_L_binned_sum = np.sum(G_e_L_binned)
-                        G_binned_sum = np.sum(G_binned)
-                        E_jackknife = [
-                            (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m])
-                            for m in range(num_gfmc_bin_blocks)
-                        ]
-                        E_mean = np.average(E_jackknife)
-                        E_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(E_jackknife)
-                        E_mean = float(E_mean)
-                        E_std = float(E_std)
-                    else:
-                        E_mean = None
-                        E_std = None
+            # (B) E_scf update schedule:
+            #     - rapid phase (i_mcmc_step < mcmc_interval = N/100): update every step
+            #     - thereafter:                                        update every mcmc_interval steps
+            #     - skip when there are not yet enough G_L samples for jackknife
+            n_G_L = max(0, i_mcmc_step - num_gfmc_collect_steps + 1)
+            have_enough = n_G_L >= num_gfmc_bin_blocks
+            in_rapid_phase = i_mcmc_step < mcmc_interval
+            on_throttle = (i_mcmc_step + 1) % mcmc_interval == 0
 
-                    E_mean = mpi_comm.bcast(E_mean, root=0)
-                    E_std = mpi_comm.bcast(E_std, root=0)
-
-                    self.__E_scf = E_mean
-                    E_scf_std = E_std
-
-                    logger.debug(f"    Updated E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
+            if have_enough and (in_rapid_phase or on_throttle):
+                if mpi_rank == 0:
+                    # Skip the bad-regime stored_w_L that bleed into __G_L via the K-product.
+                    # During the very early phase the available samples are limited, so
+                    # clamp to keep at least num_gfmc_bin_blocks samples for jackknife.
+                    num_gfmc_warmup_steps = min(
+                        num_gfmc_collect_steps + num_gfmc_bin_blocks,
+                        max(n_G_L - num_gfmc_bin_blocks, 0),
+                    )
+                    G_eq = np.array(self.__G_L[num_gfmc_warmup_steps:])
+                    G_e_L_eq = np.array(self.__G_e_L[num_gfmc_warmup_steps:])
+                    G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
+                    G_e_L_binned = np.array([np.sum(G_e_L_list) for G_e_L_list in G_e_L_split])
+                    G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
+                    G_binned = np.array([np.sum(G_list) for G_list in G_split])
+                    G_e_L_binned_sum = np.sum(G_e_L_binned)
+                    G_binned_sum = np.sum(G_binned)
+                    E_jackknife = [
+                        (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m]) for m in range(num_gfmc_bin_blocks)
+                    ]
+                    E_mean = float(np.average(E_jackknife))
+                    E_std = float(np.sqrt(num_gfmc_bin_blocks - 1) * np.std(E_jackknife))
                 else:
-                    logger.debug(f"    Init E_scf = {self.__E_scf:.5f} Ha. Being equilibrated.")
+                    E_mean = None
+                    E_std = None
+
+                E_mean = mpi_comm.bcast(E_mean, root=0)
+                E_std = mpi_comm.bcast(E_std, root=0)
+
+                self.__E_scf = E_mean
+                logger.debug(f"    E_scf = {self.__E_scf:.5f} +- {E_std:.5f} Ha.")
 
             mpi_comm.Barrier()
             end_update_E_scf = time.perf_counter()
@@ -8224,19 +8240,29 @@ class _GFMC_n_debug:
             self.__latest_r_dn_carts = jnp.asarray(latest_r_dn_carts_after_branching, dtype=jnp.float64)
 
             # update E_scf
-            eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
             num_gfmc_collect_steps = GFMC_ON_THE_FLY_COLLECT_STEPS
             num_gfmc_bin_blocks = GFMC_ON_THE_FLY_BIN_BLOCKS
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                if i_mcmc_step > eq_steps:
-                    self.__E_scf, E_scf_std = self.get_E_on_the_fly(
-                        num_gfmc_warmup_steps=np.minimum(eq_steps, i_mcmc_step - eq_steps),
-                        num_gfmc_bin_blocks=num_gfmc_bin_blocks,
-                        num_gfmc_collect_steps=num_gfmc_collect_steps,
-                    )
-                    logger.debug(f"    Updated E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
-                else:
-                    logger.debug(f"    Init E_scf = {self.__E_scf:.5f} Ha. Being equilibrated.")
+
+            # E_scf update schedule:
+            #   - rapid phase (i_mcmc_step < mcmc_interval = N/100): update every step
+            #   - thereafter:                                        update every mcmc_interval steps
+            #   - skip when there are not yet enough G_L samples for jackknife
+            n_G_L = max(0, i_mcmc_step - num_gfmc_collect_steps + 1)
+            have_enough = n_G_L >= num_gfmc_bin_blocks
+            in_rapid_phase = i_mcmc_step < mcmc_interval
+            on_throttle = (i_mcmc_step + 1) % mcmc_interval == 0
+
+            if have_enough and (in_rapid_phase or on_throttle):
+                num_gfmc_warmup_steps = min(
+                    num_gfmc_collect_steps + num_gfmc_bin_blocks,
+                    max(n_G_L - num_gfmc_bin_blocks, 0),
+                )
+                self.__E_scf, E_scf_std = self.get_E_on_the_fly(
+                    num_gfmc_warmup_steps=num_gfmc_warmup_steps,
+                    num_gfmc_bin_blocks=num_gfmc_bin_blocks,
+                    num_gfmc_collect_steps=num_gfmc_collect_steps,
+                )
+                logger.debug(f"    E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
 
             # count up, here is the end of the branching step.
             num_mcmc_done += 1

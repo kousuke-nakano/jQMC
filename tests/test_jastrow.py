@@ -1323,9 +1323,9 @@ def _build_jastrow_data_for_part_tests(j1b_type: str = "exp", j2b_type: str = "p
     if include_nn:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
             structure_data=structure_data,
-            hidden_dim=16,
-            num_layers=2,
-            num_rbf=8,
+            hidden_dim=4,
+            num_layers=1,
+            num_rbf=4,
             cutoff=5.0,
             key=jax.random.PRNGKey(0),
         )

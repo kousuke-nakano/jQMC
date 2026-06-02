@@ -17,6 +17,7 @@ Per-job statuses (stored in ``[[jobs]]``):
     completed   -- scheduler reports job finished
     fetched     -- results transferred back to local machine
     failed      -- job failed
+    cancelled   -- user cancelled via CLI before completion
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -80,6 +81,7 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FETCHED = "fetched"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class CompletionStatus(str, Enum):
@@ -107,7 +109,9 @@ STATE_FILENAME = "workflow_state.toml"
 
 
 def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    # Local time *with* tz suffix: stays unambiguous when state files are
+    # shared between machines in different zones or compared across DST.
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def create_state(
@@ -118,9 +122,9 @@ def create_state(
 ) -> dict:
     """Create (or reset) workflow_state.toml in *directory*.
 
-    If the file already exists, the ``[estimation]`` and ``[[jobs]]``
-    sections are preserved so that pilot-run results and job history
-    survive a restart.
+    If the file already exists, ``[estimation]``, ``[[jobs]]``, and
+    ``[input_fingerprints]`` are preserved so that pilot-run results,
+    job history, and the staleness baseline survive a restart.
     """
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'. Must be one of {VALID_STATUSES}")
@@ -129,6 +133,7 @@ def create_state(
     existing = read_state(directory)
     preserved_estimation = existing.get("estimation", {})
     preserved_jobs = existing.get("jobs", [])
+    preserved_fingerprints = existing.get("input_fingerprints", {})
 
     state = {
         "workflow": {
@@ -144,6 +149,8 @@ def create_state(
 
     if preserved_estimation:
         state["estimation"] = preserved_estimation
+    if preserved_fingerprints:
+        state["input_fingerprints"] = preserved_fingerprints
 
     _write(directory, state)
     return state
@@ -155,47 +162,161 @@ def read_state(directory: str) -> dict:
     if not os.path.isfile(path):
         return {}
     state = toml.load(path)
-    # Migrate legacy single [job] -> [[jobs]] list
+    # Migrate legacy single [job] -> [[jobs]] list.  Persist the
+    # migration so subsequent reads don't repeat the conversion.
     if "job" in state and "jobs" not in state:
         old_job = state.pop("job")
-        if old_job:
-            state["jobs"] = [old_job]
-        else:
-            state["jobs"] = []
+        state["jobs"] = [old_job] if old_job else []
+        try:
+            _write(directory, state)
+        except OSError as exc:
+            logger.warning(f"Failed to persist legacy [job] migration in {path}: {exc}")
     return state
 
 
+def _has_program_ends(filepath: str) -> bool | None:
+    """Return ``True`` if *filepath*'s tail contains ``Program ends``.
+
+    ``None`` if the file is absent or unreadable (caller decides how to
+    treat that -- :func:`_check_normal_termination` ignores absent files
+    as "nothing to assert", while :func:`reconcile_fetched_jobs` treats
+    them as "not yet finished").  Only the last 8 KiB is read since the
+    marker is always the final log line.
+    """
+    if not os.path.isfile(filepath):
+        return None
+    try:
+        with open(filepath, errors="replace") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 8192))
+            tail = f.read()
+    except OSError:
+        return None
+    return "Program ends" in tail
+
+
 def _check_normal_termination(directory: str, jobs: list) -> list[str]:
-    """Check fetched output files for the ``Program ends`` marker.
+    """Return output-file names whose contents lack ``Program ends``.
 
-    Returns a list of output-file names that exist on disk but do **not**
-    contain the ``Program ends`` line -- a strong signal that the
-    computation was killed (e.g. wall-time expiration) before normal
-    termination.
+    Only jobs that were *meant* to complete normally are inspected --
+    namely status ``"fetched"`` or ``"completed"``.  Jobs in
+    ``"submitted"``, ``"failed"``, or ``"cancelled"`` status are skipped
+    because their output is expected to be incomplete (still running,
+    already known-failed, or intentionally aborted), and a partial file
+    left over from such a job would otherwise produce a false-positive
+    "abnormal termination" verdict that flips the whole workflow to
+    FAILED.
 
-    Files that are absent, unreadable, or binary are silently skipped.
+    Files that are absent on disk are silently skipped -- they say
+    nothing about whether the remote computation ended normally.  Files
+    present without the marker are reported as abnormal terminations
+    (e.g. wall-time kill, process crash).
     """
     abnormal: list[str] = []
     for job in jobs:
+        if job.get("status") not in ("fetched", "completed"):
+            continue
         output_file = job.get("output_file", "")
         if not output_file:
             continue
-        filepath = os.path.join(directory, output_file)
-        if not os.path.isfile(filepath):
-            continue  # not fetched yet -- nothing to check
-        try:
-            with open(filepath, errors="replace") as f:
-                # Read only the tail (last 8 KiB) for efficiency;
-                # "Program ends ..." is always the last log line.
-                f.seek(0, 2)
-                size = f.tell()
-                f.seek(max(0, size - 8192))
-                tail = f.read()
-            if "Program ends" not in tail:
-                abnormal.append(output_file)
-        except OSError:
-            continue  # unreadable -- skip
+        result = _has_program_ends(os.path.join(directory, output_file))
+        if result is False:
+            abnormal.append(output_file)
     return abnormal
+
+
+def reconcile_fetched_jobs_recursive(directory: str) -> int:
+    """Run :func:`reconcile_fetched_jobs` on *directory* and every nested
+    sub-directory that contains its own ``workflow_state.toml``.
+
+    LRDMC / MCMC / VMC pilots live in subdirectories (``_pilot_b/``,
+    ``_pilot_a/_pilot1/``, ``_pilot/``, ...) and each carries its own
+    state file.  Calling :func:`reconcile_fetched_jobs` only on the
+    top-level workflow directory misses those -- so a pilot job that
+    finished on the cluster but whose state record is stuck on
+    ``"submitted"`` (e.g. orchestrator died between job completion and
+    fetch-finalize) would not be picked up before the production phase
+    tries to resume it via SSH.
+
+    A malformed state.toml in any nested directory is logged and
+    skipped; the walk continues so a single corrupted pilot record
+    does not block production-level reconciliation.
+
+    Returns the total number of jobs reconciled across all directories.
+    """
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        if STATE_FILENAME not in filenames:
+            continue
+        try:
+            total += reconcile_fetched_jobs(dirpath)
+        except Exception as exc:
+            logger.warning(
+                f"reconcile_fetched_jobs_recursive: skipping {dirpath} due to error ({exc.__class__.__name__}: {exc})"
+            )
+    return total
+
+
+def reconcile_fetched_jobs(directory: str) -> int:
+    """Promote orphaned ``[[jobs]]`` records to ``"fetched"``.
+
+    A job whose status is ``"submitted"`` or ``"completed"`` is promoted
+    to ``"fetched"`` when **both**:
+
+    * its ``output_file`` is present locally with a ``Program ends``
+      marker (the run finished normally on remote), AND
+    * at least one ``.h5`` checkpoint is present in the directory
+      (the workflow has a restart point to continue from).
+
+    The ``.h5`` precondition prevents the next phase from crashing with
+    ``"no restart checkpoint found"`` when only the ``.out`` got
+    rsync'd locally but ``restart.h5`` is still on the remote.  In
+    that case we leave the job ``"submitted"`` so the normal
+    ``_submit_and_wait`` resume path re-fetches via SSH.
+
+    Handles the case where the workflow process was killed between
+    job completion and the fetch-finalize state update, while the
+    actual output and restart files have since landed locally
+    (e.g. via rsync or a separate fetch).
+
+    Returns the number of jobs reconciled.
+    """
+    state = read_state(directory)
+    jobs = state.get("jobs", [])
+    if not jobs or not os.path.isdir(directory):
+        return 0
+    # Cheap one-shot listdir: avoids per-job globbing.  Promotion is
+    # only safe if *some* checkpoint is on disk; we don't require an
+    # exact name match because workflows accept several conventions
+    # (``restart.h5``, ``lrdmc.h5``, ``hamiltonian_data_opt_step_*.h5``).
+    has_h5 = any(fn.endswith(".h5") for fn in os.listdir(directory))
+    reconciled = 0
+    for job in jobs:
+        status = job.get("status")
+        if status not in ("submitted", "completed"):
+            continue
+        output_file = job.get("output_file", "")
+        if not output_file:
+            continue
+        if _has_program_ends(os.path.join(directory, output_file)) is not True:
+            continue
+        if not has_h5:
+            logger.warning(
+                f"reconcile_fetched_jobs: not promoting {output_file} -- "
+                f"no .h5 checkpoint in {directory}; will let normal resume "
+                f"path try to fetch the missing checkpoint via SSH."
+            )
+            continue
+        now = _now_iso()
+        job["status"] = "fetched"
+        job.setdefault("completed_at", now)
+        job["fetched_at"] = now
+        reconciled += 1
+    if reconciled:
+        state.setdefault("workflow", {})["updated_at"] = _now_iso()
+        _write(directory, state)
+    return reconciled
 
 
 def validate_completion(
@@ -320,9 +441,14 @@ def update_status(
         logger.warning(f"No workflow_state.toml in {directory}; creating minimal one.")
         state = {"workflow": {}, "jobs": [], "result": {}}
 
-    state.setdefault("workflow", {})
-    state["workflow"]["status"] = status_str
-    state["workflow"]["updated_at"] = _now_iso()
+    wf = state.setdefault("workflow", {})
+    # Populate required identity fields if missing (e.g. when called
+    # without a prior Container.create_state).
+    wf.setdefault("label", os.path.basename(os.path.abspath(directory)) or "workflow")
+    wf.setdefault("type", "Workflow")
+    wf.setdefault("created_at", _now_iso())
+    wf["status"] = status_str
+    wf["updated_at"] = _now_iso()
 
     if phase is not None:
         state["workflow"]["phase"] = phase.value if hasattr(phase, "value") else phase
@@ -664,8 +790,19 @@ def get_input_fingerprints(directory: str) -> dict[str, dict]:
 
 
 def _write(directory: str, state: dict):
-    """Write state dict to workflow_state.toml."""
+    """Write state dict to workflow_state.toml atomically.
+
+    Writes to a sibling ``.tmp`` file, ``fsync``s it, then ``os.replace``s
+    over the destination.  This guarantees that ``workflow_state.toml``
+    either reflects the previous successful write or the new state in
+    full -- never a truncated mix -- even if the process is killed
+    mid-write (SIGKILL, power loss, ...).
+    """
     path = os.path.join(directory, STATE_FILENAME)
     os.makedirs(directory, exist_ok=True)
-    with open(path, "w") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
         toml.dump(state, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)

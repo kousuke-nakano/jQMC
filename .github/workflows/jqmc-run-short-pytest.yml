@@ -1,6 +1,6 @@
 # A short test jqmc.
 
-name: jqmc short test
+name: jqmc short test workflow
 
 on:
   push:
@@ -28,6 +28,7 @@ on:
 
 jobs:
   run:
+    name: jqmc short test / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

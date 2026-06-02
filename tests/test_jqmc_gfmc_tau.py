@@ -121,7 +121,7 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     jastrow_nn_data = None
     if with_nn_jastrow:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
-            structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0, key=jax.random.PRNGKey(0)
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0, key=jax.random.PRNGKey(0)
         )
 
     jastrow_data = Jastrow_data(
@@ -208,12 +208,19 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
         np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol, rtol=rtol)
 
     # average_projection_counter
-    # Both GFMC_t and _GFMC_t_debug now store local averages per rank.
-    apc_debug = gfmc_debug.average_projection_counter
-    apc_jax = gfmc_jax.average_projection_counter
-    assert not np.any(np.isnan(np.asarray(apc_debug))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(apc_jax))), "NaN detected in second argument"
-    np.testing.assert_allclose(apc_debug, apc_jax, atol=atol, rtol=rtol)
+    # Both GFMC_t and _GFMC_t_debug store local averages per rank. Production
+    # builds the branching cumprob via MPI allreduce + Exscan offset; debug
+    # uses a centralized rank-0 cumsum. The two paths are mathematically
+    # equivalent but not bit-identical, so boundary cases of searchsorted can
+    # permute walkers across ranks. Per-rank local apc is sensitive to that
+    # shuffling; the global mean across ranks is not.
+    apc_debug = np.asarray(gfmc_debug.average_projection_counter)
+    apc_jax = np.asarray(gfmc_jax.average_projection_counter)
+    assert not np.any(np.isnan(apc_debug)), "NaN detected in first argument"
+    assert not np.any(np.isnan(apc_jax)), "NaN detected in second argument"
+    apc_debug_global = np.mean(np.stack(mpi_comm.allgather(apc_debug), axis=0), axis=0)
+    apc_jax_global = np.mean(np.stack(mpi_comm.allgather(apc_jax), axis=0), axis=0)
+    np.testing.assert_allclose(apc_debug_global, apc_jax_global, atol=atol, rtol=rtol)
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(

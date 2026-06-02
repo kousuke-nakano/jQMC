@@ -151,7 +151,7 @@ def test_mcmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict):
     jastrow_nn_param = jastrow_parameters.get("jastrow_nn_param", False)
     if jastrow_nn_param:
         jastrow_nn_data = Jastrow_NN_data.init_from_structure(
-            structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
         )
     else:
         jastrow_nn_data = None
@@ -310,7 +310,7 @@ def test_mcmc_force_open_shell_finite(with_nn: bool):
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
     jastrow_nn_data = (
-        Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0)
+        Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0)
         if with_nn
         else None
     )

@@ -164,6 +164,50 @@ def estimate_additional_steps(
     return additional
 
 
+def read_accumulated_measurement_steps(
+    restart_chk_path: str,
+    warmup: int,
+    collect_steps: int = 0,
+) -> int | None:
+    """Read the actual accumulated measurement steps from a jQMC checkpoint.
+
+    Returns ``raw_mcmc_counter - collect_steps - warmup``, i.e. the number
+    of binnable measurement samples reflected in the checkpoint's
+    observable arrays (matching :pymeth:`MCMC.get_E` /
+    :pymeth:`GFMC_t.get_E` post-processing logic, where the public
+    ``mcmc_counter`` property already subtracts ``collect_steps``).
+
+    This is the source of truth for the accumulated sample count when a
+    run was interrupted by ``max_time`` and only partially completed its
+    planned ``num_mcmc_steps`` -- in that case the planned step count
+    over-estimates the actual samples on disk.
+
+    Args:
+        restart_chk_path: Path to ``restart.h5`` (merged checkpoint).
+        warmup: ``num_(gfmc_)mcmc_warmup_steps`` from the workflow.
+        collect_steps: ``num_gfmc_collect_steps`` for LRDMC, 0 for MCMC.
+
+    Returns:
+        Effective accumulated measurement-step count (>= 0), or *None*
+        if the checkpoint cannot be read.
+    """
+    try:
+        from jqmc._checkpoint import load_driver_config_from_checkpoint
+    except ImportError as exc:
+        logger.warning(f"jqmc not importable; cannot read mcmc_counter from {restart_chk_path}: {exc}")
+        return None
+    try:
+        cfg = load_driver_config_from_checkpoint(restart_chk_path, rank=0)
+    except Exception as exc:
+        logger.warning(f"Cannot read driver_config from {restart_chk_path}: {exc}")
+        return None
+    if "mcmc_counter" not in cfg:
+        logger.warning(f"driver_config in {restart_chk_path} has no 'mcmc_counter' key.")
+        return None
+    raw = int(cfg["mcmc_counter"])
+    return max(raw - int(collect_steps) - int(warmup), 0)
+
+
 def suffixed_name(filename: str, index: int) -> str:
     """Insert an integer suffix before the file extension.
 

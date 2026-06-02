@@ -1,4 +1,4 @@
-name: Publish jQMC distributions to PyPI
+name: Publish jQMC to PyPI workflow
 
 # Trigger only when tags that start with "v" are pushed (e.g., v0.1.0)
 on:
@@ -9,6 +9,7 @@ on:
 jobs:
   # validate tag
   validate_tag:
+    name: validate jqmc tag
     # Run only if this repository is rc
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'jqmc-project/jQMC'
     runs-on: ubuntu-latest
@@ -81,6 +82,7 @@ jobs:
 
   # deploy
   deploy-pypi:
+    name: publish jqmc to pypi
     # Run only if this repository is rc
     needs: validate_tag
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'jqmc-project/jQMC'

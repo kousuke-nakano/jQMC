@@ -85,7 +85,9 @@ def _build_hamiltonian(trexio_file, jastrow_combo):
         )
 
     if jastrow_combo == "1b+2b+3b+nn":
-        nn_jastrow_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data)
+        nn_jastrow_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
+        )
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_one_body_data,
