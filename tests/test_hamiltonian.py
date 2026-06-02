@@ -162,7 +162,9 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
 
     nn_jastrow_data = None
     if use_nn:
-        nn_jastrow_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data)
+        nn_jastrow_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=2, num_layers=1, num_rbf=2, cutoff=5.0
+        )
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_one_body_data,

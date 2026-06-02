@@ -271,12 +271,27 @@ class Workflow:
         if self.project_dir is None:
             self.project_dir = os.path.abspath(os.getcwd())
 
+    # Protected file basenames that ``_cleanup_files`` must never delete,
+    # regardless of what the user puts in ``cleanup_patterns``.  Losing
+    # any of these breaks workflow state, job history, or resume.
+    _PROTECTED_CLEANUP_BASENAMES = frozenset(
+        {
+            "workflow_state.toml",
+            "workflow_state.toml.tmp",
+        }
+    )
+
     def _cleanup_files(self):
         """Delete files matching *cleanup_patterns* from local and remote.
 
         Local files are always removed.  Remote files are removed only when
         the workflow targets a remote machine (``server_machine_name`` is set
         and not ``"localhost"``).
+
+        Protected files (``workflow_state.toml`` and its atomic-write
+        ``.tmp`` sibling) are *never* deleted, even when matched by an
+        over-broad pattern like ``"*.toml"`` -- losing the state file
+        would break job history and resume.
         """
         if not self.cleanup_patterns:
             return
@@ -292,16 +307,24 @@ class Workflow:
 
             for pattern in self.cleanup_patterns:
                 for fpath in sorted(_glob.glob(os.path.join(work_dir, "**", pattern), recursive=True)):
-                    if os.path.isfile(fpath):
-                        os.remove(fpath)
-                        logger.info(f"  Cleanup: removed local file {os.path.relpath(fpath, work_dir)}")
+                    if not os.path.isfile(fpath):
+                        continue
+                    if os.path.basename(fpath) in self._PROTECTED_CLEANUP_BASENAMES:
+                        logger.warning(f"  Cleanup: refusing to delete protected file {os.path.relpath(fpath, work_dir)}")
+                        continue
+                    os.remove(fpath)
+                    logger.info(f"  Cleanup: removed local file {os.path.relpath(fpath, work_dir)}")
             return
 
         from ._transfer import Data_transfer
 
         dt = Data_transfer(server_machine_name)
         try:
-            dt.remove_objects(patterns=self.cleanup_patterns, work_dir=work_dir)
+            dt.remove_objects(
+                patterns=self.cleanup_patterns,
+                work_dir=work_dir,
+                protected_basenames=self._PROTECTED_CLEANUP_BASENAMES,
+            )
         except Exception:
             dt.ssh_close()
             raise
@@ -310,9 +333,12 @@ class Workflow:
     # -- configure / run (new primary interface) ---------------------
 
     def configure(self) -> dict:
-        """Validate parameters and generate inputs (no execution).
+        """Return a summary dict of the workflow's parameters (no side effects).
 
-        Override in subclass.  Returns a summary dict.
+        Concrete workflows override this to expose their key parameters
+        for logging / inspection.  Parameter *validation* happens in
+        ``__init__`` (so that invalid configs fail before any I/O), and
+        input-file generation happens lazily inside ``run()``.
         """
         return {}
 
@@ -328,6 +354,20 @@ class Workflow:
         self._ensure_project_dir()
         return self.status, self.output_files, self.output_values
 
+    def can_resume_after_completed(self, proj_dir: str) -> bool:
+        """Return True if a re-launch from a ``"completed"`` state could improve the result.
+
+        ``Container`` consults this before short-circuiting on a
+        previously completed workflow.  Subclasses with a target-error
+        convergence criterion (LRDMC, MCMC) override this to allow a
+        bumped ``max_continuation`` or tightened ``target_error`` to
+        actually re-trigger production runs, instead of silently
+        accepting the prior under-converged result.
+
+        Default: False (the workflow is genuinely done).
+        """
+        return False
+
     # -- Full lifecycle (backward-compatible) ----------------------
 
     async def async_launch(self):
@@ -337,6 +377,11 @@ class Workflow:
         return await self.run()
 
     def launch(self):
+        """Synchronous entry point: ``asyncio.run(self.async_launch())``.
+
+        Not callable from an already-running event loop (e.g. Jupyter);
+        use ``await self.async_launch()`` there, or install ``nest_asyncio``.
+        """
         return asyncio.run(self.async_launch())
 
     # -- Phased execution (MCP interactive mode) -------------------
@@ -374,6 +419,9 @@ class Workflow:
         require_action(action, self.phase, self.status)
         self._ensure_project_dir()
         self.configure()
+        # Flip self.status so subsequent require_action / async_poll
+        # callers see the workflow as RUNNING rather than PENDING.
+        self.status = WorkflowStatus.RUNNING
         self._bg_task = asyncio.create_task(self.run())
         return {"status": "submitted", "project_dir": self.project_dir}
 
@@ -390,6 +438,10 @@ class Workflow:
         if not self._bg_task.done():
             summary = get_workflow_summary(self.project_dir) if self.project_dir else {}
             return {"status": "running", **summary}
+        # Task.exception() raises CancelledError on a cancelled task, so
+        # check cancellation BEFORE inspecting the exception.
+        if self._bg_task.cancelled():
+            return {"status": "cancelled"}
         if self._bg_task.exception() is not None:
             return {"status": "failed", "error": str(self._bg_task.exception())}
         return {"status": "completed"}
@@ -403,7 +455,8 @@ class Workflow:
 
         Raises:
             RuntimeError:
-                If the workflow was not submitted or is still running.
+                If the workflow was not submitted, was cancelled, or is
+                still running.
             Exception:
                 Re-raises the original exception if the workflow failed.
         """
@@ -411,6 +464,8 @@ class Workflow:
             raise RuntimeError("No workflow has been submitted. Call async_submit() first.")
         if not self._bg_task.done():
             raise RuntimeError("Workflow is still running. Call async_poll() to check status.")
+        if self._bg_task.cancelled():
+            raise RuntimeError("Workflow was cancelled before completion.")
         exc = self._bg_task.exception()
         if exc is not None:
             raise exc
@@ -529,6 +584,12 @@ class Workflow:
 
         if recorded.get("status") == "submitted":
             stored_job_id = recorded.get("job_id")
+            if not stored_job_id:
+                raise RuntimeError(
+                    f"State has step in 'submitted' status but no job_id for {input_file}. "
+                    f"Edit workflow_state.toml (e.g. remove the malformed record or set status='cancelled') "
+                    f"to recover."
+                )
             logger.info(f"  Resuming previously submitted job {stored_job_id}")
             job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
             try:
@@ -699,12 +760,24 @@ class Container:
     # -- Preparation -----------------------------------------------
 
     def _prepare(self):
-        """Create project dir, copy input files, write initial state."""
+        """Create project dir, copy input files, write initial state.
+
+        Re-entry behaviour: when ``existing_status`` is ``completed`` or
+        ``running``, input files in *project_dir* are left intact and no
+        new state is created.  ``async_launch`` will subsequently decide
+        whether to short-circuit (default for ``completed``) or resume
+        (when the inner workflow opts in via
+        :meth:`Workflow.can_resume_after_completed`).
+        """
         state = read_state(self.project_dir)
         existing_status = state.get("workflow", {}).get("status", "")
 
         if existing_status in ("completed", "running"):
-            logger.info(f"[{self.label}] Already {existing_status}. Delete project dir to restart from scratch.")
+            logger.info(
+                f"[{self.label}] Existing project dir with status='{existing_status}' "
+                f"found; will short-circuit or resume depending on workflow policy. "
+                f"Delete project dir to force a clean restart."
+            )
             return
 
         if os.path.isdir(self.project_dir):
@@ -816,19 +889,59 @@ class Container:
             )
 
     def _compute_input_fingerprints(self) -> dict[str, dict]:
-        """Return ``{basename: {sha256: hex_digest}}`` for each resolved input file."""
+        """Return ``{basename: {sha256: hex_digest | "missing"}}`` per input file.
+
+        For each entry in ``self.input_files``:
+
+        * ``FileFrom`` / ``ValueFrom`` placeholders are skipped (they have
+          no on-disk path yet -- Launcher resolves them before launch;
+          direct ``.launch()`` may still hold placeholders).
+        * Regular files are hashed in 1 MiB chunks.
+        * Directories are hashed by walking their contents in sorted
+          order -- each file's relative path and content are folded into
+          the hash so the digest changes when any nested file changes.
+        * Missing source paths are recorded as ``{"sha256": "missing"}``
+          so that :meth:`_check_input_staleness` can distinguish
+          "input never existed" from "input was deleted since last run".
+        """
         fingerprints: dict[str, dict] = {}
         for i, src in enumerate(self.input_files):
+            if _is_dependency(src):
+                continue
             src = str(src)
             if not os.path.isabs(src):
                 src = os.path.join(self.root_dir, src)
             key = self._dst_basename(src, self.rename_input_files, i)
-            if os.path.exists(src):
+            if os.path.isfile(src):
                 h = hashlib.sha256()
                 with open(src, "rb") as f:
                     for chunk in iter(lambda: f.read(1 << 20), b""):
                         h.update(chunk)
                 fingerprints[key] = {"sha256": h.hexdigest()}
+            elif os.path.isdir(src):
+                # Walk deterministically (sorted dirs and files) so the
+                # digest is reproducible across runs.  Folding the
+                # relative path into the hash makes additions, removals,
+                # and renames all visible.
+                h = hashlib.sha256()
+                for root, dirs, files in os.walk(src):
+                    dirs.sort()
+                    for name in sorted(files):
+                        p = os.path.join(root, name)
+                        rel = os.path.relpath(p, src).encode("utf-8", errors="replace")
+                        h.update(rel)
+                        h.update(b"\0")
+                        try:
+                            with open(p, "rb") as f:
+                                for chunk in iter(lambda: f.read(1 << 20), b""):
+                                    h.update(chunk)
+                        except OSError:
+                            # Unreadable entry -- fold a marker in so the
+                            # digest still changes when readability flips.
+                            h.update(b"<unreadable>")
+                fingerprints[key] = {"sha256": h.hexdigest()}
+            else:
+                fingerprints[key] = {"sha256": "missing"}
         return fingerprints
 
     def _check_input_staleness(self, proj: str) -> bool:
@@ -872,19 +985,29 @@ class Container:
                     f"Delete '{self.dirname}/' to re-run with the updated inputs."
                 )
 
-        # Record input-file fingerprints after staleness check but
-        # before any execution, so that even interrupted runs have a
-        # baseline for the next invocation.
-        set_input_fingerprints(proj, self._compute_input_fingerprints())
-
         if prev_status == "completed":
-            logger.info(f"[{self.label}] Already completed, no re-run.")
-            self.status = WorkflowStatus.COMPLETED
-            self._collect_outputs()
-            return self.status, self.output_files, self.output_values
+            if self.workflow.can_resume_after_completed(proj):
+                logger.info(
+                    f"[{self.label}] Previously 'completed' but workflow indicates "
+                    f"the result can still be improved (target not yet met); resuming."
+                )
+            else:
+                logger.info(f"[{self.label}] Already completed, no re-run.")
+                self.status = WorkflowStatus.COMPLETED
+                self._collect_outputs()
+                # Record fingerprints even on short-circuit so the next
+                # launch's staleness check has an up-to-date baseline.
+                set_input_fingerprints(proj, self._compute_input_fingerprints())
+                return self.status, self.output_files, self.output_values
 
-        # Validate required files before running.
+        # Validate required files before running.  This may raise; do it
+        # before updating the fingerprint baseline so that a failed
+        # validation leaves the previous baseline intact.
         self._validate_input_files(proj)
+
+        # Record input-file fingerprints after staleness check + validation
+        # but before execution, so even interrupted runs have a baseline.
+        set_input_fingerprints(proj, self._compute_input_fingerprints())
 
         # Run the workflow -- pass project_dir explicitly instead of
         # relying on os.chdir().
@@ -909,10 +1032,19 @@ class Container:
                     result_fields[f"result_{k}"] = v
                 update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
                 # -- Post-completion cleanup --
-                try:
-                    self.workflow._cleanup_files()
-                except Exception as e:
-                    logger.warning(f"[{self.label}] Cleanup failed (non-fatal): {e}")
+                # Only run cleanup when the workflow is *truly* done, i.e.
+                # ``can_resume_after_completed`` says no further runs would
+                # help.  Otherwise restart.h5 / opt-step checkpoints would
+                # be deleted while still being needed for the next resume
+                # (e.g. when max_continuation was raised after exhausting
+                # the original budget without meeting target_error).
+                if not self.workflow.can_resume_after_completed(proj):
+                    try:
+                        self.workflow._cleanup_files()
+                    except Exception as e:
+                        logger.warning(f"[{self.label}] Cleanup failed (non-fatal): {e}")
+                else:
+                    logger.info(f"[{self.label}] Skipping cleanup: workflow may still be resumed (target not yet met).")
             else:
                 logger.error(error_msg)
                 self.status = WorkflowStatus.FAILED
@@ -926,19 +1058,32 @@ class Container:
 
         return self.status, self.output_files, self.output_values
 
+    # Files emitted by the workflow plumbing itself (state, generated
+    # input TOMLs, submit scripts, scheduler stdout/stderr, accounting).
+    # They are recorded in [[jobs]] / [workflow] and are not meaningful
+    # downstream artefacts, so we exclude them from output_files.
+    _INTERNAL_OUTPUT_PREFIXES = ("input_", "output_", "submit_", "job_", "job_accounting_")
+    _INTERNAL_OUTPUT_FILES = ("workflow_state.toml", "workflow_state.toml.tmp")
+
     def _collect_outputs(self):
         """Re-collect output info from state file (for already-completed runs)."""
         state = read_state(self.project_dir)
         self.output_values = state.get("result", {})
-        # Gather all files in project dir as potential outputs
         if os.path.isdir(self.project_dir):
             self.output_files = [
                 f
-                for f in os.listdir(self.project_dir)
-                if os.path.isfile(os.path.join(self.project_dir, f)) and f != "workflow_state.toml"
+                for f in sorted(os.listdir(self.project_dir))
+                if os.path.isfile(os.path.join(self.project_dir, f))
+                and f not in self._INTERNAL_OUTPUT_FILES
+                and not f.startswith(self._INTERNAL_OUTPUT_PREFIXES)
             ]
 
     def launch(self):
+        """Synchronous entry point: ``asyncio.run(self.async_launch())``.
+
+        Not callable from an already-running event loop (e.g. Jupyter);
+        use ``await self.async_launch()`` there, or install ``nest_asyncio``.
+        """
         return asyncio.run(self.async_launch())
 
     # -- Phased execution (delegates to inner Workflow) ------------
@@ -980,6 +1125,8 @@ class Container:
         if not self._bg_task.done():
             summary = get_workflow_summary(self.project_dir) if self.project_dir else {}
             return {"status": "running", **summary}
+        if self._bg_task.cancelled():
+            return {"status": "cancelled"}
         if self._bg_task.exception() is not None:
             return {"status": "failed", "error": str(self._bg_task.exception())}
         return {"status": "completed"}
@@ -994,7 +1141,7 @@ class Container:
 
         Raises:
             RuntimeError:
-                If not submitted or still running.
+                If not submitted, cancelled, or still running.
             Exception:
                 Re-raises the original exception if the workflow failed.
         """
@@ -1002,6 +1149,8 @@ class Container:
             raise RuntimeError(f"[{self.label}] Not submitted. Call async_submit() first.")
         if not self._bg_task.done():
             raise RuntimeError(f"[{self.label}] Still running. Call async_poll() to check.")
+        if self._bg_task.cancelled():
+            raise RuntimeError(f"[{self.label}] Workflow was cancelled before completion.")
         exc = self._bg_task.exception()
         if exc is not None:
             raise exc

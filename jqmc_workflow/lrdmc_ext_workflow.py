@@ -52,7 +52,7 @@ from ._setting import (
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
-from ._state import WorkflowStatus
+from ._state import WorkflowStatus, read_state
 from .lrdmc_workflow import LRDMC_Workflow
 from .workflow import Container, Workflow
 
@@ -118,10 +118,19 @@ class LRDMC_Ext_Workflow(Workflow):
             find its own optimal ``num_projection_per_measurement``.
             Set to *None* to disable auto-calibration (requires explicit
             *num_projection_per_measurement*).  Activates GFMC_n mode.
-        num_projection_per_measurement (int, optional):
+        num_projection_per_measurement (int | dict[float, int] | list[dict], optional):
             GFMC projections per measurement.  When given explicitly,
             automatic calibration is disabled and this value is used
-            for every ``alat``.  Activates GFMC_n mode.
+            for every ``alat``.  Activates GFMC_n mode.  Accepted forms:
+
+            * ``int`` -- the same value for every alat.
+            * ``dict[float, int]`` -- per-alat values; keys must cover
+              every alat in ``alat_list`` exactly.
+            * ``list[dict]`` -- per-alat values as records
+              ``{"alat": float, "nmpm": int}``.  This form is TOML-safe
+              (no float dict keys) and is the recommended shape when
+              wired through ``ValueFrom`` from an upstream workflow.
+              Normalized to the dict form internally.
         non_local_move (str, optional):
             Non-local move treatment.  Default from ``jqmc_miscs``.
         E_scf (float, optional):
@@ -205,6 +214,12 @@ class LRDMC_Ext_Workflow(Workflow):
             Statistical error on ``extrapolated_energy`` (Ha).
         per_alat_results (dict):
             Per-alat energy/error results keyed by ``alat``.
+        nmpm_per_alat (list[dict]):
+            Averaged GFMC projections per alat as records
+            ``{"alat": float, "nmpm": int}``.  Suitable for piping into
+            a downstream GFMC_n ``LRDMC_Ext_Workflow`` via ``ValueFrom``
+            as ``num_projection_per_measurement``.  Only present when
+            sub-run outputs could be parsed.
         errors (list[str]):
             Error messages for alat runs that failed.
         error (str):
@@ -287,6 +302,19 @@ class LRDMC_Ext_Workflow(Workflow):
         #   None    -- GFMC_t mode (uses time_projection_tau)
         #   int     -- same value for every alat
         #   dict    -- per-alat values; keys must cover every alat in alat_list
+        #   list of {"alat": float, "nmpm": int}  -- TOML-safe wire form
+        #             (used by ValueFrom upstream).  Normalized to dict here.
+        if isinstance(num_projection_per_measurement, list):
+            try:
+                num_projection_per_measurement = {
+                    float(entry["alat"]): int(entry["nmpm"]) for entry in num_projection_per_measurement
+                }
+            except (KeyError, TypeError) as exc:
+                raise ValueError(
+                    f"num_projection_per_measurement list entries must be "
+                    f"dicts with keys 'alat' and 'nmpm'; got "
+                    f"{num_projection_per_measurement!r}"
+                ) from exc
         if isinstance(num_projection_per_measurement, dict):
             missing = [a for a in self.alat_list if a not in num_projection_per_measurement]
             if missing:
@@ -359,7 +387,12 @@ class LRDMC_Ext_Workflow(Workflow):
             pilot_steps=self.pilot_steps,
             num_gfmc_projections=self.num_gfmc_projections,
             max_continuation=self.max_continuation,
-            cleanup_patterns=self.cleanup_patterns,
+            # Children do NOT clean up: LRDMC_Ext.run() needs every alat's
+            # restart.h5 *after* the children complete, for the
+            # extrapolation step.  The parent Container handles cleanup
+            # recursively (via ``**/<pattern>`` glob) after extrapolation
+            # has consumed the files.
+            cleanup_patterns=None,
             precision_mode=self.precision_mode,
         )
         enc = Container(
@@ -383,6 +416,51 @@ class LRDMC_Ext_Workflow(Workflow):
             "max_continuation": self.max_continuation,
         }
 
+    def can_resume_after_completed(self, proj_dir: str) -> bool:
+        """Return True if *any* child ``LRDMC_Workflow`` at any alat could
+        still benefit from more runs.
+
+        ``Container`` consults this before:
+
+        * short-circuiting on a previously completed workflow, and
+        * running ``_cleanup_files`` (which uses a recursive
+          ``**/<pattern>`` glob that would otherwise delete the children's
+          ``restart.h5`` files that an unconverged child wants to keep).
+
+        Returns True when any of the following hold for the *current*
+        ``alat_list``:
+
+        * an alat in the list has no recorded ``energy_error`` yet
+          (e.g. the user extended ``alat_list`` after the prior run, so
+          this alat has never been executed); or
+        * an alat's recorded ``energy_error`` exceeds
+          ``target_error * 1.20``.
+
+        Returns False in fixed-step mode (no target_error) or when
+        every alat already has an acceptable recorded ``energy_error``.
+        """
+        if self.target_error is None or self.num_gfmc_projections is not None:
+            return False
+        for alat in self.alat_list:
+            alat_dir = os.path.join(proj_dir, f"lrdmc_alat_{alat:.3f}")
+            try:
+                result = read_state(alat_dir).get("result", {})
+            except Exception as exc:
+                logger.warning(
+                    f"can_resume_after_completed: cannot read state for "
+                    f"alat={alat} ({exc.__class__.__name__}: {exc}); "
+                    f"requesting resume to recover."
+                )
+                return True
+            err = result.get("energy_error")
+            if err is None:
+                # No result for this alat yet -- definitely need to run it
+                # (e.g. user just added this value to alat_list).
+                return True
+            if err > self.target_error * 1.20:
+                return True
+        return False
+
     async def run(self) -> tuple:
         """Run LRDMC at each alat, then extrapolate to a^2->0.
 
@@ -397,6 +475,23 @@ class LRDMC_Ext_Workflow(Workflow):
         """
         self._ensure_project_dir()
         _wd = self.project_dir
+
+        # When num_projection_per_measurement comes through ValueFrom,
+        # the launcher resolves it via setattr after __init__, so the
+        # __init__-time list-of-records normalization is bypassed.
+        # Re-apply it here so _make_lrdmc_workflow sees a dict.
+        if isinstance(self.num_projection_per_measurement, list):
+            try:
+                self.num_projection_per_measurement = {
+                    float(entry["alat"]): int(entry["nmpm"]) for entry in self.num_projection_per_measurement
+                }
+            except (KeyError, TypeError) as exc:
+                raise ValueError(
+                    f"num_projection_per_measurement list entries must be "
+                    f"dicts with keys 'alat' and 'nmpm'; got "
+                    f"{self.num_projection_per_measurement!r}"
+                ) from exc
+
         sorted_alats = sorted(self.alat_list, reverse=True)
 
         # -- helper: run a single alat, return a uniform result tuple ------
@@ -431,7 +526,7 @@ class LRDMC_Ext_Workflow(Workflow):
                 logger.error(f"[{enc.label}] failed: {error}")
                 errors.append(str(error))
                 continue
-            if status not in ("success", "completed", WorkflowStatus.COMPLETED):
+            if status != WorkflowStatus.COMPLETED:
                 logger.error(f"[{enc.label}] returned status={status}")
                 errors.append(f"{enc.label}: status={status}")
                 continue
@@ -473,6 +568,34 @@ class LRDMC_Ext_Workflow(Workflow):
             return self.status, [], {"error": msg}
 
         self.output_values["per_alat_results"] = per_alat_results
+
+        # Publish GFMC projections per alat as a TOML-safe list of
+        # ``{"alat": float, "nmpm": int}`` records.  A downstream
+        # GFMC_n LRDMC_Ext_Workflow can consume this via ValueFrom and
+        # pass it back as ``num_projection_per_measurement`` (the
+        # ``__init__`` accepts this list form and normalizes to
+        # ``dict[float, int]``).  Each child LRDMC_Workflow publishes
+        # ``num_projection_per_measurement`` in both GFMC_n (user/calib
+        # input) and GFMC_t (averaged measurement) modes.
+        out_values_by_alat: dict[float, dict] = {
+            float(_out_values["alat"]): _out_values
+            for _enc, _status, _out_files, _out_values, _error in all_results
+            if _error is None and _status == WorkflowStatus.COMPLETED and _out_values.get("alat") is not None
+        }
+
+        nmpm_per_alat: list[dict] = []
+        for alat in self.alat_list:
+            ov = out_values_by_alat.get(float(alat))
+            nmpm_raw = ov.get("num_projection_per_measurement") if ov is not None else None
+            if nmpm_raw is None:
+                msg = f"Missing output_values['num_projection_per_measurement'] for alat={alat:.3f} in sub-workflow result."
+                logger.error(msg)
+                self.status = WorkflowStatus.FAILED
+                self.output_values["error"] = msg
+                return self.status, [], {"error": msg}
+            nmpm_per_alat.append({"alat": float(alat), "nmpm": max(int(nmpm_raw), 1)})
+        self.output_values["nmpm_per_alat"] = nmpm_per_alat
+
         self.output_files = restart_chks
         self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
@@ -484,25 +607,35 @@ class LRDMC_Ext_Workflow(Workflow):
             tuple:
                 ``(energy, error)`` or ``(None, None)``.
         """
-        chk_args = " ".join(restart_chks)
-        cmd = (
-            f"jqmc-tool lrdmc extrapolate-energy {chk_args} "
-            f"-p {self.polynomial_order} "
-            f"-b {self.num_gfmc_bin_blocks} "
-            f"-w {self.num_gfmc_warmup_steps} "
-            f"-c {self.num_gfmc_collect_steps}"
-        )
-        logger.info(f"  Running: {cmd}")
+        cmd = [
+            "jqmc-tool",
+            "lrdmc",
+            "extrapolate-energy",
+            *restart_chks,
+            "-p",
+            str(self.polynomial_order),
+            "-b",
+            str(self.num_gfmc_bin_blocks),
+            "-w",
+            str(self.num_gfmc_warmup_steps),
+            "-c",
+            str(self.num_gfmc_collect_steps),
+        ]
+        logger.info(f"  Running: {' '.join(cmd)}")
         try:
             result = subprocess.run(
                 cmd,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 check=True,
                 cwd=self.project_dir,
             )
             return self._parse_extrapolation_output(result.stdout)
+        except FileNotFoundError as e:
+            logger.error(f"extrapolate-energy: '{cmd[0]}' not found on PATH ({e})")
+            return None, None
         except subprocess.CalledProcessError as e:
             logger.error(f"extrapolate-energy failed: {e.stderr}")
             return None, None

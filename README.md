@@ -2,15 +2,15 @@
 
 ![jqmc_logo](logo/logo_yoko2.jpg)
 
-**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs and GPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`. The **jQMC** users and developers manual is available from [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs and GPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`. The **jQMC** users and developers manual is available from [GitHub Pages](https://jqmc-project.github.io/jQMC/).
 
-![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
-![tag](https://img.shields.io/github/v/tag/kousuke-nakano/jQMC)
-![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
-![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
-![short-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
-![full-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
-![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg)
+![license](https://img.shields.io/github/license/jqmc-project/jQMC)
+![tag](https://img.shields.io/github/v/tag/jqmc-project/jQMC)
+![fork](https://img.shields.io/github/forks/jqmc-project/jQMC?style=social)
+![stars](https://img.shields.io/github/stars/jqmc-project/jQMC?style=social)
+![short-pytest](https://github.com/jqmc-project/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
+![full-pytest](https://github.com/jqmc-project/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
+![codecov](https://codecov.io/github/jqmc-project/jQMC/graph/badge.svg)
 ![DL](https://img.shields.io/pypi/dm/jqmc)
 ![python_version](https://img.shields.io/pypi/pyversions/jqmc)
 ![pypi_version](https://badge.fury.io/py/jqmc.svg)
@@ -54,7 +54,7 @@ Kosuke Nakano (National Institute for Materials Science (NIMS), Japan)
 **The latest version of jQMC** can be installed via pip from the cloned GitHub repository.
 
 ```bash
-% git clone https://github.com/kousuke-nakano/jQMC
+% git clone https://github.com/jqmc-project/jQMC
 % cd jQMC
 % pip install .
 ```
@@ -100,7 +100,7 @@ Once the `main` branch is merged into the `rc` branch, the `GitHub` workflow lau
 
 ## How to deploy the documentation
 
-Once the `main` branch is merged into the `rc-gh-pages` branch, the `GitHub` workflow launches the implemented documentaion building process (`jqmc-deploy-gh-pages.yml`) and deploy the compiled documentaiton to [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
+Once the `main` branch is merged into the `rc-gh-pages` branch, the `GitHub` workflow launches the implemented documentaion building process (`jqmc-deploy-gh-pages.yml`) and deploy the compiled documentaiton to [GitHub Pages](https://jqmc-project.github.io/jQMC/).
 
 ## Contribution
 

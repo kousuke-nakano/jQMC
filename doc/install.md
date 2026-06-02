@@ -2,4 +2,4 @@
 
 # Installation
 
-How to Install **jQMC** is written in `Readme.md` https://github.com/kousuke-nakano/jQMC/tree/main/.
+How to Install **jQMC** is written in `Readme.md` https://github.com/jqmc-project/jQMC/tree/main/.

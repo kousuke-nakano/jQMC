@@ -70,6 +70,20 @@ def configure_precision(request):
     configure(mode)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path, monkeypatch):
+    """Run every test in its own pytest-managed tmp directory.
+
+    Why: production code (e.g. ``MCMC.run_optimize``) writes artifacts such
+    as ``hamiltonian_data_opt_step_<N>.h5`` to the current working directory
+    with fixed filenames. Under pytest-xdist, all workers share one cwd, so
+    concurrent tests collide on h5py's exclusive file lock (EWOULDBLOCK).
+    Per-test cwd isolation removes the collision and stops tests/ from
+    accumulating stale artifacts across runs.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 def pytest_itemcollected(item):
     """Show reason for obsolete tests."""
     obsolete_marker = item.get_closest_marker("obsolete")

@@ -1,9 +1,18 @@
 @startuml uml
 ' size
-scale 595*842
+scale 1200*1000
 
 ' PlantUML configuration
 allowmixing
+top to bottom direction
+
+' Compact layout
+skinparam nodesep 15
+skinparam ranksep 25
+skinparam padding 4
+skinparam classAttributeIconSize 0
+skinparam defaultFontSize 18
+skinparam classFontSize 15
 
 ' Command + Shift + P to toggle the PlantUML export mode
 ' inkscape uml.svg -o uml.pdf
@@ -22,6 +31,10 @@ class Hamiltonian_data <<flax.struct.dataclass>> {
 
 class Structure_data <<flax.struct.dataclass>> {
     - positions: jax.Array
+    - pbc_flag: bool
+    - vec_a: tuple[float]
+    - vec_b: tuple[float]
+    - vec_c: tuple[float]
     - atomic_numbers: tuple[int]
     - element_symbols: tuple[str]
     - atomic_labels: tuple[str]
@@ -81,9 +94,9 @@ class Geminal_data <<flax.struct.dataclass>> {
 }
 
 class Jastrow_data <<flax.struct.dataclass>> {
-    - jastrow_one_body_data: Jastrow_one_body_data
-    - jastrow_two_body_data: Jastrow_two_body_data
-    - jastrow_three_body_data: Jastrow_three_body_data
+    - jastrow_one_body_data: Jastrow_one_body_data | None
+    - jastrow_two_body_data: Jastrow_two_body_data | None
+    - jastrow_three_body_data: Jastrow_three_body_data | None
 }
 
 class Wavefunction_data <<flax.struct.dataclass>> {
@@ -112,6 +125,7 @@ class MCMC {
     - hamiltonian_data : Hamiltonian_data
     - mcmc_seed : int
     - num_walkers : int
+    - Dt : float
     + run(num_mcmc_steps: int, max_time: int) : None
     + run_optimize(...) : None
     + get_E(...) : tuple
@@ -119,70 +133,101 @@ class MCMC {
     + get_gF(...) : tuple
 }
 
-class GFMC {
+class GFMC_t {
+    Tau-step LRDMC (GFMC with fixed tau).
+    --
     - hamiltonian_data : Hamiltonian_data
     - mcmc_seed : int
     - num_walkers : int
-    + run(num_gfmc_steps: int, max_time: int) : None
+    - tau : float
+    - alat : float
+    + run(num_mcmc_steps: int, max_time: int) : None
+    + get_E(...) : tuple
+    + get_aF(...) : tuple
+}
+
+class GFMC_n {
+    Node-based LRDMC (GFMC with fixed alat).
+    --
+    - hamiltonian_data : Hamiltonian_data
+    - mcmc_seed : int
+    - num_walkers : int
+    - E_scf : float
+    - alat : float
+    + run(num_mcmc_steps: int, max_time: int) : None
     + get_E(...) : tuple
     + get_aF(...) : tuple
 }
 
 ' Functions
-rectangle "compute_local_energy_jax(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n) -> float" as compute_local_energy_jax
-rectangle "jax.grad(compute_local_energy_jax)(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n) -> float" as grad_compute_local_energy_jax
-rectangle "compute_discretized_kinetic_energy_jax(\n    alat: float,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_discretized_kinetic_energy_jax
-' rectangle "compute_ecp_non_local_parts_jax(\n coulomb_potential_data: Coulomb_potential_data,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_ecp_non_local_parts_jax
+rectangle "compute_local_energy(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array,\n    RT: jax.Array\n) -> float" as compute_local_energy
+rectangle "jax.grad(compute_local_energy)(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array,\n    RT: jax.Array\n) -> Hamiltonian_data" as grad_compute_local_energy
+rectangle "compute_discretized_kinetic_energy(\n    alat: float,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array,\n    RT: jax.Array\n) -> tuple" as compute_discretized_kinetic_energy
 
-' Dependency relationships
-note top of compute_local_energy_jax
+' Notes on functions
+note top of compute_local_energy
 This function computes the local energy
 with a given Hamiltonian_data and electron
-positions (r_up_cart and r_dn_carts).
+positions (r_up_carts and r_dn_carts).
 end note
 
-note bottom of grad_compute_local_energy_jax
+note bottom of grad_compute_local_energy
 This function computes **derivatives** of
 the local energy with a given Hamiltonian_data
-and electron positions (r_up_cart and r_dn_carts).
+and electron positions (r_up_carts and r_dn_carts).
 end note
 
 ' ===============================
-' Class relationships (composition/aggregation)
+' Class relationships
+'
+' *-- : composition  (filled diamond)
+'       child cannot exist independently; lifecycle tied to parent.
+' o-- : aggregation  (hollow diamond)
+'       child can exist independently; used for optional (| None)
+'       fields and union-type alternatives.
+' ..> : dependency   (dashed arrow)
+'       one element uses / calls another.
 ' ===============================
 
 MCMC *-- Hamiltonian_data
-GFMC *-- Hamiltonian_data
-MCMC ..> compute_local_energy_jax: calls
-MCMC ..> grad_compute_local_energy_jax: calls
-GFMC ..> compute_discretized_kinetic_energy_jax: calls
-' GFMC ..> compute_ecp_non_local_parts_jax: calls
+GFMC_t *-- Hamiltonian_data
+GFMC_n *-- Hamiltonian_data
+MCMC ..> compute_local_energy: calls
+MCMC ..> grad_compute_local_energy: calls
+GFMC_t ..> compute_discretized_kinetic_energy: calls
+GFMC_n ..> compute_discretized_kinetic_energy: calls
+
 Jastrow_one_body_data *-- Structure_data
-Jastrow_three_body_data *-- AOs_sphe_data
-Jastrow_three_body_data *-- AOs_cart_data
-Jastrow_three_body_data *-- MOs_data
+
+' Union-type alternatives: orb_data field holds exactly one of these
+Jastrow_three_body_data o-- AOs_sphe_data
+Jastrow_three_body_data o-- AOs_cart_data
+Jastrow_three_body_data o-- MOs_data
 
 Hamiltonian_data *-- Structure_data
 Hamiltonian_data *-- Coulomb_potential_data
 Hamiltonian_data *-- Wavefunction_data
 
 Coulomb_potential_data *-- Structure_data
-Coulomb_potential_data *-- Wavefunction_data
 
 AOs_cart_data *-- Structure_data
 AOs_sphe_data *-- Structure_data
-MOs_data *-- AOs_cart_data
-MOs_data *-- AOs_sphe_data
 
-Geminal_data *-- AOs_cart_data
-Geminal_data *-- AOs_sphe_data
-Geminal_data *-- MOs_data
+' Union-type alternatives: aos_data holds exactly one of these
+MOs_data o-- AOs_cart_data
+MOs_data o-- AOs_sphe_data
+
+' Union-type alternatives: orb_data_up/dn_spin holds exactly one of these
+Geminal_data o-- AOs_cart_data
+Geminal_data o-- AOs_sphe_data
+Geminal_data o-- MOs_data
 
 Wavefunction_data *-- Jastrow_data
 Wavefunction_data *-- Geminal_data
 
-Jastrow_data *-- Jastrow_one_body_data
-Jastrow_data *-- Jastrow_two_body_data
-Jastrow_data *-- Jastrow_three_body_data
+' Optional fields (| None) -> aggregation
+Jastrow_data o-- Jastrow_one_body_data
+Jastrow_data o-- Jastrow_two_body_data
+Jastrow_data o-- Jastrow_three_body_data
 
 @enduml

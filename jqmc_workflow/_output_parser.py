@@ -211,11 +211,12 @@ def repair_forces_from_output(work_dir: str) -> bool:
     if forces is None:
         return False
 
-    # Update the TOML
-    state = toml.load(state_path)
+    # Update the TOML atomically via the canonical state API.
+    from ._state import _write, read_state
+
+    state = read_state(work_dir)
     state.setdefault("result", {})["forces"] = forces
-    with open(state_path, "w") as f:
-        toml.dump(state, f)
+    _write(work_dir, state)
 
     logger.info(f"  Repaired forces in {work_dir} from {os.path.basename(last_out)}")
     return True
@@ -228,24 +229,27 @@ def repair_forces_from_output(work_dir: str) -> bool:
 # "Optimization step =   1/10" or "Optimization step = 1/10."
 _RE_OPT_STEP = re.compile(r"Optimization\s+step\s*=\s*(\d+)\s*/\s*(\d+)")
 
+# Numeric pattern that also matches ``nan`` / ``inf`` (any case).
+# Required so a diverged QMC run surfaces as a non-finite float rather
+# than being silently dropped from per-step parsing.
+_NUM = r"[+-]?(?:\d+\.?\d*(?:[eE][+-]?\d+)?|nan|inf)"
+
 # "E = -76.438901 +- 0.000123 Ha" (energy line)
 _RE_ENERGY = re.compile(
-    r"E\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)"
-    r"\s*\+\-\s*"
-    r"(\d+\.?\d*(?:[eE][+-]?\d+)?)"
+    rf"E\s*=\s*({_NUM})\s*\+\-\s*({_NUM})",
+    re.IGNORECASE,
 )
 
 # "Max f = 17.984 +- 0.330 Ha/a.u." or "Max f = 17.984 +- 0.330"
 _RE_MAX_FORCE = re.compile(
-    r"Max\s+f\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)"
-    r"\s*\+\-\s*"
-    r"(\d+\.?\d*(?:[eE][+-]?\d+)?)"
+    rf"Max\s+f\s*=\s*({_NUM})\s*\+\-\s*({_NUM})",
+    re.IGNORECASE,
 )
 
 # "Max of signal-to-noise of f = max(|f|/|std f|) = 126.871."
 _RE_SNR = re.compile(
-    r"Max of signal-to-noise of f\s*=\s*max\(\|f\|/\|std f\|\)\s*=\s*"
-    r"([-+]?\d+(?:\.\d+)?)"
+    rf"Max of signal-to-noise of f\s*=\s*max\(\|f\|/\|std f\|\)\s*=\s*({_NUM})",
+    re.IGNORECASE,
 )
 
 # "Average of walker weights is 0.799. Ideal is ~ 0.800. Adjust epsilon_AS."
@@ -382,6 +386,11 @@ def _find_input_files(work_dir: str) -> list:
 
     Reads ``workflow_state.toml`` ``[[jobs]]`` records and returns the
     ``input_file`` paths that exist on disk, ordered by ``step``.
+
+    Only jobs in ``"fetched"`` or ``"completed"`` status are considered:
+    cancelled / failed / still-submitted jobs may have stale inputs
+    that would mislead downstream parsing (e.g. the wrong hamiltonian
+    file reference).
     """
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if not os.path.isfile(state_path):
@@ -392,6 +401,8 @@ def _find_input_files(work_dir: str) -> list:
         return []
     files = []
     for job in state.get("jobs", []):
+        if job.get("status") not in ("fetched", "completed"):
+            continue
         name = job.get("input_file", "")
         if name:
             path = os.path.join(work_dir, name)
@@ -496,6 +507,11 @@ def _find_output_files(work_dir: str) -> list:
 
     Reads ``workflow_state.toml`` ``[[jobs]]`` records and returns the
     ``output_file`` paths that exist on disk, ordered by ``step``.
+
+    Only jobs in ``"fetched"`` or ``"completed"`` status are considered:
+    partial output left behind by cancelled / failed / still-submitted
+    jobs would otherwise pollute parser aggregations (timing breakdowns,
+    SNR series, force tables) with garbage data.
     """
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if not os.path.isfile(state_path):
@@ -506,6 +522,8 @@ def _find_output_files(work_dir: str) -> list:
         return []
     files = []
     for job in state.get("jobs", []):
+        if job.get("status") not in ("fetched", "completed"):
+            continue
         name = job.get("output_file", "")
         if name:
             path = os.path.join(work_dir, name)

@@ -221,12 +221,12 @@ def allowed_actions(
 ) -> list[str]:
     """Return the list of actions allowed for the given *phase* / *status*.
 
-    When *status* is ``FAILED`` only ``recover_*`` and ``rollback_phase``
-    actions are kept.  When *status* is ``RUNNING`` configuration actions
-    are excluded.
+    When *status* is ``FAILED`` or ``CANCELLED`` only ``recover_*`` and
+    ``rollback_phase`` actions are kept.  When *status* is ``RUNNING``
+    configuration actions are excluded.
     """
     phase_actions = list(PHASE_ALLOWED_ACTIONS.get(phase, []))
-    if status == WorkflowStatus.FAILED:
+    if status in (WorkflowStatus.FAILED, WorkflowStatus.CANCELLED):
         phase_actions = [a for a in phase_actions if a.startswith("recover_")]
         phase_actions.append("rollback_phase")
     if status == WorkflowStatus.RUNNING:
