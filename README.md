@@ -31,11 +31,11 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
+- Periodic boundary condition calculations are not yet supported in the public repository. PBC calculations at the Gamma point using pGTOs+B-splines are supported in the developer version of jQMC, which is currently maintained in a private repository. If you are interested in this functionality, please contact one of the developers.
 
 
 ## Ongoing works
-- Implementing periodic boundary conditions (PBC), at least at the Gamma point (i.e., using a real-space wave function).
+- Implementing periodic boundary conditions (PBC) for complex WFs.
 
 
 ## Developer(s)
