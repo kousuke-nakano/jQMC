@@ -31,7 +31,7 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- Periodic boundary condition calculations are not yet supported in the public repository. PBC calculations at the Gamma point using pGTOs+B-splines are supported in the developer version of jQMC, which is currently maintained in a private repository. If you are interested in this functionality, please contact one of the developers.
+- Periodic boundary condition (PBC) calculations are not yet available in the public repository. In the developer version of jQMC, which is currently maintained in a private repository, PBC calculations using pGTOs or B-splines are already supported, including complex wave functions, twist averaging, and workflows based on Quantum ESPRESSO outputs. These features remain private for now because testing and validation are still ongoing. If you are interested in using them, please contact one of the developers.
 
 
 ## Ongoing works
